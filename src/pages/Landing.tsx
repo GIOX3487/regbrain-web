@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useNavigate } from "react-router-dom";
 import { Shield, Search, FileText, ArrowRight, CheckCircle2, Target, Zap, BookOpen, Activity, Eye, Scale, Globe } from "lucide-react";
-import { NewsSection } from "@/components/landing/NewsSection";
 import { MobileNav } from "@/components/MobileNav";
 import { FeatureGuide } from "@/components/FeatureGuide";
 import { supabase } from "@/integrations/supabase/client";
@@ -180,7 +179,7 @@ const Landing = () => {
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="grid md:grid-cols-2 gap-8">
             {/* Feature 1: Analisi Conformità Unificata */}
             <div className="document-card space-y-4 hover:scale-105 transition-transform relative group">
               <Button
@@ -216,70 +215,6 @@ const Landing = () => {
               </ul>
             </div>
 
-            {/* Feature 2: Aggiornamenti normativi */}
-            <div className="document-card space-y-4 hover:scale-105 transition-transform relative group">
-              <Button
-                size="sm"
-                variant="secondary"
-                className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity"
-                onClick={() => navigate('/aggiornamenti')}
-              >
-                <BookOpen className="w-4 h-4 mr-2" />
-                Vedi news
-              </Button>
-              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
-                <BookOpen className="w-6 h-6 text-white" />
-              </div>
-              <h3 className="text-2xl font-semibold">Aggiornamenti normativi</h3>
-              <p className="text-muted-foreground">
-                <strong>Monitoraggio automatico EUR-Lex e EDPB</strong> per rimanere sempre aggiornato sulle novità normative.
-              </p>
-              <ul className="space-y-2 text-sm">
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600" />
-                  <span>Trend normativi del tuo settore</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600" />
-                  <span>Aggiornamenti regolatori in tempo reale</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600" />
-                  <span>Fonti ufficiali verificate</span>
-                </li>
-              </ul>
-            </div>
-
-            {/* Feature 4: Audit Documents */}
-            <div className="document-card space-y-4 hover:scale-105 transition-transform relative group">
-              <Button
-                size="sm"
-                variant="secondary"
-                className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity"
-                onClick={() => handleFeatureClick('document')}
-              >
-                <FileText className="w-4 h-4 mr-2" />
-                Usa ora
-              </Button>
-              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-orange-600 to-red-600 flex items-center justify-center">
-                <FileText className="w-6 h-6 text-white" />
-              </div>
-              <h3 className="text-2xl font-semibold">Document generator</h3>
-              <p className="text-muted-foreground">
-                Genera DPIA e LIA audit-ready in minuti invece di settimane. Pre-compilati con i dati della tua analisi.
-              </p>
-              <ul className="space-y-2 text-sm">
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600" />
-                  <span>DPIA (Art. 35 GDPR)</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600" />
-                  <span>LIA (AI Act)</span>
-                </li>
-              </ul>
-            </div>
-
             {/* Feature 5: RAG Chat */}
             <div className="document-card space-y-4 hover:scale-105 transition-transform relative group">
               <Button
@@ -300,39 +235,6 @@ const Landing = () => {
               </p>
             </div>
 
-            {/* Feature 6: Market Intelligence */}
-            <div className="document-card space-y-4 hover:scale-105 transition-transform relative group">
-              <Button
-                size="sm"
-                variant="secondary"
-                className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity"
-                onClick={() => handleFeatureClick('market-intelligence')}
-              >
-                <Globe className="w-4 h-4 mr-2" />
-                Usa ora
-              </Button>
-              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-600 to-violet-600 flex items-center justify-center">
-                <Globe className="w-6 h-6 text-white" />
-              </div>
-              <h3 className="text-2xl font-semibold">Market Intelligence</h3>
-              <p className="text-muted-foreground">
-                <strong>Insights di mercato personalizzati</strong> basati sul tuo settore, ruolo e giurisdizione.
-              </p>
-              <ul className="space-y-2 text-sm">
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600" />
-                  <span>Trend di settore personalizzati</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600" />
-                  <span>Statistiche e benchmark</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-green-600" />
-                  <span>Raccomandazioni AI-powered</span>
-                </li>
-              </ul>
-            </div>
 
           </div>
         </div>
@@ -611,8 +513,6 @@ const Landing = () => {
         </div>
       </section>
 
-      {/* News Section */}
-      <NewsSection />
 
 
       {/* Progettato per professionisti */}
