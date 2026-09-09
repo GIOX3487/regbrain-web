@@ -33,7 +33,7 @@ export const SitePasswordProtection = ({ children }: SitePasswordProtectionProps
           window.outerHeight - window.innerHeight > threshold) {
         // DevTools likely open - clear auth
         if (!isAuthenticated) {
-          console.clear();
+          // Preserve browser diagnostics while the access screen is visible.
         }
       }
     };
@@ -202,7 +202,12 @@ export const SitePasswordProtection = ({ children }: SitePasswordProtectionProps
         }
       }
     } catch (error: any) {
-      // SECURITY: Never log the actual error details that might contain sensitive info
+      // Log only the error category and HTTP status, never request bodies or credentials.
+      console.warn("Site access request failed", {
+        name: error?.name,
+        status: error?.context?.status,
+        cause: error?.context instanceof Error ? error.context.message : undefined,
+      });
       toast({
         title: "Errore",
         description: "Impossibile verificare la password. Riprova.",
