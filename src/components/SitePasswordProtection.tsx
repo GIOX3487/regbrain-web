@@ -82,7 +82,7 @@ export const SitePasswordProtection = ({ children }: SitePasswordProtectionProps
       try {
         // Call verify-token endpoint
         const url = new URL(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-site-password?action=verify-token`
+          `${window.location.origin}/api/verify-site-password?action=verify-token`
         );
         
         const response = await fetch(url.toString(), {
@@ -162,7 +162,7 @@ export const SitePasswordProtection = ({ children }: SitePasswordProtectionProps
     try {
       // SECURITY: Send password only once, never log it
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-site-password`,
+        `/api/verify-site-password`,
         {
           method: 'POST',
           headers: {
