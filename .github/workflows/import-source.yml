@@ -1,0 +1,46 @@
+name: Import and verify RegBrain
+on:
+  push:
+    paths:
+      - 'regbrain-source.part*'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Restore source archive
+        shell: python
+        run: |
+          import hashlib, io, pathlib, zipfile
+          root = pathlib.Path.cwd()
+          parts = sorted(root.glob('regbrain-source.part*'))
+          data = b''.join(p.read_bytes() for p in parts)
+          assert hashlib.sha256(data).hexdigest() == 'b7db016566167c83a8f74a5bf59237b85449648e1871a1269bb22e9ba7c55788', 'Incomplete source archive'
+          with zipfile.ZipFile(io.BytesIO(data)) as archive:
+              for info in archive.infolist():
+                  path = pathlib.PurePosixPath(info.filename)
+                  assert not path.is_absolute() and '..' not in path.parts
+                  assert '.git' not in path.parts and '.github' not in path.parts
+                  assert not path.name.startswith('.env') or path.name == '.env.example'
+              archive.extractall(root)
+      - name: Reconcile dependency lockfile
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Verify production build
+        run: npm run build
+      - name: Commit verified source
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .
+          git rm -- regbrain-source.part01 regbrain-source.part02
+          git commit -m "Import RegBrain source and reconcile dependency lockfile"
+          git push
