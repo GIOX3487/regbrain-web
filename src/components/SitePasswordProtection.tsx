@@ -4,7 +4,6 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Shield, Lock, Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
 import { z } from "zod";
 
 const passwordSchema = z.string()
@@ -162,11 +161,20 @@ export const SitePasswordProtection = ({ children }: SitePasswordProtectionProps
     
     try {
       // SECURITY: Send password only once, never log it
-      const { data, error } = await supabase.functions.invoke('verify-site-password', {
-        body: { password: passwordCopy }
-      });
-
-      if (error) throw error;
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-site-password`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+          body: JSON.stringify({ password: passwordCopy }),
+        }
+      );
+      const data = await response.json();
+      if (!response.ok) throw new Error(`Password verification failed (${response.status})`);
 
       if (data.valid && data.token) {
         // Success - store JWT token
