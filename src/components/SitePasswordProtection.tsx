@@ -203,11 +203,12 @@ export const SitePasswordProtection = ({ children }: SitePasswordProtectionProps
       }
     } catch (error: any) {
       // Log only the error category and HTTP status, never request bodies or credentials.
-      console.warn("Site access request failed", {
+      console.warn("Site access request failed", JSON.stringify({
         name: error?.name,
         status: error?.context?.status,
         cause: error?.context instanceof Error ? error.context.message : undefined,
-      });
+        message: error?.message,
+      }));
       toast({
         title: "Errore",
         description: "Impossibile verificare la password. Riprova.",
