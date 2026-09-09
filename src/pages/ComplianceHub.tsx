@@ -1,0 +1,538 @@
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useToast } from "@/hooks/use-toast";
+import { MobileNav } from "@/components/MobileNav";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  FileText,
+  TrendingUp,
+  ListTodo,
+  Plus,
+  BarChart3,
+  Shield,
+  ArrowLeft,
+  Activity,
+  Target,
+  Zap,
+  Globe,
+  Trash2
+} from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+
+interface Assessment {
+  id: string;
+  title: string;
+  assessment_type: string;
+  overall_risk_score: number;
+  overall_compliance_percentage: number;
+  status: string;
+  created_at: string;
+}
+
+interface Gap {
+  id: string;
+  requirement_reference: string;
+  gap_description: string;
+  risk_level: string;
+  risk_score: number;
+  priority: number;
+  status: string;
+}
+
+export default function ComplianceHub() {
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const [assessments, setAssessments] = useState<Assessment[]>([]);
+  const [gaps, setGaps] = useState<Gap[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  useEffect(() => {
+    checkAuthAndLoadData();
+  }, []);
+
+  const checkAuthAndLoadData = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    setIsAuthenticated(!!session);
+    if (session) {
+      await loadData();
+    } else {
+      setLoading(false);
+    }
+  };
+
+  const loadData = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      // Load assessments
+      const { data: assessmentsData, error: assessmentsError } = await supabase
+        .from('compliance_assessments')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (assessmentsError) throw assessmentsError;
+      setAssessments(assessmentsData || []);
+
+      // Load all gaps for dashboard overview
+      const { data: gapsData, error: gapsError } = await supabase
+        .from('identified_gaps')
+        .select('*')
+        .in('status', ['open', 'in_progress'])
+        .order('priority', { ascending: true });
+
+      if (gapsError) throw gapsError;
+      setGaps(gapsData || []);
+
+    } catch (error) {
+      console.error('Error loading data:', error);
+      toast({
+        title: "Errore",
+        description: "Impossibile caricare i dati",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteAssessment = async (assessmentId: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent card click
+    
+    try {
+      // First delete related records (gaps, action plans, benchmarks)
+      await supabase.from('action_plans').delete().eq('assessment_id', assessmentId);
+      await supabase.from('identified_gaps').delete().eq('assessment_id', assessmentId);
+      await supabase.from('assessment_benchmarks').delete().eq('assessment_id', assessmentId);
+      
+      // Then delete the assessment
+      const { error } = await supabase
+        .from('compliance_assessments')
+        .delete()
+        .eq('id', assessmentId);
+
+      if (error) throw error;
+
+      // Update local state
+      setAssessments(prev => prev.filter(a => a.id !== assessmentId));
+
+      toast({
+        title: "Valutazione eliminata",
+        description: "La valutazione è stata eliminata con successo",
+      });
+      
+      // Reload gaps data
+      await loadData();
+    } catch (error) {
+      console.error('Error deleting assessment:', error);
+      toast({
+        title: "Errore",
+        description: "Impossibile eliminare la valutazione",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const getRiskBadgeColor = (level: string): "default" | "destructive" | "outline" | "secondary" => {
+    const colors: Record<string, "default" | "destructive" | "outline" | "secondary"> = {
+      critical: 'destructive',
+      high: 'destructive',
+      medium: 'default',
+      low: 'secondary'
+    };
+    return colors[level] || 'default';
+  };
+
+  const criticalGaps = gaps.filter(g => g.risk_level === 'critical').length;
+  const highGaps = gaps.filter(g => g.risk_level === 'high').length;
+  const avgCompliance = assessments.length > 0
+    ? assessments.reduce((acc, a) => acc + (a.overall_compliance_percentage || 0), 0) / assessments.length
+    : 0;
+  const avgRisk = assessments.length > 0
+    ? assessments.reduce((acc, a) => acc + (a.overall_risk_score || 0), 0) / assessments.length
+    : 0;
+
+  return (
+    <div className="min-h-screen bg-background pb-20 lg:pb-0">
+      <MobileNav />
+      {!isAuthenticated ? (
+        <div className="container mx-auto py-16 px-4 text-center">
+          <Shield className="h-24 w-24 mx-auto text-primary mb-6" />
+          <h1 className="text-4xl font-bold mb-4">Compliance Hub</h1>
+          <p className="text-xl text-muted-foreground mb-8">
+            Gap analysis • Risk assessment • Audit documentation • Predictive analytics
+          </p>
+          <p className="text-muted-foreground mb-6 max-w-2xl mx-auto">
+            Accedi per gestire le tue valutazioni di conformità, identificare gap normativi, 
+            generare documenti audit e utilizzare l'analisi predittiva del rischio.
+          </p>
+          <Button onClick={() => navigate('/auth')} size="lg">
+            Accedi per iniziare
+          </Button>
+        </div>
+      ) : (
+        <div className="container mx-auto py-4 sm:py-8 px-4">
+        {/* Header */}
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6 sm:mb-8">
+          <div className="w-full lg:w-auto">
+            <Button 
+              variant="ghost" 
+              onClick={() => navigate('/chat')}
+              className="mb-3 sm:mb-4"
+              size="sm"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">Torna alla Chat</span>
+              <span className="sm:hidden">Chat</span>
+            </Button>
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-2">Compliance hub</h1>
+            <p className="text-sm sm:text-base text-muted-foreground">
+              Gap analysis • Risk assessment • Audit documentation • Predictive analytics
+            </p>
+          </div>
+          <div className="flex gap-2 flex-wrap w-full lg:w-auto">
+            <Button 
+              variant="outline"
+              onClick={() => navigate('/compliance/documents')}
+              size="sm"
+              className="flex-1 sm:flex-none min-h-[44px]"
+            >
+              <FileText className="mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">Documenti</span>
+              <span className="sm:hidden">Doc</span>
+            </Button>
+            <Button 
+              variant="outline"
+              onClick={() => navigate('/compliance/analysis')}
+              size="sm"
+              className="flex-1 sm:flex-none min-h-[44px]"
+            >
+              <Target className="mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">Analisi</span>
+              <span className="sm:hidden">Analisi</span>
+            </Button>
+            <Button 
+              variant="outline"
+              onClick={() => navigate('/compliance/benchmark')}
+              size="sm"
+              className="flex-1 sm:flex-none min-h-[44px]"
+            >
+              <BarChart3 className="mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">Benchmark</span>
+              <span className="sm:hidden">Bench</span>
+            </Button>
+            <Button 
+              variant="outline"
+              onClick={() => navigate('/compliance/continuous-monitoring')}
+              size="sm"
+              className="flex-1 sm:flex-none min-h-[44px]"
+            >
+              <Activity className="mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">Monitoring</span>
+              <span className="sm:hidden">Monitor</span>
+            </Button>
+            <Button 
+              variant="outline"
+              onClick={() => navigate('/compliance/market-intelligence')}
+              size="sm"
+              className="flex-1 sm:flex-none min-h-[44px]"
+            >
+              <Globe className="mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">Market Intelligence</span>
+              <span className="sm:hidden">M. Intel</span>
+            </Button>
+            <Button 
+              variant="outline"
+              onClick={() => navigate('/compliance/predictive-analytics')}
+              size="sm"
+              className="flex-1 sm:flex-none min-h-[44px]"
+            >
+              <TrendingUp className="mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">Predictive Analytics</span>
+              <span className="sm:hidden">Predittiva</span>
+            </Button>
+            <Button 
+              onClick={() => navigate('/compliance/new-assessment')}
+              size="sm"
+              className="w-full sm:w-auto min-h-[44px]"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Nuova analisi
+            </Button>
+          </div>
+        </div>
+
+        {/* Document Preparation Guide */}
+        {assessments.length === 0 && (
+          <Card className="mb-6 border-primary/50 bg-primary/5">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <FileText className="h-5 w-5 text-primary" />
+                Documenti necessari per la compliance
+              </CardTitle>
+              <CardDescription>
+                Prima di iniziare una nuova analisi, assicurati di avere questi documenti pronti
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid md:grid-cols-3 gap-4 text-sm">
+                <div className="space-y-2">
+                  <h4 className="font-semibold text-primary">📋 Policy aziendali</h4>
+                  <ul className="space-y-1 text-muted-foreground">
+                    <li>• Privacy Policy</li>
+                    <li>• Information Security Policy</li>
+                    <li>• Cookie Policy</li>
+                    <li>• Data Retention Policy</li>
+                    <li>• Acceptable Use Policy</li>
+                  </ul>
+                </div>
+                <div className="space-y-2">
+                  <h4 className="font-semibold text-primary">🔐 Procedure operative</h4>
+                  <ul className="space-y-1 text-muted-foreground">
+                    <li>• Data Breach Response Plan</li>
+                    <li>• Access Control Procedure</li>
+                    <li>• Backup & Recovery Plan</li>
+                    <li>• Incident Response Plan</li>
+                    <li>• Change Management</li>
+                  </ul>
+                </div>
+                <div className="space-y-2">
+                  <h4 className="font-semibold text-primary">📊 Registri GDPR</h4>
+                  <ul className="space-y-1 text-muted-foreground">
+                    <li>• Registro Art. 30 (trattamenti)</li>
+                    <li>• Elenco fornitori + DPA</li>
+                    <li>• DPIA (se necessario)</li>
+                    <li>• Registro data breach</li>
+                    <li>• Formazione dipendenti</li>
+                  </ul>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* KPI Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
+          <Card>
+            <CardHeader className="pb-2 sm:pb-3">
+              <CardTitle className="text-xs sm:text-sm font-medium flex items-center gap-1.5 sm:gap-2">
+                <Shield className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-blue-500 shrink-0" />
+                <span className="truncate">Compliance</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl sm:text-3xl font-bold">{avgCompliance.toFixed(1)}%</div>
+              <Progress value={avgCompliance} className="mt-2" />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2 sm:pb-3">
+              <CardTitle className="text-xs sm:text-sm font-medium flex items-center gap-1.5 sm:gap-2">
+                <TrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-orange-500 shrink-0" />
+                <span className="truncate">Rischio</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl sm:text-3xl font-bold">{avgRisk.toFixed(1)}/100</div>
+              <Progress value={avgRisk} className="mt-2" />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2 sm:pb-3">
+              <CardTitle className="text-xs sm:text-sm font-medium flex items-center gap-1.5 sm:gap-2">
+                <AlertTriangle className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-red-500 shrink-0" />
+                <span className="truncate">Gap critici</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl sm:text-3xl font-bold">{criticalGaps}</div>
+              <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+                {highGaps} alto rischio
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2 sm:pb-3">
+              <CardTitle className="text-xs sm:text-sm font-medium flex items-center gap-1.5 sm:gap-2">
+                <BarChart3 className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-500 shrink-0" />
+                <span className="truncate">Valutazioni</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl sm:text-3xl font-bold">{assessments.length}</div>
+              <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+                {assessments.filter(a => a.status === 'completed').length} completate
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Main Content */}
+        <Tabs defaultValue="assessments" className="space-y-4">
+          <TabsList>
+            <TabsTrigger value="assessments">Valutazioni</TabsTrigger>
+            <TabsTrigger value="gaps">Gap Identificati</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="assessments" className="space-y-4">
+            {assessments.length === 0 ? (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">Nessuna valutazione</h3>
+                  <p className="text-muted-foreground mb-4">
+                    Inizia creando la tua prima valutazione
+                  </p>
+                  <Button onClick={() => navigate('/compliance/new-assessment')}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Crea valutazione
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              assessments.map((assessment) => (
+                <Card 
+                  key={assessment.id}
+                  className="cursor-pointer hover:shadow-lg transition-shadow"
+                  onClick={() => navigate(`/compliance/assessment/${assessment.id}`)}
+                >
+                  <CardHeader>
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <CardTitle>{assessment.title}</CardTitle>
+                        <CardDescription className="mt-2">
+                          Tipo: {assessment.assessment_type} • 
+                          Creata: {new Date(assessment.created_at).toLocaleDateString('it-IT')}
+                        </CardDescription>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={assessment.status === 'completed' ? 'default' : 'secondary'}>
+                          {assessment.status}
+                        </Badge>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button 
+                              variant="ghost" 
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Eliminare questa valutazione?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Questa azione non può essere annullata. Verranno eliminati anche tutti i gap e i piani d'azione associati a questa valutazione.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Annulla</AlertDialogCancel>
+                              <AlertDialogAction 
+                                onClick={(e) => handleDeleteAssessment(assessment.id, e)}
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                              >
+                                Elimina
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-1">Compliance</p>
+                        <div className="flex items-center gap-2">
+                          <Progress value={assessment.overall_compliance_percentage || 0} className="flex-1" />
+                          <span className="text-sm font-medium">
+                            {(assessment.overall_compliance_percentage || 0).toFixed(0)}%
+                          </span>
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-1">Rischio</p>
+                        <div className="flex items-center gap-2">
+                          <Progress value={assessment.overall_risk_score || 0} className="flex-1" />
+                          <span className="text-sm font-medium">
+                            {(assessment.overall_risk_score || 0).toFixed(0)}/100
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </TabsContent>
+
+          <TabsContent value="gaps" className="space-y-4">
+            {gaps.length === 0 ? (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <CheckCircle2 className="h-12 w-12 mx-auto text-green-500 mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">Nessun gap identificato</h3>
+                  <p className="text-muted-foreground">
+                    Ottimo! Non ci sono gap di conformità aperti
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              gaps.map((gap) => (
+                <Card key={gap.id}>
+                  <CardHeader>
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Badge variant={getRiskBadgeColor(gap.risk_level)}>
+                            {gap.risk_level}
+                          </Badge>
+                          <Badge variant="outline">Priorità {gap.priority}</Badge>
+                          <span className="text-sm text-muted-foreground">
+                            {gap.requirement_reference}
+                          </span>
+                        </div>
+                        <CardTitle className="text-base">{gap.gap_description}</CardTitle>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-2xl font-bold text-destructive">
+                          {gap.risk_score.toFixed(0)}
+                        </div>
+                        <p className="text-xs text-muted-foreground">Risk Score</p>
+                      </div>
+                    </div>
+                  </CardHeader>
+                </Card>
+              ))
+            )}
+          </TabsContent>
+
+        </Tabs>
+        </div>
+      )}
+    </div>
+  );
+}

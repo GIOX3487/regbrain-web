@@ -1,0 +1,2 @@
+REVOKE ALL ON FUNCTION public.match_structured_chunks_v2(vector, text, integer, date, double precision, integer) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.match_structured_chunks_v2(vector, text, integer, date, double precision, integer) TO service_role;

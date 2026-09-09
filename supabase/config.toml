@@ -1,0 +1,161 @@
+project_id = "mnbagzwdlvyjrmoyroqg"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[db.pooler]
+enabled = false
+port = 54329
+pool_mode = "transaction"
+default_pool_size = 20
+max_client_conn = 100
+
+[realtime]
+enabled = true
+ip_version = "ipv4"
+tenant_id = ""
+
+[studio]
+enabled = true
+port = 54323
+api_url = "http://127.0.0.1"
+
+[inbucket]
+enabled = true
+port = 54324
+smtp_port = 54325
+pop3_port = 54326
+
+[storage]
+enabled = true
+file_size_limit = "50MiB"
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:3000"
+additional_redirect_urls = ["https://127.0.0.1:3000"]
+jwt_expiry = 3600
+enable_signup = true
+enable_anonymous_sign_ins = false
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+enable_confirmations = false
+
+[edge_runtime]
+enabled = true
+
+[functions.rag-query]
+verify_jwt = true
+
+[functions.seed-news]
+verify_jwt = true
+
+[functions.process-document]
+verify_jwt = true
+
+[functions.batch-upload-documents]
+verify_jwt = true
+
+[functions.verify-site-password]
+verify_jwt = false
+
+[functions.auto-update-rag]
+verify_jwt = false
+
+[functions.load-cra-document]
+verify_jwt = false
+
+[functions.gap-analysis]
+verify_jwt = true
+
+[functions.generate-audit-document]
+verify_jwt = true
+
+[functions.generate-benchmark]
+verify_jwt = true
+
+[functions.predictive-analytics]
+verify_jwt = true
+
+[functions.ai-compliance-copilot]
+verify_jwt = true
+
+[functions.continuous-monitoring-scan]
+verify_jwt = true
+
+[functions.initialize-monitoring]
+verify_jwt = true
+
+[functions.auto-update-news]
+verify_jwt = false
+
+[functions.analyze-ai-model]
+verify_jwt = true
+
+[functions.analyze-dataset]
+verify_jwt = true
+
+[functions.generate-policy]
+verify_jwt = true
+
+[functions.generate-risk-register]
+verify_jwt = true
+
+[functions.orchestrate-remediation]
+verify_jwt = true
+
+[functions.generate-acn-report]
+verify_jwt = true
+
+[functions.send-registration-notification]
+verify_jwt = false
+
+[functions.translate-content]
+verify_jwt = true
+
+[functions.update-sector-benchmarks]
+verify_jwt = true
+
+[functions.scrape-regulatory-updates]
+verify_jwt = false
+
+[functions.batch-load-documents]
+verify_jwt = false
+
+[functions.load-regulatory-documents]
+verify_jwt = false
+
+[functions.cleanup-demo-sessions]
+verify_jwt = false
+
+[functions.api-v1-ai-chat]
+verify_jwt = false
+
+[functions.api-v1-analyze-doc]
+verify_jwt = false
+
+[functions.api-v1-regulatory-updates]
+verify_jwt = false
+
+[functions.api-v1-sync-assessments]
+verify_jwt = false
+
+[functions.api-v1-token]
+verify_jwt = false
+
+[functions.cleanup-requirements]
+verify_jwt = false
+
+[functions.balance-requirements]
+verify_jwt = false

@@ -1,0 +1,65 @@
+{
+  "name": "RegBrain - Conformità Normativa Intelligente",
+  "short_name": "RegBrain",
+  "description": "Piattaforma GRC enterprise per la conformità normativa con AI",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1e3a5f",
+  "theme_color": "#1e3a5f",
+  "orientation": "portrait-primary",
+  "categories": ["business", "productivity", "utilities"],
+  "lang": "it-IT",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "32x32",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/favicon.png",
+      "sizes": "540x720",
+      "type": "image/png",
+      "form_factor": "narrow"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Chat RAG",
+      "short_name": "Chat",
+      "description": "Apri la chat per domande normative",
+      "url": "/chat",
+      "icons": [{ "src": "/favicon.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Compliance Hub",
+      "short_name": "Compliance",
+      "description": "Vai al Compliance Hub",
+      "url": "/compliance",
+      "icons": [{ "src": "/favicon.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Audit Log",
+      "short_name": "Audit",
+      "description": "Visualizza l'audit trail",
+      "url": "/audit",
+      "icons": [{ "src": "/favicon.png", "sizes": "192x192" }]
+    }
+  ],
+  "prefer_related_applications": false
+}

@@ -1,0 +1,97 @@
+[
+  {
+    "titolo": "General Data Protection Regulation (GDPR) - IT",
+    "numero": "Regulation (EU) 2016/679",
+    "data": "2016-04-27",
+    "fonte": "EUR-Lex",
+    "lingua": "IT",
+    "url_pdf": "https://eur-lex.europa.eu/legal-content/IT/TXT/PDF/?uri=CELEX:32016R0679&from=IT"
+  },
+  {
+    "titolo": "General Data Protection Regulation (GDPR) - EN",
+    "numero": "Regulation (EU) 2016/679",
+    "data": "2016-04-27",
+    "fonte": "EUR-Lex",
+    "lingua": "EN",
+    "url_pdf": "https://eur-lex.europa.eu/legal-content/EN/TXT/PDF/?uri=CELEX:32016R0679&from=EN"
+  },
+  {
+    "titolo": "NIS 2 Directive - IT",
+    "numero": "Directive (EU) 2022/2555",
+    "data": "2022-12-14",
+    "fonte": "EUR-Lex",
+    "lingua": "IT",
+    "url_pdf": "https://eur-lex.europa.eu/legal-content/IT/TXT/PDF/?uri=CELEX:32022L2555&from=IT"
+  },
+  {
+    "titolo": "NIS 2 Directive - EN",
+    "numero": "Directive (EU) 2022/2555",
+    "data": "2022-12-14",
+    "fonte": "EUR-Lex",
+    "lingua": "EN",
+    "url_pdf": "https://eur-lex.europa.eu/legal-content/EN/TXT/PDF/?uri=CELEX:32022L2555&from=EN"
+  },
+  {
+    "titolo": "Artificial Intelligence Act (AI Act) - IT",
+    "numero": "Regulation (EU) 2024/1689",
+    "data": "2024-06-13",
+    "fonte": "EUR-Lex",
+    "lingua": "IT",
+    "url_pdf": "https://eur-lex.europa.eu/legal-content/IT/TXT/PDF/?uri=CELEX:32024R1689&from=IT"
+  },
+  {
+    "titolo": "Artificial Intelligence Act (AI Act) - EN",
+    "numero": "Regulation (EU) 2024/1689",
+    "data": "2024-06-13",
+    "fonte": "EUR-Lex",
+    "lingua": "EN",
+    "url_pdf": "https://eur-lex.europa.eu/legal-content/EN/TXT/PDF/?uri=OJ:L_202401689"
+  },
+  {
+    "titolo": "Cyber Resilience Act (CRA) - IT",
+    "numero": "Regulation (EU) 2024/2847",
+    "data": "2024-11-20",
+    "fonte": "EUR-Lex",
+    "lingua": "IT",
+    "url_pdf": "https://eur-lex.europa.eu/legal-content/IT/TXT/PDF/?uri=CELEX:32024R2847&from=IT"
+  },
+  {
+    "titolo": "Cyber Resilience Act (CRA) - EN",
+    "numero": "Regulation (EU) 2024/2847",
+    "data": "2024-11-20",
+    "fonte": "EUR-Lex",
+    "lingua": "EN",
+    "url_pdf": "https://eur-lex.europa.eu/legal-content/EN/TXT/PDF/?uri=OJ:L_202402847"
+  },
+  {
+    "titolo": "Digital Operational Resilience Act (DORA) - IT",
+    "numero": "Regulation (EU) 2022/2554",
+    "data": "2022-12-14",
+    "fonte": "EUR-Lex",
+    "lingua": "IT",
+    "url_pdf": "https://eur-lex.europa.eu/legal-content/IT/TXT/PDF/?uri=CELEX:32022R2554&from=IT"
+  },
+  {
+    "titolo": "Digital Operational Resilience Act (DORA) - EN",
+    "numero": "Regulation (EU) 2022/2554",
+    "data": "2022-12-14",
+    "fonte": "EUR-Lex",
+    "lingua": "EN",
+    "url_pdf": "https://eur-lex.europa.eu/legal-content/EN/TXT/PDF/?uri=CELEX:32022R2554&from=EN"
+  },
+  {
+    "titolo": "Critical Entities Resilience (CER) Directive - IT",
+    "numero": "Directive (EU) 2022/2557",
+    "data": "2022-12-14",
+    "fonte": "EUR-Lex",
+    "lingua": "IT",
+    "url_pdf": "https://eur-lex.europa.eu/legal-content/IT/TXT/PDF/?uri=CELEX:32022L2557&from=IT"
+  },
+  {
+    "titolo": "Critical Entities Resilience (CER) Directive - EN",
+    "numero": "Directive (EU) 2022/2557",
+    "data": "2022-12-14",
+    "fonte": "EUR-Lex",
+    "lingua": "EN",
+    "url_pdf": "https://eur-lex.europa.eu/legal-content/EN/TXT/PDF/?uri=CELEX:32022L2557&from=EN"
+]

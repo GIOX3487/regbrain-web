@@ -1,0 +1,2 @@
+ALTER TABLE public.generated_documents DROP CONSTRAINT generated_documents_document_type_check;
+ALTER TABLE public.generated_documents ADD CONSTRAINT generated_documents_document_type_check CHECK (document_type IN ('dpia', 'ropa', 'lia', 'gap_report', 'risk_analysis'));

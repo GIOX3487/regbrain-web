@@ -1,0 +1,619 @@
+openapi: "3.0.3"
+info:
+  title: RegBrain Partner API
+  description: |
+    RegBrain Partner API v3.0 — consente l'integrazione tra la piattaforma
+    RegBrain AI Compliance Engine e sistemi esterni.
+
+    **Autenticazione OAuth2:**
+    1. Ottieni un access token via `POST /v1/token` con `client_credentials`
+    2. Usa il token come `Authorization: Bearer <access_token>` in ogni chiamata
+    3. Includi l'header `X-Tenant-ID` per identificare il tenant
+    4. Quando il token scade (1h), usa il refresh token per ottenerne uno nuovo
+
+    **Funzionalità:**
+    - AI Compliance Copilot
+    - Analisi documentale normativa
+    - Regulatory Intelligence Feed
+    - Gap Analysis e Benchmark di settore
+    - Knowledge base normativa con RAG
+
+    **Limiti:**
+    - Maximum document size: 100k characters
+    - Default rate limit: 60 requests/minute per tenant
+    - Access token TTL: 1 ora
+    - Refresh token TTL: 90 giorni
+
+  version: "3.0.0"
+  contact:
+    name: RegBrain Integration Team
+    email: tech@regbrain.it
+
+servers:
+  - url: https://api.regbrain.it/v1
+    description: Production API
+  - url: https://sandbox.regbrain.it/v1
+    description: Sandbox testing environment
+
+tags:
+  - name: Authentication
+    description: OAuth2 token management
+  - name: AI Chat
+    description: AI compliance assistant
+  - name: Document Analysis
+    description: Analisi documentale normativa tramite AI
+  - name: Regulatory Updates
+    description: Feed aggiornamenti normativi e notifiche webhook
+  - name: Assessment Sync
+    description: Sincronizzazione assessment e query alla knowledge base
+  - name: System
+    description: Endpoint di sistema e monitoraggio
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT access token ottenuto via POST /v1/token.
+        Scadenza: 1 ora. Usa il refresh token per rinnovarlo.
+
+  parameters:
+    TenantId:
+      name: X-Tenant-ID
+      in: header
+      required: true
+      schema:
+        type: string
+        example: "tenant_inrimaone"
+      description: Identificativo univoco del tenant che effettua la richiesta
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: error
+        error:
+          type: string
+          example: Unauthorized – invalid or missing Bearer token
+      required:
+        - status
+        - error
+
+    TokenRequest:
+      type: object
+      required: [grant_type]
+      properties:
+        grant_type:
+          type: string
+          enum: [client_credentials, refresh_token]
+        client_id:
+          type: string
+          description: Partner ID (richiesto per client_credentials)
+        client_secret:
+          type: string
+          description: Client secret (richiesto per client_credentials)
+        refresh_token:
+          type: string
+          description: Refresh token (richiesto per refresh_token grant)
+
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+          description: Solo per grant_type=client_credentials
+        expires_in:
+          type: integer
+          example: 3600
+        token_type:
+          type: string
+          example: Bearer
+
+    AiChatRequest:
+      type: object
+      required: [prompt]
+      properties:
+        prompt:
+          type: string
+          example: "Quali sono i requisiti principali della NIS2 per il settore energia?"
+        context:
+          type: string
+          example: "Azienda nel settore energia, 500 dipendenti, sede in Italia"
+
+    AiChatResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        data:
+          type: object
+          properties:
+            ai_response:
+              type: string
+        meta:
+          type: object
+          properties:
+            tenant_id:
+              type: string
+
+    AnalyzeDocRequest:
+      type: object
+      required: [documentText]
+      properties:
+        documentText:
+          type: string
+          description: Testo del documento (max 100k caratteri)
+        documentType:
+          type: string
+          enum: [pdf, word, text]
+
+    DocumentAnalysis:
+      type: object
+      properties:
+        summary:
+          type: string
+        key_topics:
+          type: array
+          items: { type: string }
+        regulations_referenced:
+          type: array
+          items: { type: string }
+        risk_indicators:
+          type: array
+          items: { type: string }
+        compliance_score:
+          type: integer
+          minimum: 0
+          maximum: 100
+        recommendations:
+          type: array
+          items: { type: string }
+
+    AnalyzeDocResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        data:
+          type: object
+          properties:
+            analysis:
+              $ref: "#/components/schemas/DocumentAnalysis"
+        meta:
+          type: object
+          properties:
+            tenant_id:
+              type: string
+
+    RegulatoryUpdate:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        summary:
+          type: string
+        source:
+          type: string
+        source_url:
+          type: string
+        regulation_type:
+          type: string
+        jurisdiction:
+          type: string
+          enum: [EU, IT, GLOBAL]
+        impact_level:
+          type: string
+          enum: [low, medium, high, critical]
+        published_at:
+          type: string
+          format: date-time
+
+    WebhookRegistrationRequest:
+      type: object
+      required: [webhook_url]
+      properties:
+        webhook_url:
+          type: string
+          format: uri
+          example: "https://api.partner.com/webhooks/regbrain-updates"
+        regulations:
+          type: array
+          items: { type: string }
+          example: ["GDPR", "NIS2", "AI_ACT", "DORA"]
+        jurisdiction:
+          type: string
+          example: "EU"
+
+    SubmitAssessmentRequest:
+      type: object
+      required: [action, assessment]
+      properties:
+        action:
+          type: string
+          enum: [submit-assessment]
+        assessment:
+          type: object
+          required: [regulations, sector]
+          properties:
+            regulations:
+              type: array
+              items: { type: string }
+              example: ["GDPR", "NIS2"]
+            sector:
+              type: string
+              example: "Healthcare"
+            jurisdiction:
+              type: string
+              example: "IT"
+            company_size:
+              type: string
+              example: "50-250 employees"
+            current_measures:
+              type: object
+
+    GetBenchmarksRequest:
+      type: object
+      required: [action, sector]
+      properties:
+        action:
+          type: string
+          enum: [get-benchmarks]
+        sector:
+          type: string
+          example: "Healthcare"
+        jurisdiction:
+          type: string
+        regulations:
+          type: array
+          items: { type: string }
+
+    GetKnowledgeRequest:
+      type: object
+      required: [action, query]
+      properties:
+        action:
+          type: string
+          enum: [get-knowledge]
+        query:
+          type: string
+          example: "Obblighi di notifica incidenti NIS2 art. 23"
+        regulations:
+          type: array
+          items: { type: string }
+
+paths:
+  # ── 0. Token ──
+  /token:
+    post:
+      operationId: getToken
+      summary: Ottieni access token (OAuth2)
+      description: |
+        Autentica un partner e restituisce JWT access token + refresh token.
+
+        **grant_type: client_credentials** → primo accesso, restituisce access + refresh token.
+        **grant_type: refresh_token** → rinnova l'access token usando il refresh token.
+      tags: [Authentication]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenRequest"
+            examples:
+              client_credentials:
+                summary: Autenticazione iniziale
+                value:
+                  grant_type: client_credentials
+                  client_id: "inrimaone"
+                  client_secret: "secret_xxx"
+              refresh:
+                summary: Rinnovo token
+                value:
+                  grant_type: refresh_token
+                  refresh_token: "eyJ..."
+      responses:
+        "200":
+          description: Token generato con successo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Credenziali non valide
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── 1. AI Chat ──
+  /chat:
+    post:
+      operationId: aiChat
+      summary: Domanda all'AI di compliance
+      description: |
+        Invia una domanda e ricevi una risposta dall'AI RegBrain,
+        specializzata in GDPR, NIS2, AI Act, CRA, DORA, D.Lgs 81/08.
+      tags: [AI Chat]
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiChatRequest"
+      responses:
+        "200":
+          description: Risposta generata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiChatResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden – scope mancante
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── 2. Analisi Documentale ──
+  /documents/analyze:
+    post:
+      operationId: analyzeDocument
+      summary: Analisi documentale AI
+      description: |
+        Invia il testo di un documento (max 100k caratteri).
+        RegBrain restituisce analisi compliance, gap, risk indicators e raccomandazioni.
+      tags: [Document Analysis]
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalyzeDocRequest"
+      responses:
+        "200":
+          description: Analisi completata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyzeDocResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ── 3. Aggiornamenti Normativi ──
+  /regulatory/updates:
+    get:
+      operationId: getRegulatoryUpdates
+      summary: Feed aggiornamenti normativi
+      description: |
+        Recupera gli ultimi aggiornamenti normativi dal feed RegBrain.
+        Filtrabile per normativa, giurisdizione e data.
+      tags: [Regulatory Updates]
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, maximum: 50 }
+        - name: regulation
+          in: query
+          schema: { type: string }
+        - name: since
+          in: query
+          schema: { type: string, format: date }
+        - name: jurisdiction
+          in: query
+          schema: { type: string, default: EU }
+      responses:
+        "200":
+          description: Lista aggiornamenti
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      updates:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/RegulatoryUpdate"
+                      count:
+                        type: integer
+                  meta:
+                    type: object
+                    properties:
+                      tenant_id:
+                        type: string
+        "401":
+          description: Unauthorized
+
+  /regulatory/webhooks:
+    post:
+      operationId: registerWebhook
+      summary: Registra webhook per notifiche push
+      description: |
+        Registra un URL webhook per ricevere notifiche push
+        quando RegBrain rileva nuovi aggiornamenti normativi.
+      tags: [Regulatory Updates]
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookRegistrationRequest"
+      responses:
+        "200":
+          description: Webhook registrato
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      webhook_id:
+                        type: string
+                      message:
+                        type: string
+                      monitored_regulations:
+                        type: array
+                        items: { type: string }
+        "401":
+          description: Unauthorized
+
+  # ── 4. Assessment Sync ──
+  /assessments:
+    post:
+      operationId: syncAssessments
+      summary: Sincronizzazione assessment, gap e knowledge
+      description: |
+        Endpoint multi-action:
+        - `submit-assessment`: Invia dati assessment, ricevi gap analysis AI
+        - `get-benchmarks`: Recupera benchmark di settore
+        - `get-knowledge`: Query alla knowledge base RAG normativa
+      tags: [Assessment Sync]
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: "#/components/schemas/SubmitAssessmentRequest"
+                - $ref: "#/components/schemas/GetBenchmarksRequest"
+                - $ref: "#/components/schemas/GetKnowledgeRequest"
+            examples:
+              submit-assessment:
+                summary: Invia assessment per gap analysis
+                value:
+                  action: submit-assessment
+                  assessment:
+                    regulations: ["GDPR", "NIS2"]
+                    sector: "Healthcare"
+                    jurisdiction: "IT"
+                    company_size: "50-250"
+                    current_measures:
+                      dpo_appointed: true
+                      incident_response_plan: false
+              get-benchmarks:
+                summary: Richiedi benchmark di settore
+                value:
+                  action: get-benchmarks
+                  sector: "Healthcare"
+                  jurisdiction: "IT"
+                  regulations: ["GDPR", "NIS2"]
+              get-knowledge:
+                summary: Query knowledge base
+                value:
+                  action: get-knowledge
+                  query: "Obblighi notifica incidenti NIS2 art. 23"
+                  regulations: ["NIS2"]
+      responses:
+        "200":
+          description: Operazione completata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    type: object
+                  meta:
+                    type: object
+                    properties:
+                      tenant_id:
+                        type: string
+        "401":
+          description: Unauthorized
+        "403":
+          description: Forbidden – scope mancante
+        "429":
+          description: Rate limit
+
+  # ── 5. Health Check ──
+  /health:
+    get:
+      operationId: healthCheck
+      summary: Verifica stato API
+      description: Endpoint pubblico per verificare lo stato operativo delle API.
+      tags: [System]
+      security: []
+      responses:
+        "200":
+          description: Servizio operativo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  service:
+                    type: string
+                    example: regbrain-api
+                  version:
+                    type: string
+                    example: "3.0.0"
+                  auth:
+                    type: string
+                    example: oauth2
+                  timestamp:
+                    type: string
+                    format: date-time
+                required:
+                  - status
+                  - service
+                  - version
+                  - timestamp
