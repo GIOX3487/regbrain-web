@@ -6,6 +6,10 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/api/verify-site-password",
+      "destination": "https://ndwozjlasabsdfqcyeoy.supabase.co/functions/v1/verify-site-password"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
