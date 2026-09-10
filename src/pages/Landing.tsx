@@ -23,66 +23,33 @@ const Landing = () => {
   };
 
   const handleStartDemo = async () => {
+    if (loadingDemo) return;
     setLoadingDemo(true);
     try {
-      // Generate unique demo email
-      const demoId = crypto.randomUUID();
-      const demoEmail = `demo-${demoId}@demo.regbrain.com`;
-      const demoPassword = crypto.randomUUID();
-
-      console.log('Creating temporary demo account...');
-
-      // Create temporary demo account
-      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email: demoEmail,
-        password: demoPassword,
-        options: {
-          emailRedirectTo: `${window.location.origin}/onboarding`,
-          data: {
-            is_demo: true
-          }
-        }
-      });
-
-      if (signUpError) {
-        console.error('Demo signup error:', signUpError);
-        throw signUpError;
-      }
-
-      if (signUpData.user) {
-        // Store demo session in database
-        const { error: sessionError } = await supabase
-          .from('demo_sessions')
-          .insert({
-            user_id: signUpData.user.id,
-            email: demoEmail,
-            created_at: new Date().toISOString(),
-            expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-            last_activity: new Date().toISOString()
-          });
-
-        if (sessionError) {
-          console.error('Error creating demo session:', sessionError);
-        }
-
-        // Set flag to force onboarding for new demo account
-        sessionStorage.setItem('force_demo_onboarding', 'true');
-
-        toast({
-          title: "Demo Account Creato",
-          description: "Account temporaneo valido per 24 ore. I tuoi dati sono privati e saranno eliminati automaticamente.",
-        });
-
-        // Navigate to onboarding
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session && (!session.user.app_metadata?.demo_expires_at ||
+        Date.parse(session.user.app_metadata.demo_expires_at) > Date.now())) {
         navigate('/onboarding');
+        return;
       }
-    } catch (error: any) {
-      console.error('Error creating demo:', error);
-      toast({
-        title: "Errore",
-        description: "Impossibile creare l'account demo. Riprova.",
-        variant: "destructive"
+      const siteToken = sessionStorage.getItem('site_auth_token');
+      if (!siteToken) throw new Error('Rientra nel sito con la password per avviare la demo.');
+      const response = await fetch('/api/supabase/functions/v1/start-demo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + siteToken },
+        body: '{}',
       });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Demo temporaneamente non disponibile.');
+      if (!data.access_token || !data.refresh_token) throw new Error('La sessione demo non è stata attivata.');
+      const { error } = await supabase.auth.setSession({ access_token: data.access_token, refresh_token: data.refresh_token });
+      if (error) throw new Error('Non è stato possibile completare l’accesso alla demo.');
+      sessionStorage.setItem('force_demo_onboarding', 'true');
+      toast({ title: 'Demo attivata', description: 'Account temporaneo valido per 24 ore. Configura il profilo per iniziare.' });
+      navigate('/onboarding');
+    } catch (error) {
+      toast({ title: 'Demo non disponibile', description: error instanceof Error ? error.message : 'Riprova tra poco.', variant: 'destructive' });
+    } finally {
       setLoadingDemo(false);
     }
   };

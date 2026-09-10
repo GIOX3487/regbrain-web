@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, supabaseHttpUrl } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -266,7 +266,7 @@ export default function NewAssessment() {
       }));
 
       // Fire-and-forget: invoke edge function, then poll DB for results
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseUrl = supabaseHttpUrl;
       const sessionToken = session.access_token;
       const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 

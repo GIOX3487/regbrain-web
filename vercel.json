@@ -10,8 +10,23 @@
       "destination": "https://ndwozjlasabsdfqcyeoy.supabase.co/functions/v1/verify-site-password"
     },
     {
+      "source": "/api/supabase/:path*",
+      "destination": "https://ndwozjlasabsdfqcyeoy.supabase.co/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/:path*",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "private, no-store"
+        }
+      ]
     }
   ]
 }

@@ -373,7 +373,10 @@ const Chat = () => {
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        const details = error.context instanceof Response ? await error.context.clone().json().catch(() => null) : null;
+        throw new Error(details?.error || error.message);
+      }
 
       console.log('RAG Response:', { 
         hasAnswer: !!data.answer, 

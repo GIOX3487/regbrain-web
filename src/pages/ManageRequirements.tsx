@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, supabaseHttpUrl } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -83,7 +83,7 @@ export default function ManageRequirements() {
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseUrl = supabaseHttpUrl;
 
       while (true) {
         toast({
@@ -163,7 +163,7 @@ export default function ManageRequirements() {
     setCleanupReport(null);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseUrl = supabaseHttpUrl;
       const res = await fetch(`${supabaseUrl}/functions/v1/cleanup-requirements`, {
         method: 'POST',
         headers: {
@@ -194,7 +194,7 @@ export default function ManageRequirements() {
     setBalanceReport(null);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseUrl = supabaseHttpUrl;
       const res = await fetch(`${supabaseUrl}/functions/v1/balance-requirements`, {
         method: 'POST',
         headers: {
