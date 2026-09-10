@@ -1922,11 +1922,9 @@ denoServe(protect(async (req) => {
           orParts.push(`content.ilike.%art. ${artNum} %`);
           orParts.push(`content.ilike.%article ${artNum} %`);
           // OCR-tolerant patterns: handle line breaks, no trailing space, dot variations
-          orParts.push(`content.ilike.%articolo ${artNum},%`);
           orParts.push(`content.ilike.%articolo ${artNum}.%`);
           orParts.push(`content.ilike.%articolo ${artNum}%`);
           orParts.push(`content.ilike.%art. ${artNum}.%`);
-          orParts.push(`content.ilike.%art. ${artNum},%`);
           orParts.push(`content.ilike.%art. ${artNum}%`);
           orParts.push(`content.ilike.%art.${artNum} %`);
           orParts.push(`content.ilike.%Art. ${artNum}.%`);

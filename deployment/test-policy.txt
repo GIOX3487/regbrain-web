@@ -1,0 +1,5 @@
+DOCUMENTO FITTIZIO PER COLLAUDO TECNICO — NON DESCRIVE UN'AZIENDA REALE
+
+Esempio Test Srl sviluppa software e tratta i recapiti professionali di dieci clienti. Il titolare conserva un registro dei trattamenti. Gli accessi sono individuali, con autenticazione a più fattori e revisione trimestrale dei permessi. I backup sono cifrati e sottoposti a un ripristino di prova ogni mese.
+
+La procedura di gestione delle violazioni richiede che i dipendenti segnalino immediatamente gli incidenti al referente privacy. La società non ha ancora documentato tempi di conservazione e criteri di cancellazione per ogni categoria di dati. Non sono stati allegati contratti con i fornitori né prove della formazione del personale. Questo esempio contiene lacune intenzionali e serve esclusivamente a verificare caricamento e produzione del report.

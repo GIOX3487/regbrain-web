@@ -7,11 +7,11 @@ Repository: GIOX3487/regbrain-web. Supabase: ndwozjlasabsdfqcyeoy.
 
 - Homepage con Analisi conformità e RAG normativo; sezione notizie rimossa.
 - Accesso con password, pulsante demo, creazione sessione sul server e salvataggio del profilo verificati nel browser sul sito pubblicato.
-- La chat raggiunge correttamente il backend. Le risposte AI restano bloccate finché non vengono impostati una chiave valida e un modello accessibile.
+- Gemini è stato configurato dal proprietario e la chat ha restituito una risposta reale sull'articolo 37 GDPR. Il collaudo ha rilevato e corretto due problemi: parole spezzate dal PDF (Ar ticolo) e virgole non valide nei filtri PostgREST per gli articoli. Per riprodurre la normalizzazione dei dati importati usare deployment/normalize-gdpr.sql.
 - Database con 46 tabelle pubbliche protette da RLS; scadenza demo verificata sul server e pulizia periodica delle demo scadute.
 - Sei testi del pacchetto originale importati: GDPR, NIS2, AI Act, CRA, DORA, Data Act. Totale 1538 segmenti testuali. Non è una verifica dell'aggiornamento giuridico delle fonti.
 - Nessun embedding artificiale: i segmenti importati non hanno ancora un indice semantico. La ricerca testuale resta disponibile al RAG; per attivare quella semantica occorrono la chiave Gemini e una reindicizzazione controllata.
-- La generazione di un'analisi completa da un documento caricato non è stata verificata end-to-end. Il collaudo reale delle risposte e dei report resta da fare dopo la configurazione AI.
+- Il caricamento di deployment/test-policy.txt e la creazione del report sono stati verificati nel browser (assessment 7142283a-6bb6-47a7-864a-84856118cafa, completed). Il report usa l'analisi testuale di ripiego in assenza dell'indice semantico; l'esito tecnico non valida la precisione delle valutazioni né l'applicabilità automatica di ciascun obbligo.
 - Il vecchio dominio regbrain.it ha un instradamento separato: questo intervento non ne ha modificato i DNS.
 
 ## Attivare o cambiare il servizio AI
@@ -66,4 +66,4 @@ Database: supabase/migrations contiene le sei migrazioni effettivamente applicat
 - deployment/verify_rls.sql verificato su Supabase: isolamento profili/documenti/segmenti tra utenti, scadenza demo non modificabile dal client, accesso scaduto negato, pulizia limitata all'utente scaduto. Lo script usa una transazione con ROLLBACK.
 - Avvisi preesistenti residui: estensione vector nello schema public, funzione has_role privilegiata necessaria alle policy, controllo password compromesse disattivato. Le dipendenze originali presentano segnalazioni npm audit; aggiornamenti maggiori richiedono un intervento separato.
 
-L'ultimo passo obbligatorio per l'AI è impostare una chiave con credito, provare il modello scelto, completare l'indice semantico e collaudare domanda e analisi reali. Non considerare questa versione una validazione professionale dei risultati di conformità.
+La chiave Gemini e la risposta della chat sono state verificate. Restano da completare l'indice semantico e un collaudo della qualità su più normative e documenti, inclusi citazioni puntuali e obblighi condizionati al contesto. Non considerare questa versione una validazione professionale dei risultati di conformità.
