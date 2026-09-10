@@ -1,5 +1,7 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'npm:@supabase/supabase-js@2';
+import { protect } from '../_shared/access.ts';
+import { aiFetch as fetch, getAIKey, getAIModel } from '../_shared/ai.ts';
+import { serve as denoServe } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'npm:@supabase/supabase-js@2.75.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -119,7 +121,7 @@ async function generateEmbedding(geminiKey: string, text: string): Promise<numbe
   }
 }
 
-serve(async (req) => {
+denoServe(protect(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -259,4 +261,4 @@ serve(async (req) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
-});
+}, true, false));

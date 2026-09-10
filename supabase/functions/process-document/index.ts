@@ -1,12 +1,14 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'npm:@supabase/supabase-js@2';
+import { protect } from '../_shared/access.ts';
+import { aiFetch as fetch, getAIKey, getAIModel } from '../_shared/ai.ts';
+import { serve as denoServe } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'npm:@supabase/supabase-js@2.75.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-serve(async (req) => {
+denoServe(protect(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -218,20 +220,11 @@ serve(async (req) => {
       }
     );
   }
-});
+}, false, false));
 
 // Generate deterministic 768-dimensional embedding from text
-function generateEmbedding(text: string): number[] {
-  const embedding: number[] = [];
-  const hash = simpleHash(text);
-  
-  for (let i = 0; i < 768; i++) {
-    const seed = hash + i;
-    embedding.push(Math.sin(seed) * 0.5);
-  }
-  
-  return embedding;
-}
+// No synthetic vectors: lexical chunks remain usable until indexed with Gemini.
+function generateEmbedding(_text: string): null { return null; }
 
 function simpleHash(str: string): number {
   let hash = 0;

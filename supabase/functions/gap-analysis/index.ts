@@ -1,5 +1,7 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { protect } from '../_shared/access.ts';
+import { aiFetch as fetch, getAIKey, getAIModel } from '../_shared/ai.ts';
+import { serve as denoServe } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "npm:@supabase/supabase-js@2.75.0";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -1942,7 +1944,7 @@ const HOURLY_RATE_EUR = 85;
 // MAIN HANDLER
 // ============================================================
 
-serve(async (req) => {
+denoServe(protect(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -2341,7 +2343,7 @@ serve(async (req) => {
     // The LLM can ONLY enrich descriptions and actions.
     // It can NEVER remove or add gaps — determinism is guaranteed.
     // ============================================================
-    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+    const lovableApiKey = getAIKey();
     if (lovableApiKey && identifiedGaps.length > 0) {
       console.log('🔍 Starting LLM enrichment layer (enrich only, no add/remove)...');
 
@@ -2592,7 +2594,7 @@ serve(async (req) => {
     console.error('Error in gap-analysis function:', error);
     return errorResponse(500, error instanceof Error ? error.message : 'Unknown error occurred');
   }
-});
+}, false, false));
 
 // ============================================================
 // HELPER FUNCTIONS

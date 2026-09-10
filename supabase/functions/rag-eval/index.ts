@@ -1,5 +1,7 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { protect } from '../_shared/access.ts';
+import { aiFetch as fetch, getAIKey, getAIModel } from '../_shared/ai.ts';
+import { serve as denoServe } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "npm:@supabase/supabase-js@2.75.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -8,7 +10,7 @@ const corsHeaders = {
 };
 
 async function embedViaGateway(text: string): Promise<number[] | null> {
-  const key = Deno.env.get("LOVABLE_API_KEY");
+  const key = getAIKey();
   if (!key) return null;
   try {
     const res = await fetch("https://ai.gateway.lovable.dev/v1/embeddings", {
@@ -116,7 +118,7 @@ function normArticle(s: string): string {
     .replace(/[,;]/g, ":");
 }
 
-serve(async (req) => {
+denoServe(protect(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -169,7 +171,7 @@ serve(async (req) => {
     const regulationFilter: string | null = body.regulation ?? null;
 
     const geminiKey = Deno.env.get("GEMINI_API_KEY");
-    const lovableKey = Deno.env.get("LOVABLE_API_KEY");
+    const lovableKey = getAIKey();
     if (!geminiKey) {
       return new Response(
         JSON.stringify({ error: "Chiave per gli embedding non configurata" }),
@@ -329,4 +331,4 @@ serve(async (req) => {
       },
     );
   }
-});
+}, true, false));

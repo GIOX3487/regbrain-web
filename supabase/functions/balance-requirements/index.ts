@@ -1,5 +1,7 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { protect } from '../_shared/access.ts';
+import { aiFetch as fetch, getAIKey, getAIModel } from '../_shared/ai.ts';
+import { serve as denoServe } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "npm:@supabase/supabase-js@2.75.0";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -15,7 +17,7 @@ const ALLOWED_ARTICLES: Record<string, number[]> = {
 
 const SPECIFIC_REMOVALS = ['ai_act_art36_notify_changes', 'gdpr_art62_joint_operations'];
 
-serve(async (req) => {
+denoServe(protect(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -95,4 +97,4 @@ serve(async (req) => {
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
-});
+}, true, false));

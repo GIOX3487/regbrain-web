@@ -1,4 +1,4 @@
-project_id = "mnbagzwdlvyjrmoyroqg"
+project_id = "ndwozjlasabsdfqcyeoy"
 
 [api]
 enabled = true
@@ -41,8 +41,8 @@ file_size_limit = "50MiB"
 
 [auth]
 enabled = true
-site_url = "http://127.0.0.1:3000"
-additional_redirect_urls = ["https://127.0.0.1:3000"]
+site_url = "http://localhost:8080"
+additional_redirect_urls = ["http://localhost:8080"]
 jwt_expiry = 3600
 enable_signup = true
 enable_anonymous_sign_ins = false
@@ -55,107 +55,72 @@ enable_confirmations = false
 [edge_runtime]
 enabled = true
 
+
+# Publish only deployment/functions.json and verify-site-password.
+# These entrypoints validate sessions themselves; do not remove their protect() wrapper.
+
 [functions.rag-query]
-verify_jwt = true
-
-[functions.seed-news]
-verify_jwt = true
-
-[functions.process-document]
-verify_jwt = true
-
-[functions.batch-upload-documents]
-verify_jwt = true
-
-[functions.verify-site-password]
-verify_jwt = false
-
-[functions.auto-update-rag]
-verify_jwt = false
-
-[functions.load-cra-document]
 verify_jwt = false
 
 [functions.gap-analysis]
-verify_jwt = true
-
-[functions.generate-audit-document]
-verify_jwt = true
-
-[functions.generate-benchmark]
-verify_jwt = true
-
-[functions.predictive-analytics]
-verify_jwt = true
-
-[functions.ai-compliance-copilot]
-verify_jwt = true
-
-[functions.continuous-monitoring-scan]
-verify_jwt = true
-
-[functions.initialize-monitoring]
-verify_jwt = true
-
-[functions.auto-update-news]
 verify_jwt = false
 
-[functions.analyze-ai-model]
-verify_jwt = true
+[functions.ai-compliance-copilot]
+verify_jwt = false
 
-[functions.analyze-dataset]
-verify_jwt = true
+[functions.process-document]
+verify_jwt = false
+
+[functions.predictive-analytics]
+verify_jwt = false
+
+[functions.generate-audit-document]
+verify_jwt = false
 
 [functions.generate-policy]
-verify_jwt = true
+verify_jwt = false
 
 [functions.generate-risk-register]
-verify_jwt = true
+verify_jwt = false
 
-[functions.orchestrate-remediation]
-verify_jwt = true
+[functions.generate-benchmark]
+verify_jwt = false
 
 [functions.generate-acn-report]
-verify_jwt = true
-
-[functions.send-registration-notification]
 verify_jwt = false
 
 [functions.translate-content]
-verify_jwt = true
-
-[functions.update-sector-benchmarks]
-verify_jwt = true
-
-[functions.scrape-regulatory-updates]
 verify_jwt = false
 
-[functions.batch-load-documents]
+[functions.initialize-monitoring]
 verify_jwt = false
 
-[functions.load-regulatory-documents]
+[functions.orchestrate-remediation]
 verify_jwt = false
 
-[functions.cleanup-demo-sessions]
+[functions.generate-embedding]
 verify_jwt = false
 
-[functions.api-v1-ai-chat]
+[functions.extract-requirements]
 verify_jwt = false
 
-[functions.api-v1-analyze-doc]
-verify_jwt = false
-
-[functions.api-v1-regulatory-updates]
-verify_jwt = false
-
-[functions.api-v1-sync-assessments]
-verify_jwt = false
-
-[functions.api-v1-token]
+[functions.balance-requirements]
 verify_jwt = false
 
 [functions.cleanup-requirements]
 verify_jwt = false
 
-[functions.balance-requirements]
+[functions.restructure-chunks]
+verify_jwt = false
+
+[functions.rag-eval]
+verify_jwt = false
+
+[functions.continuous-monitoring-scan]
+verify_jwt = false
+
+[functions.start-demo]
+verify_jwt = false
+
+[functions.verify-site-password]
 verify_jwt = false

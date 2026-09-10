@@ -1,5 +1,7 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'npm:@supabase/supabase-js@2';
+import { protect } from '../_shared/access.ts';
+import { aiFetch as fetch, getAIKey, getAIModel } from '../_shared/ai.ts';
+import { serve as denoServe } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'npm:@supabase/supabase-js@2.75.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -17,7 +19,7 @@ const EMBEDDING_DIMENSIONS = 768;
  * 3. Reindex document: { reindex_document_id: "uuid" } → re-embeds all chunks of a document
  * 4. Reindex all: { reindex_all: true } → re-embeds ALL chunks in the database
  */
-serve(async (req) => {
+denoServe(protect(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -67,7 +69,7 @@ serve(async (req) => {
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
-});
+}, true, false));
 
 // ── Core embedding generation using Gemini ─────────────────────────────
 

@@ -1,1 +1,0 @@
-DELETE FROM gap_analysis_cache;

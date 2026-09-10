@@ -1,11 +1,13 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { protect } from '../_shared/access.ts';
+import { aiFetch as fetch, getAIKey, getAIModel } from '../_shared/ai.ts';
+import { serve as denoServe } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-serve(async (req) => {
+denoServe(protect(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -23,7 +25,7 @@ serve(async (req) => {
       throw new Error('Content and target language are required');
     }
 
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    const LOVABLE_API_KEY = getAIKey();
     if (!LOVABLE_API_KEY) {
       console.error('LOVABLE_API_KEY not found in environment');
       throw new Error('LOVABLE_API_KEY not configured');
@@ -93,4 +95,4 @@ serve(async (req) => {
       }
     );
   }
-});
+}, false, true));

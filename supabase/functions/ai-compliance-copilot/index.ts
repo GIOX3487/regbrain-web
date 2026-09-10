@@ -1,5 +1,7 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { protect } from '../_shared/access.ts';
+import { aiFetch as fetch, getAIKey, getAIModel } from '../_shared/ai.ts';
+import { serve as denoServe } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "npm:@supabase/supabase-js@2.75.0";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -73,12 +75,12 @@ async function retrieveRAGChunks(
   detectedRegulations: string[]
 ): Promise<{ chunks: any[]; docMap: Map<string, any> }> {
   // 1. Generate query embedding — prefer real OpenAI embeddings
-  const openaiKey = Deno.env.get('OPENAI_API_KEY');
+  const openaiKey = Deno.env.get('GEMINI_API_KEY');
   let finalEmbedding: number[];
 
   if (openaiKey) {
     try {
-      const embResponse = await fetch('https://api.openai.com/v1/embeddings', {
+      const embResponse = await fetch('https://ai.gateway.lovable.dev/v1/embeddings', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${openaiKey}`,
@@ -224,7 +226,7 @@ async function retrieveRAGChunks(
   return { chunks: diversifiedChunks, docMap };
 }
 
-serve(async (req) => {
+denoServe(protect(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -232,9 +234,9 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY')!;
+    const lovableApiKey = getAIKey()!;
 
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabase = createClient(supabaseUrl, supabaseKey, { global: { headers: { Authorization: req.headers.get('Authorization')! } } });
 
     const authHeader = req.headers.get('Authorization')!;
     const token = authHeader.replace('Bearer ', '');
@@ -478,7 +480,7 @@ CHECKLIST INTERNA (Assicurati di rispettare questi punti prima di generare l'out
       }
     );
   }
-});
+}, false, true));
 
 function generateFallbackEmbedding(question: string): number[] {
   const words = question.toLowerCase().split(/\s+/);
