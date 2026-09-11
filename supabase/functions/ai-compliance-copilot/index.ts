@@ -74,9 +74,9 @@ async function retrieveRAGChunks(
   question: string,
   detectedRegulations: string[]
 ): Promise<{ chunks: any[]; docMap: Map<string, any> }> {
-  // 1. Generate query embedding — prefer real OpenAI embeddings
+  // 1. Generate query embedding — real Gemini retrieval embeddings
   const openaiKey = Deno.env.get('GEMINI_API_KEY');
-  let finalEmbedding: number[];
+  let finalEmbedding: number[] | null = null;
 
   if (openaiKey) {
     try {
@@ -95,16 +95,16 @@ async function retrieveRAGChunks(
       if (embResponse.ok) {
         const embData = await embResponse.json();
         finalEmbedding = embData.data[0].embedding;
-        console.log('Using real OpenAI embedding for vector search');
+        console.log('Using Gemini retrieval embedding for vector search');
       } else {
-        console.warn('OpenAI embedding failed, using fallback');
-        finalEmbedding = generateFallbackEmbedding(question);
+        console.warn('Gemini embedding failed, using textual retrieval');
+        finalEmbedding = null;
       }
     } catch {
-      finalEmbedding = generateFallbackEmbedding(question);
+      finalEmbedding = null;
     }
   } else {
-    finalEmbedding = generateFallbackEmbedding(question);
+    finalEmbedding = null;
   }
 
   // 2. Get regulation-specific chunks
@@ -135,11 +135,11 @@ async function retrieveRAGChunks(
   }
 
   // 3. Vector search
-  const { data: vectorMatches } = await supabase.rpc('match_chunks', {
+  const { data: vectorMatches } = finalEmbedding ? await supabase.rpc('match_chunks', {
     query_embedding: finalEmbedding,
     match_threshold: 0.2,
     match_count: 30
-  });
+  }) : {data:null};
 
   let diversifiedChunks: any[] = [];
   if (vectorMatches && vectorMatches.length > 0) {
@@ -481,18 +481,3 @@ CHECKLIST INTERNA (Assicurati di rispettare questi punti prima di generare l'out
     );
   }
 }, false, true));
-
-function generateFallbackEmbedding(question: string): number[] {
-  const words = question.toLowerCase().split(/\s+/);
-  const questionEmbedding: number[] = [];
-  for (let i = 0; i < 768; i++) {
-    let value = 0;
-    words.forEach((word, idx) => {
-      const charCode = word.charCodeAt(idx % word.length) || 0;
-      value += Math.sin(charCode * (i + 1)) * 0.1;
-    });
-    questionEmbedding.push(value);
-  }
-  const magnitude = Math.sqrt(questionEmbedding.reduce((sum, val) => sum + val * val, 0));
-  return questionEmbedding.map(val => val / magnitude);
-}

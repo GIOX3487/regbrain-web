@@ -2,6 +2,31 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 globalThis.Deno={env:{get:name=>process.env[name]}};
 const {aiConfig,toClaude,fromClaude,aiFetch}=await import('../supabase/functions/_shared/ai.ts');
+test('semantic search uses Gemini retrieval-query vectors, even with another chat provider',async()=>{
+  process.env.GEMINI_API_KEY='test-embedding-key';
+  process.env.AI_PROVIDER='custom';
+  const old=globalThis.fetch;let request;
+  globalThis.fetch=async(url,init)=>{request={url,init};return new Response(JSON.stringify({embeddings:[{values:Array(768).fill(2)}]}));};
+  try {
+    const response=await aiFetch('https://ai.gateway.lovable.dev/v1/embeddings',{body:JSON.stringify({input:'test question'})});
+    const result=await response.json();
+    assert.equal(response.status,200);
+    assert.equal(JSON.parse(request.init.body).requests[0].taskType,'RETRIEVAL_QUERY');
+    assert.ok(request.url.includes('gemini-embedding-001'));
+    assert.ok(Math.abs(Math.hypot(...result.data[0].embedding)-1)<1e-10);
+  }finally{globalThis.fetch=old;delete process.env.GEMINI_API_KEY;}
+});
+test('embedding quota failures do not return substitute vectors',async()=>{
+  process.env.GEMINI_API_KEY='test-embedding-key';
+  const old=globalThis.fetch;
+  globalThis.fetch=async()=>new Response('provider details must not leak',{status:429});
+  try {
+    const response=await aiFetch('https://ai.gateway.lovable.dev/v1/embeddings',{body:JSON.stringify({input:'test question'})});
+    assert.equal(response.status,503);
+    const result=await response.json();assert.equal(result.data,undefined);
+    assert.ok(!JSON.stringify(result).includes('provider details'));
+  }finally{globalThis.fetch=old;delete process.env.GEMINI_API_KEY;}
+});
 test('selecting a provider never substitutes a key from another provider',()=>{
   const env={AI_PROVIDER:'openai',GEMINI_API_KEY:'test-google',AI_MODEL:'test-model'};
   assert.equal(aiConfig(k=>env[k]).ready,false);

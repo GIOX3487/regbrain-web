@@ -1,3 +1,4 @@
+import { embedTexts } from './embeddings.ts';
 // Server-only provider configuration. Never return API keys to the browser.
 type Env = (name: string) => string | undefined;
 const env: Env = name => Deno.env.get(name);
@@ -48,11 +49,10 @@ export async function aiFetch(input: RequestInfo | URL, init?: RequestInit): Pro
     const key=env('GEMINI_API_KEY');
     if(!key) return json({error:'GEMINI_API_KEY is required for semantic indexing'},503);
     const body=JSON.parse(String(init?.body || '{}'));
-    const response=await globalThis.fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent',{
-      method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},
-      body:JSON.stringify({model:'models/gemini-embedding-001',content:{parts:[{text:body.input}]},outputDimensionality:768}),signal:AbortSignal.timeout(60000)});
-    if(!response.ok) return response;
-    const data=await response.json();return json({data:[{embedding:data.embedding.values}]});
+    try {
+      const [vector] = await embedTexts(key,[String(body.input).substring(0,8000)],'RETRIEVAL_QUERY');
+      return json({data:[{embedding:vector}]});
+    } catch { return json({error:'Semantic query embedding unavailable'},503); }
   }
   if(!url.endsWith('/chat/completions')) return json({error:'Unsupported AI endpoint'},400);
   const config=aiConfig();

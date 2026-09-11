@@ -1,3 +1,4 @@
+import { embedTexts } from '../_shared/embeddings.ts';
 import { protect } from '../_shared/access.ts';
 import { aiFetch as fetch, getAIKey, getAIModel } from '../_shared/ai.ts';
 import { serve as denoServe } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -1089,59 +1090,12 @@ const regulationConfigs: RegulationConfig[] = [
 
 // ── Gemini Embedding ─────────────────────────────────────────────────────
 
-async function embedQueryViaGateway(text: string): Promise<number[] | null> {
-  const key = getAIKey();
-  if (!key) return null;
+async function generateQueryEmbedding(geminiKey: string, text: string): Promise<number[] | null> {
   try {
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/embeddings", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-embedding-001",
-        input: text.substring(0, 8000),
-        dimensions: 768,
-      }),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const vec = data?.data?.[0]?.embedding;
-    return Array.isArray(vec) ? vec : null;
-  } catch (_e) {
-    return null;
-  }
-}
-
-async function generateQueryEmbedding(
-  geminiKey: string,
-  text: string,
-): Promise<number[] | null> {
-  const gw = await embedQueryViaGateway(text);
-  if (gw) return gw;
-  try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${geminiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "models/gemini-embedding-001",
-          content: { parts: [{ text: text.substring(0, 8000) }] },
-          taskType: "RETRIEVAL_QUERY",
-          outputDimensionality: 768,
-        }),
-      },
-    );
-    if (!response.ok) {
-      console.warn("Gemini embedding failed:", response.status);
-      return null;
-    }
-    const data = await response.json();
-    return data.embedding?.values || null;
-  } catch (e) {
-    console.warn("Gemini embedding error:", e);
+    const [vector] = await embedTexts(geminiKey, [text.substring(0, 8000)], 'RETRIEVAL_QUERY');
+    return vector;
+  } catch (error) {
+    console.warn('Semantic query unavailable:', error instanceof Error ? error.message : 'provider error');
     return null;
   }
 }
@@ -1615,6 +1569,12 @@ denoServe(protect(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const lovableApiKey = getAIKey()!;
     const geminiKey = Deno.env.get("GEMINI_API_KEY");
+    // One provider request per question, shared by all retrieval strategies.
+    // Keep this promise inside the request so no user's question is cached globally.
+    let queryEmbeddingPromise: Promise<number[] | null> | undefined;
+    const getQueryEmbedding = () => queryEmbeddingPromise ??= geminiKey
+      ? generateQueryEmbedding(geminiKey, question)
+      : Promise.resolve(null);
     const supabase = createClient(supabaseUrl, supabaseKey, { global: { headers: { Authorization: req.headers.get("Authorization")! } } });
 
     // ── Step 0.5: Extract context from conversation history ───────────
@@ -1850,10 +1810,7 @@ denoServe(protect(async (req) => {
       }
       // Also do vector search on structured_chunks if we have an embedding
       if (geminiKey) {
-        const queryEmbedding = await generateQueryEmbedding(
-          geminiKey,
-          question,
-        );
+        const queryEmbedding = await getQueryEmbedding();
         if (queryEmbedding) {
           // v2: filtro di validità applicato nella query + metadati di citazione
           let vectorStructured: any[] | null = null;
@@ -2308,7 +2265,7 @@ denoServe(protect(async (req) => {
 
     // Strategy E: Semantic vector search using Gemini embeddings
     if (geminiKey) {
-      const queryEmbedding = await generateQueryEmbedding(geminiKey, question);
+      const queryEmbedding = await getQueryEmbedding();
       if (queryEmbedding) {
         const { data: vectorMatches } = await supabase.rpc("match_chunks", {
           query_embedding: queryEmbedding,
@@ -2844,7 +2801,7 @@ REGOLA CRITICA FINALE — RISPOSTE PARZIALI VS MANCANTI:
           return new Response(
             JSON.stringify({
               answer:
-                "⚠️ Il servizio sta gestendo molte richieste in questo momento. Riprova tra qualche secondo.",
+                "⚠️ Il servizio AI ha raggiunto un limite di utilizzo. Potrebbe essere un limite temporaneo o la quota dell’account: se il problema continua, occorre verificare la quota del provider AI configurato.",
               citations: [],
               next_steps: [],
               risk_level: "low",

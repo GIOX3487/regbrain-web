@@ -1,6 +1,6 @@
 # RegBrain: configurazione pubblicata
 
-Stato verificato il 10 settembre 2026. Sito: https://regbrain-web.vercel.app/.
+Stato verificato l’11 settembre 2026. Sito: https://regbrain-web.vercel.app/.
 Repository: GIOX3487/regbrain-web. Supabase: ndwozjlasabsdfqcyeoy.
 
 ## Cosa funziona e cosa manca
@@ -10,8 +10,9 @@ Repository: GIOX3487/regbrain-web. Supabase: ndwozjlasabsdfqcyeoy.
 - Gemini è stato configurato dal proprietario e la chat ha restituito una risposta reale sull'articolo 37 GDPR. Il collaudo ha rilevato e corretto due problemi: parole spezzate dal PDF (Ar ticolo) e virgole non valide nei filtri PostgREST per gli articoli. Per riprodurre la normalizzazione dei dati importati usare deployment/normalize-gdpr.sql.
 - Database con 46 tabelle pubbliche protette da RLS; scadenza demo verificata sul server e pulizia periodica delle demo scadute.
 - Sei testi del pacchetto originale importati: GDPR, NIS2, AI Act, CRA, DORA, Data Act. Totale 1538 segmenti testuali. Non è una verifica dell'aggiornamento giuridico delle fonti.
-- Nessun embedding artificiale: i segmenti importati non hanno ancora un indice semantico. La ricerca testuale resta disponibile al RAG; per attivare quella semantica occorrono la chiave Gemini e una reindicizzazione controllata.
-- Il caricamento di deployment/test-policy.txt e la creazione del report sono stati verificati nel browser (assessment 7142283a-6bb6-47a7-864a-84856118cafa, completed). Il report usa l'analisi testuale di ripiego in assenza dell'indice semantico; l'esito tecnico non valida la precisione delle valutazioni né l'applicabilità automatica di ciascun obbligo.
+- Indicizzazione semantica parziale: 60 segmenti su 1538 hanno vettori Gemini reali, normalizzati a 768 dimensioni. Il primo caricamento si è fermato su HTTP 429 del provider. La funzione amministrativa index-normative-documents riprende dai segmenti mancanti e distanzia i blocchi. La ricerca testuale rimane disponibile. RAG e copilot usano RETRIEVAL_QUERY; i testi normativi usano RETRIEVAL_DOCUMENT. Il copilot non genera più vettori artificiali in caso di errore.
+- Il caricamento di deployment/test-policy.txt e la creazione del report sono stati verificati nel browser (assessment 7142283a-6bb6-47a7-864a-84856118cafa, completed). Correzione della diagnosi precedente: il database contiene anche embedding dei documenti utente; la dicitura “Analisi testuale” identifica il metodo del singolo gap, non dimostra che manchino gli embedding. Restano difetti di qualità da correggere: evidenze presenti nel documento ignorate, obblighi condizionati trattati come automatici e stime basate su dati aziendali predefiniti. L’esportazione PDF non è ancora stata collaudata.
+- Nel nuovo test della chat dell’11 settembre, la richiesta ha ricevuto HTTP 429 dal servizio AI. Non è stato possibile completare il collaudo delle citazioni. La sessione amministrativa del dashboard Supabase è scaduta e richiede un nuovo accesso del proprietario per proseguire l’indicizzazione dal pannello.
 - Il vecchio dominio regbrain.it ha un instradamento separato: questo intervento non ne ha modificato i DNS.
 
 ## Attivare o cambiare il servizio AI
@@ -52,18 +53,24 @@ supabase/config.toml identifica il progetto corretto; gli URL localhost nella se
 
 Frontend: modificare il codice, eseguire i controlli, salvare sul ramo main di GitHub. Vercel crea il deployment; verificare stato Ready e sito stabile prima di considerare l'aggiornamento concluso.
 
-Backend: GitHub/Vercel non pubblicano automaticamente le Edge Functions. Pubblicare singolarmente solo quelle elencate in functions.json, includendo _shared/access.ts e _shared/ai.ts. verify-site-password è un servizio separato già attivo. I 21 entrypoint elencati implementano la verifica delle sessioni nel codice: verify_jwt=false nella configurazione non significa accesso libero. Non rimuovere il wrapper protect(). Le funzioni amministrative richiedono anche il ruolo admin.
+Backend: GitHub/Vercel non pubblicano automaticamente le Edge Functions. Pubblicare singolarmente solo quelle elencate in functions.json, includendo tutte le dipendenze relative: _shared/access.ts, _shared/ai.ts e _shared/embeddings.ts quando importate. verify-site-password è un servizio separato già attivo. I 21 entrypoint elencati implementano la verifica delle sessioni nel codice: verify_jwt=false nella configurazione non significa accesso libero. Non rimuovere il wrapper protect(). Le funzioni amministrative richiedono anche il ruolo admin. Separatamente, index-normative-documents richiede la chiave di servizio del progetto, non un normale token utente. Non è invocabile dal frontend.
 
 Le altre funzioni storiche presenti nel repository non sono state abilitate né collaudate in questa installazione. Non pubblicare indiscriminatamente tutta la cartella: contiene moduli legacy di notizie, integrazioni e caricamenti che richiedono una revisione separata.
 
-Database: supabase/migrations contiene le sei migrazioni effettivamente applicate, con gli stessi identificatori registrati sul server. Non rieseguirle sul database attuale. Le 51 migrazioni originarie sono state tolte dalla cartella attiva; restano nella cronologia Git e nell'archivio locale deployment/legacy-migrations. Per modifiche future aggiungere nuove migrazioni, fare backup e controllare il progetto collegato prima di applicarle.
+Database: supabase/migrations contiene le otto migrazioni effettivamente applicate, con gli stessi identificatori registrati sul server. Non rieseguirle sul database attuale. Le 51 migrazioni originarie sono state tolte dalla cartella attiva; restano nella cronologia Git e nell'archivio locale deployment/legacy-migrations. Per modifiche future aggiungere nuove migrazioni, fare backup e controllare il progetto collegato prima di applicarle.
 
 ## Verifiche e limiti
 
 - Build Vite e controllo TypeScript del frontend superati.
-- Sei test dell'adattatore AI superati (Node 24: node --test deployment/ai.test.mjs). Usano risposte simulate: non attestano il credito o la validità di una chiave reale.
+- Dodici test di adattatore AI ed embedding superati (Node 24: node --test deployment/ai.test.mjs deployment/embeddings.test.mjs). Usano risposte simulate: non attestano il credito o la validità di una chiave reale.
 - Controllo sintattico dei 21 entrypoint superato; non equivale a un collaudo completo del runtime Deno.
 - deployment/verify_rls.sql verificato su Supabase: isolamento profili/documenti/segmenti tra utenti, scadenza demo non modificabile dal client, accesso scaduto negato, pulizia limitata all'utente scaduto. Lo script usa una transazione con ROLLBACK.
 - Avvisi preesistenti residui: estensione vector nello schema public, funzione has_role privilegiata necessaria alle policy, controllo password compromesse disattivato. Le dipendenze originali presentano segnalazioni npm audit; aggiornamenti maggiori richiedono un intervento separato.
 
 La chiave Gemini e la risposta della chat sono state verificate. Restano da completare l'indice semantico e un collaudo della qualità su più normative e documenti, inclusi citazioni puntuali e obblighi condizionati al contesto. Non considerare questa versione una validazione professionale dei risultati di conformità.
+
+## Riprendere l’indicizzazione pubblica
+
+Nel dashboard Supabase aprire Edge Functions → index-normative-documents → Test. Impostare POST, body {"limit":20,"rounds":5}, e usare la voce del pannello per aggiungere la chiave di servizio nell’header apikey. Non copiare la chiave in file o messaggi. La verifica della chiave viene eseguita nel codice prima di ogni operazione. Una richiesta lavora al massimo cinque blocchi, con una pausa tra essi. Ripetere soltanto dopo la conclusione della precedente. Su 429 fermarsi e verificare quota e tempo di ripristino nel servizio Gemini; non cambiare automaticamente piano o chiave.
+
+Un esito updated indica quanti segmenti sono stati salvati, complete indica se non ne restano da elaborare. Un errore interrompe il blocco; quelli salvati prima rimangono validi. Non dichiarare l’indice completo finché count(embedding) non coincide con i 1538 segmenti pubblici. La funzione controlla anche che il testo non sia cambiato prima del salvataggio. I due indici, chunks e structured_chunks, vengono aggiornati insieme.

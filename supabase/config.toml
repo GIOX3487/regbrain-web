@@ -1,5 +1,9 @@
 project_id = "ndwozjlasabsdfqcyeoy"
 
+# Server-only maintenance: validates a project secret key before any work.
+[functions.index-normative-documents]
+verify_jwt = false
+
 [api]
 enabled = true
 port = 54321
