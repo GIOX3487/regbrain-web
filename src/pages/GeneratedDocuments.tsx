@@ -34,7 +34,8 @@ interface GeneratedDocument {
   document_type: string;
   created_at: string;
   content: any;
-  assessment_id?: string;
+  metadata?: any;
+  assessment_id?: string | null;
   version: number;
 }
 
