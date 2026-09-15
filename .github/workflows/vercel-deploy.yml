@@ -22,5 +22,6 @@ jobs:
             echo "::error::Secret VERCEL_DEPLOY_HOOK mancante: creare il Deploy Hook in Vercel e salvarne l'URL nei secret del repository."
             exit 1
           fi
-          curl -fsS -X POST "$HOOK" | head -c 400; echo
-          echo "::notice::Deploy Vercel avviato tramite Deploy Hook"
+          RESP=$(curl -fsS -X POST "$HOOK")
+          echo "$RESP"
+          echo "::notice title=Vercel Deploy Hook::$(echo "$RESP" | head -c 300)"
