@@ -12,7 +12,7 @@
   "dir": "ltr",
   "icons": [
     {
-      "src": "/favicon.png",
+      "src": "/favicon-32.png",
       "sizes": "32x32",
       "type": "image/png",
       "purpose": "any"
