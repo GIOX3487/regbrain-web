@@ -524,6 +524,64 @@ function extractCitedArticleForNumber(
   return null;
 }
 
+// Legal Italian text is full of abbreviations with a period ("Art. 21", "par. 2", "D.Lgs. 138/2024").
+// Naive sentence splitting on "." cut "Art. 21, paragrafo 2 [14]" into a meaningless fragment and
+// made the grounding checks drop correct citations. We mask those periods before splitting.
+const ABBREV_MASK = "․"; // one-dot leader, never present in model output
+function maskAbbreviations(text: string): string {
+  return text
+    .replace(/\b(Artt?|artt?|Par|par|Parr|Lett|lett|Cfr|cfr|Es|es|Co|co|Cd|cd|Pag|pag|Reg|reg|Dir|dir|Dec|dec|N|n|Nn|nn|All|all|Sez|sez|Tit|tit|Cap|cap|D|Lgs|lgs|L|Ue|UE|Cost|cost|Ss|ss|Segg|segg|Vs|vs)\./g, `$1${ABBREV_MASK}`)
+    .replace(/(\d)\.(\d)/g, `$1${ABBREV_MASK}$2`);
+}
+function unmaskAbbreviations(text: string): string {
+  return text.split(ABBREV_MASK).join(".");
+}
+// Returns the sentences (as they appear in `text`) that contain the marker [num].
+function sentencesWithMarker(text: string, num: number): string[] {
+  const masked = maskAbbreviations(text);
+  const pattern = new RegExp(`[^.!?\\n]*\\[${num}\\][^.!?\\n]*[.!?]?`, "g");
+  const out: string[] = [];
+  for (const m of masked.matchAll(pattern)) {
+    const original = unmaskAbbreviations(m[0]);
+    if (original.trim()) out.push(original);
+  }
+  return out;
+}
+// A sentence that names an article which the chunk really contains is verified by that fact alone:
+// the term-overlap heuristics must not override it.
+function sentenceNamesArticleInChunk(sentence: string, chunkContent: string): boolean {
+  for (const m of sentence.matchAll(/(?:Articolo|Artt?\.?|Article)\s+(\d+)(?:\s*-?\s*(bis|ter|quater))?/gi)) {
+    if (articleExistsInChunk(chunkContent, m[1])) return true;
+  }
+  return false;
+}
+// Canonical reference of a chunk from its context header, e.g. "Art. 35, par. 3", "Considerando 83", "Allegato I".
+function chunkOwnReference(content: string): string | null {
+  const header = content.match(/^\s*\[([^\]]{10,400})\]/);
+  const head = header ? header[1] : content.substring(0, 300);
+  const art = head.match(/\bArt\.\s*(\d+\s*(?:bis|ter|quater|quinquies)?)\b/i);
+  const par = head.match(/\bPar\.\s*(\d+[a-z]?)\b/i);
+  if (art) {
+    const artLabel = `Art. ${art[1].replace(/\s+/g, " ").trim()}`;
+    return par ? `${artLabel}, par. ${par[1]}` : artLabel;
+  }
+  const cons = head.match(/\bConsiderando\s+(\d+)\b/i);
+  if (cons) return `Considerando ${cons[1]}`;
+  const annex = head.match(/\bAllegato\s+([IVXLC]+|\d+)\b/i);
+  if (annex) return `Allegato ${annex[1]}`;
+  return null;
+}
+// Removing a marker must not leave " ,." or "( )" behind.
+function tidyAfterMarkerRemoval(text: string): string {
+  return text
+    .replace(/\s+([,.;:])/g, "$1")
+    .replace(/,\s*([.;:])/g, "$1")
+    .replace(/\(\s*\)/g, "")
+    .replace(/,\s*,/g, ",")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
 function extractStructuralContext(content: string): string | null {
   const patterns = [
     /(?:CAPO|Capo)\s+([IVX]+(?:\s*[-–—]\s*[IVX]+)?)\s*[-–—:.\n]\s*([^\n]{3,80})/g,
@@ -1157,14 +1215,27 @@ async function rerankChunks(
     const data = await response.json();
     const rankText = data.choices?.[0]?.message?.content || "";
 
-    // Parse the JSON array of indices
-    const match = rankText.match(/\[[\d,\s]+\]/);
-    if (match) {
-      const indices: number[] = JSON.parse(match[0]);
-      const validIndices = indices.filter((i) => i >= 0 && i < chunks.length);
-      const rerankedIds = validIndices.map((i) => chunks[i].id);
+    // Parse the JSON array of indices: take the longest array in the output (the model
+    // sometimes writes "[3]" in a preamble before the real list), dedupe, then top up with
+    // the best score-ranked candidates so a terse ranker never starves the answer of context.
+    const arrays = [...rankText.matchAll(/\[[\d,\s]+\]/g)].map((m) => m[0]);
+    if (arrays.length > 0) {
+      const longest = arrays.reduce((a, b) => (b.length > a.length ? b : a));
+      let indices: number[] = [];
+      try { indices = JSON.parse(longest); } catch { indices = []; }
+      const seen = new Set<number>();
+      const validIndices = indices.filter((i) =>
+        Number.isInteger(i) && i >= 0 && i < chunks.length && !seen.has(i) && seen.add(i)
+      );
+      const minWanted = Math.min(maxResults, 12);
+      if (validIndices.length < minWanted) {
+        for (let i = 0; i < chunks.length && validIndices.length < minWanted; i++) {
+          if (!seen.has(i)) { seen.add(i); validIndices.push(i); }
+        }
+      }
+      const rerankedIds = validIndices.slice(0, maxResults).map((i) => chunks[i].id);
       console.log(
-        `Re-ranking: selected ${rerankedIds.length} chunks from ${chunks.length} candidates`,
+        `Re-ranking: selected ${rerankedIds.length} chunks from ${chunks.length} candidates (ranker returned ${indices.length})`,
       );
       return rerankedIds;
     }
@@ -1374,10 +1445,10 @@ function groundingVerification(
 
     // 2b. Thematic coherence check: verify the claim's key terms appear in the chunk
     // This catches cases where the article number matches but the content doesn't
-    const sentencesWithCitation =
-      answer.match(new RegExp(`[^.!?\\n]*\\[${num}\\][^.!?\\n]*[.!?]?`, "g")) ||
-      [];
+    const sentencesWithCitation = sentencesWithMarker(answer, num);
     for (const sentence of sentencesWithCitation) {
+      // The article named in the sentence exists in the chunk: that is the verification, skip the heuristic.
+      if (sentenceNamesArticleInChunk(sentence, chunk.content)) continue;
       // Extract key technical terms from the sentence (words > 5 chars, not stop words)
       const technicalTerms = sentence.toLowerCase()
         .replace(/\[[\d]+\]/g, "") // remove citation markers
@@ -1432,10 +1503,7 @@ function groundingVerification(
   }
 
   // 3. Clean up artifacts from removed citations
-  verifiedAnswer = verifiedAnswer.replace(/\s{2,}/g, " ");
-  verifiedAnswer = verifiedAnswer.replace(/\(\s*\)/g, "");
-  verifiedAnswer = verifiedAnswer.replace(/,\s*,/g, ",");
-  verifiedAnswer = verifiedAnswer.trim();
+  verifiedAnswer = tidyAfterMarkerRemoval(verifiedAnswer);
 
   return {
     verifiedAnswer,
@@ -3352,38 +3420,26 @@ REGOLA CRITICA FINALE — RISPOSTE PARZIALI VS MANCANTI:
       if (idx < 0 || idx >= selected.length) continue;
       const chunk = selected[idx];
 
-      // Find the sentence containing [N]
-      const sentencePattern = new RegExp(
-        `[^.!?\\n]*\\[${num}\\][^.!?\\n]*[.!?]?`,
-        "g",
-      );
-      for (const sm of postGroundedAnswer.matchAll(sentencePattern)) {
-        const sentence = sm[0];
-        // Skip very short fragments (less than 30 chars of meaningful content)
-        // — these are typically punctuation/regulation-name tails like " 138/2024 [N])"
-        // and lack the context needed for a fair relevance check.
+      // Find the sentences containing [N] (abbreviation-safe: "Art. 21" is not a sentence end)
+      for (const sentence of sentencesWithMarker(postGroundedAnswer, num)) {
         const meaningfulLen = sentence.replace(/\[\d+\]/g, "").replace(/[^a-zà-ÿ0-9]/gi, "").length;
         if (meaningfulLen < 30) continue;
+        if (sentenceNamesArticleInChunk(sentence, chunk.content)) continue;
         if (!verifyCitationRelevance(sentence, chunk.content)) {
           console.log(
             `Orphan citation removed: [${num}] not relevant to sentence "${
               sentence.substring(0, 80)
             }..."`,
           );
-          postGroundedAnswer = postGroundedAnswer.replace(
-            new RegExp(`\\s*\\[${num}\\]`, "g"),
-            "",
-          );
-          break;
+          // Only this sentence loses the marker: the same [N] may be correct elsewhere.
+          const cleaned = sentence.replace(new RegExp(`\\s*\\[${num}\\]`, "g"), "");
+          postGroundedAnswer = postGroundedAnswer.replace(sentence, cleaned);
         }
       }
     }
 
     // Clean up artifacts
-    postGroundedAnswer = postGroundedAnswer.replace(/\s{2,}/g, " ").replace(
-      /\(\s*\)/g,
-      "",
-    ).replace(/,\s*,/g, ",").trim();
+    postGroundedAnswer = tidyAfterMarkerRemoval(postGroundedAnswer);
 
     // ── Step 10: Build verified citations ────────────────────────────
     const citedNumbers = new Set<number>();
@@ -3412,19 +3468,20 @@ REGOLA CRITICA FINALE — RISPOSTE PARZIALI VS MANCANTI:
       let articleReference: string | null = null;
       let citedForArticle: string | null = null;
 
+      const ownReference = chunkOwnReference(chunk.content);
       if (intendedArticle) {
         // Check if the intended article actually exists in the chunk
         if (articleExistsInChunk(chunk.content, intendedArticle)) {
-          articleReference = `Articolo ${intendedArticle}`;
+          articleReference = ownReference || `Articolo ${intendedArticle}`;
           citedForArticle = `Articolo ${intendedArticle}`;
         } else {
-          // Intended article not in chunk — fallback to first verified ref
-          articleReference = verifiedRefs.length > 0 ? verifiedRefs[0] : null;
+          // Intended article not in chunk — fallback to the chunk's own reference
+          articleReference = ownReference || (verifiedRefs.length > 0 ? verifiedRefs[0] : null);
           citedForArticle =
             `Articolo ${intendedArticle} (non verificato nel chunk)`;
         }
       } else {
-        articleReference = verifiedRefs.length > 0 ? verifiedRefs[0] : null;
+        articleReference = ownReference || (verifiedRefs.length > 0 ? verifiedRefs[0] : null);
         citedForArticle = null;
       }
 
@@ -3575,6 +3632,7 @@ REGOLA CRITICA FINALE — RISPOSTE PARZIALI VS MANCANTI:
         source_url: doc?.source_url || null,
         chunk_content: chunk.content,
         article_reference: matchingCitation?.article_reference ||
+          chunkOwnReference(chunk.content) ||
           (verifiedRefs.length > 0 ? verifiedRefs[0] : null),
         cited_for_article: matchingCitation?.cited_for_article || null,
         all_references: verifiedRefs.slice(0, 8),
@@ -3585,6 +3643,19 @@ REGOLA CRITICA FINALE — RISPOSTE PARZIALI VS MANCANTI:
       };
     });
 
+    // Keep the source list honest: cited sections, plus a few uncited sections of the same
+    // documents (never other regulations), and only a handful when nothing was cited.
+    const citedDocIds = new Set(citations.map((c: any) => c.document_id));
+    const MAX_UNCITED_CONTEXT = 6;
+    let uncitedKept = 0;
+    const trimmedContextChunks = allContextChunks.filter((c: any) => {
+      if (c.explicitly_cited) return true;
+      if (citedDocIds.size > 0 && !citedDocIds.has(c.document_id)) return false;
+      if (uncitedKept >= MAX_UNCITED_CONTEXT) return false;
+      uncitedKept++;
+      return true;
+    });
+
     // ── Step 13: Return response ────────────────────────────────────
     return new Response(
       JSON.stringify({
@@ -3592,7 +3663,7 @@ REGOLA CRITICA FINALE — RISPOSTE PARZIALI VS MANCANTI:
         goal: activeGoal,
         nextAction,
         citations,
-        allContextChunks,
+        allContextChunks: trimmedContextChunks,
         relevantChunks: selected.length,
         groundingReport: {
           removedClaims: grounding.removedClaims.length,
