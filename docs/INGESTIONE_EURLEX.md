@@ -57,3 +57,5 @@ ricerca vettoriale restituisce vicini sbagliati.
 Sei norme, 2.905 unità, tutte con embedding. Il vecchio corpus da ZIP è in
 `archive_chunks_zip_20260908` e `archive_structured_chunks_zip_20260908`
 (migration `20260915130000_archive_zip_corpus.sql`).
+
+Deploy: backend via GitHub Actions (supabase-deploy.yml), frontend via Vercel a ogni push su main.
