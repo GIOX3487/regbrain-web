@@ -32,7 +32,7 @@ denoServe(protect(async (req) => {
 
     const body = await req.json();
     const { documentType, assessmentId, conversationHistory, language = 'it', mode = 'standard', userConfig = null } = body;
-    const userDocumentsSummary = body.userDocumentsSummary || '';
+    let userDocumentsSummary: string = body.userDocumentsSummary || '';
     const normalizedLanguage = String(language || 'it').toLowerCase().startsWith('it') ? 'it' : String(language || 'it').toLowerCase();
     const normalizedMode = ['breve', 'standard', 'audit'].includes(mode) ? mode : 'standard';
 
@@ -76,6 +76,9 @@ denoServe(protect(async (req) => {
       const built = buildAssessmentFromChat(body.chatContext, profile);
       assessment = built.assessment;
       chatHistory = built.history;
+      if (!userDocumentsSummary && typeof body.chatContext?.attachedDocsSummary === 'string') {
+        userDocumentsSummary = body.chatContext.attachedDocsSummary.substring(0, 40000);
+      }
     } else {
       const { data: found } = await supabase
         .from('compliance_assessments')
@@ -840,12 +843,12 @@ function buildAssessmentFromChat(chatContext: any, profile: any): { assessment: 
       .slice(-12)
       .map((m: any) => ({ role: m.role, content: m.content.substring(0, m.role === 'user' ? 2500 : 4000) }))
     : [];
-  const attached = typeof ctx.attachedDocsSummary === 'string' ? ctx.attachedDocsSummary.substring(0, 6000) : '';
+  const attached = typeof ctx.attachedDocsSummary === 'string' ? ctx.attachedDocsSummary.substring(0, 40000) : '';
   const factLines = facts.map((f) => `- ${f.question} ${f.answer}`).join('\n');
   const description = [
     goal ? `Obiettivo dichiarato dall'utente: ${goal}` : '',
     facts.length > 0 ? `Informazioni fornite dall'utente:\n${factLines}` : '',
-    attached ? `Documenti allegati dall'utente (estratto):\n${attached}` : '',
+    attached ? `L'utente ha allegato documenti aziendali: vedi la sezione dedicata.` : '',
   ].filter(Boolean).join('\n\n') || 'Trattamento descritto dall\'utente in chat.';
   const sizeMap: Record<string, string> = {
     micro: 'micro impresa (meno di 10 addetti)', small: 'piccola impresa (10-49 addetti)',

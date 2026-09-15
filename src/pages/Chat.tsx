@@ -369,6 +369,8 @@ const Chat = () => {
   const [clarifyDrafts, setClarifyDrafts] = useState<Record<string, string>>({});
 
   const [generatingDoc, setGeneratingDoc] = useState(false);
+  // Testo dei documenti allegati in questa conversazione: serve al generatore di documenti
+  const [attachedDocs, setAttachedDocs] = useState<Array<{ name: string; text: string }>>([]);
 
   // Genera il documento suggerito usando obiettivo, risposte e conversazione, senza passare da un assessment
   const generateDocumentFromChat = async (documentType: string, label: string) => {
@@ -385,7 +387,14 @@ const Chat = () => {
           source: 'chat',
           mode: 'standard',
           language: 'it',
-          chatContext: { goal, caseContext, history },
+          chatContext: {
+            goal,
+            caseContext,
+            history,
+            attachedDocsSummary: attachedDocs.length > 0
+              ? attachedDocs.map((d) => `### ${d.name}\n${d.text}`).join('\n\n')
+              : undefined,
+          },
         },
       });
       if (error) {
@@ -412,6 +421,7 @@ const Chat = () => {
 
   const startNewConversation = () => {
     setMessages([]);
+    setAttachedDocs([]);
     setGoal(null);
     setCaseContext([]);
     setClarifyDrafts({});
@@ -513,6 +523,12 @@ const Chat = () => {
       });
 
       const filesData = await Promise.all(fileDataPromises);
+      const textualDocs = filesData
+        .filter((f: any) => typeof f.text === 'string' && f.text.trim().length > 0)
+        .map((f: any) => ({ name: f.name, text: f.text.substring(0, 12000) }));
+      if (textualDocs.length > 0) {
+        setAttachedDocs((prev) => [...prev, ...textualDocs].slice(-5));
+      }
 
       // Build conversation history from last 4 messages (2 user + 2 assistant pairs)
       const recentMessages = messages.slice(-4).map(m => ({
