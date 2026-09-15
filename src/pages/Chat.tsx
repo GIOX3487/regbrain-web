@@ -59,6 +59,14 @@ function formatRAGResponse(text: string): string {
   return formatted.trim();
 }
 
+interface RecentChat {
+  id: string;
+  question: string;
+  answer: string;
+  citations: unknown;
+  created_at: string;
+}
+
 const Chat = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -283,6 +291,28 @@ const Chat = () => {
         </Button>
       </nav>
 
+      <div className="space-y-1">
+        <p className="px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Conversazioni recenti</p>
+        {recentChats.length === 0 ? (
+          <p className="px-3 text-xs text-muted-foreground">Le domande che fai vengono salvate qui e nell'Audit Log.</p>
+        ) : (
+          recentChats.map((chat) => (
+            <button
+              key={chat.id}
+              type="button"
+              onClick={() => openRecentChat(chat)}
+              className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-muted transition-colors"
+              title={chat.question}
+            >
+              <span className="block truncate">{chat.question}</span>
+              <span className="block text-[11px] text-muted-foreground">
+                {new Date(chat.created_at).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+              </span>
+            </button>
+          ))
+        )}
+      </div>
+
       <Card className="p-4 bg-primary/5 border-primary/20">
         <Button 
           variant="ghost" 
@@ -312,6 +342,35 @@ const Chat = () => {
   };
 
   const [messages, setMessages] = useState<Array<{ role: string; content: string; citations?: any[]; allContextChunks?: any[]; confidence?: { level: string; score: number; explanation: string } }>>([]);
+  const [recentChats, setRecentChats] = useState<RecentChat[]>([]);
+
+  const loadRecentChats = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data, error } = await supabase
+      .from('query_log')
+      .select('id, question, answer, citations, created_at')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(8);
+    if (error) {
+      console.error('Impossibile caricare le conversazioni recenti:', error.message);
+      return;
+    }
+    setRecentChats((data || []) as RecentChat[]);
+  };
+
+  useEffect(() => {
+    loadRecentChats();
+  }, []);
+
+  const openRecentChat = (chat: RecentChat) => {
+    setMessages([
+      { role: 'user', content: chat.question },
+      { role: 'assistant', content: chat.answer, citations: (chat.citations as any[]) || [] },
+    ]);
+    setSidebarOpen(false);
+  };
 
   const handleSendMessage = async () => {
     if (!message.trim() && attachedFiles.length === 0) return;
@@ -393,6 +452,8 @@ const Chat = () => {
         allContextChunks: data.allContextChunks || [],
         confidence: data.confidence || undefined
       }]);
+      // La chat è stata salvata lato server: aggiorna l'elenco delle conversazioni recenti
+      loadRecentChats();
 
     } catch (error: any) {
       console.error('RAG error:', error);

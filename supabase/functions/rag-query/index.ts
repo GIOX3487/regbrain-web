@@ -3239,12 +3239,12 @@ REGOLA CRITICA FINALE — RISPOSTE PARZIALI VS MANCANTI:
     const { data: authUser } = await supabase.auth.getUser(
       req.headers.get("Authorization")?.replace("Bearer ", "") || "",
     );
-    const isDemoUser = authUser?.user?.email?.endsWith("@demo.regbrain.com");
     const isAnonymous = (authUser?.user as any)?.is_anonymous === true ||
       !authUser?.user?.email;
-    // Conserva le chat nell'audit log solo per gli utenti registrati
-    if (authUser?.user && !isDemoUser && !isAnonymous) {
-      await supabase.from("query_log").insert({
+    // Conserva le chat nell'audit log per ogni utente autenticato, demo comprese:
+    // le righe delle demo vengono eliminate a cascata quando scade l'utente demo.
+    if (authUser?.user && !isAnonymous) {
+      const { error: logError } = await supabase.from("query_log").insert({
         user_id: authUser.user.id,
         question,
         answer: outputAnswer,
@@ -3252,6 +3252,11 @@ REGOLA CRITICA FINALE — RISPOSTE PARZIALI VS MANCANTI:
         latency_ms: latencyMs,
         citations,
       });
+      if (logError) {
+        console.error("query_log insert failed:", logError.message);
+      }
+    } else {
+      console.warn("query_log skipped: no authenticated user on request");
     }
 
     // ── Step 12: Build allContextChunks from ALL selected chunks ───
