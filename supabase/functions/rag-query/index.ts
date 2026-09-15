@@ -354,8 +354,10 @@ function extractCitedRegulationForNumber(
   citationNum: number,
 ): string | null {
   // Canonical regulation labels the LLM can mention (covers many variants)
+  // Confini di parola obbligatori: senza, "cra" combacia dentro "scraping" e
+  // "dora" dentro "adorare", e la citazione viene scartata come normativa errata.
   const REG =
-    `(D\\.?Lgs\\.?\\s*138\\/?2024|D\\.?Lgs\\.?\\s*138|GDPR|Regolamento\\s*\\(?UE\\)?\\s*2016\\/679|Reg\\.?\\s*UE\\s*2016\\/679|NIS\\s*2|NIS2|Direttiva\\s*(?:\\(?UE\\)?\\s*)?2022\\/2555|DORA|Regolamento\\s*\\(?UE\\)?\\s*2022\\/2554|AI\\s*Act|Regolamento\\s*\\(?UE\\)?\\s*2024\\/1689|CRA|Cyber\\s*Resilience\\s*Act|Data\\s*Act|Regolamento\\s*\\(?UE\\)?\\s*2023\\/2854|D\\.?Lgs\\.?\\s*81\\/0?8|Testo\\s*Unico\\s*Sicurezza|ISO\\s*\\/?\\s*IEC\\s*27001|ISO\\s*27001|Codice\\s*(?:della\\s*)?Cybersicurezza|Legge\\s*124\\/2024)`;
+    `\\b(D\\.?Lgs\\.?\\s*138\\/?2024|D\\.?Lgs\\.?\\s*138|GDPR|Regolamento\\s*\\(?UE\\)?\\s*2016\\/679|Reg\\.?\\s*UE\\s*2016\\/679|NIS\\s*2|NIS2|Direttiva\\s*(?:\\(?UE\\)?\\s*)?2022\\/2555|DORA|Regolamento\\s*\\(?UE\\)?\\s*2022\\/2554|AI\\s*Act|Regolamento\\s*\\(?UE\\)?\\s*2024\\/1689|CRA|Cyber\\s*Resilience\\s*Act|Data\\s*Act|Regolamento\\s*\\(?UE\\)?\\s*2023\\/2854|D\\.?Lgs\\.?\\s*81\\/0?8|Testo\\s*Unico\\s*Sicurezza|ISO\\s*\\/?\\s*IEC\\s*27001|ISO\\s*27001|Codice\\s*(?:della\\s*)?Cybersicurezza|Legge\\s*124\\/2024)\\b`;
   const patterns = [
     new RegExp(
       `(?:Articolo|Art\\.?)\\s+\\d+(?:\\.\\d+)?(?:\\s*,\\s*(?:comma|paragrafo|lettera)\\s+\\d+[a-z]?\\)?)?\\s+${REG}\\s*\\[${citationNum}\\]`,
@@ -1774,6 +1776,19 @@ denoServe(protect(async (req) => {
       return header ? `${header}\n${sc.chunk_text}` : sc.chunk_text;
     };
 
+    // Posizione logica di un'unità strutturata (articolo, paragrafo, parte):
+    // serve a ordinare il contesto finale nell'ordine di lettura della norma.
+    const structuredPosition = (sc: any): number => {
+      const art = Number(sc.article_number) || 0;
+      const par = parseInt(String(sc.paragraph || "0"), 10) || 0;
+      const partMatch = /:p(\d+)$/.exec(String(sc.chunk_key || ""));
+      const part = partMatch ? parseInt(partMatch[1], 10) : 0;
+      const recital = /:rec(\d+)$/.exec(String(sc.chunk_key || ""));
+      if (recital) return parseInt(recital[1], 10);
+      if (!art) return 5_000_000;
+      return 1_000_000 + art * 1000 + par * 10 + part;
+    };
+
     const today = new Date().toISOString().slice(0, 10);
 
     for (const regCode of [...new Set(detectedRegulationCodes)]) {
@@ -1783,25 +1798,26 @@ denoServe(protect(async (req) => {
         let structuredQuery = supabase
           .from("structured_chunks")
           .select(
-            "id, document_id, chunk_text, article_reference, paragraph, citation_label, context_header, section_hierarchy, cross_references, is_obligation, valid_from, valid_to",
+            "id, document_id, chunk_text, article_reference, article_number, paragraph, chunk_key, citation_label, context_header, section_hierarchy, cross_references, is_obligation, valid_from, valid_to",
           )
           .eq("regulation", regCode)
           .eq("article_number", artInt)
-          .or(`valid_to.is.null,valid_to.gt.${today}`);
+          .or(`valid_to.is.null,valid_to.gt.${today}`)
+          .order("chunk_key", { ascending: true });
 
         if (targetDocIds.length > 0) {
           structuredQuery = structuredQuery.in("document_id", targetDocIds);
         }
 
-        const { data: structuredMatches } = await structuredQuery.limit(14);
+        const { data: structuredMatches } = await structuredQuery.limit(40);
         if (structuredMatches && structuredMatches.length > 0) {
           addChunks(
             structuredMatches.map((sc: any) => ({
               id: sc.id,
               document_id: sc.document_id,
               content: withCitationHeader(sc),
-              start_pos: 0,
-              end_pos: 0,
+              start_pos: structuredPosition(sc),
+              end_pos: structuredPosition(sc),
             })),
             `structured_${regCode}_art${artInt}`,
           );
@@ -1849,8 +1865,8 @@ denoServe(protect(async (req) => {
                 id: sc.id,
                 document_id: sc.document_id,
                 content: withCitationHeader(sc),
-                start_pos: 0,
-                end_pos: 0,
+                start_pos: structuredPosition(sc),
+                end_pos: structuredPosition(sc),
               })),
               `structured_vector_${regCode}`,
             );
@@ -2393,6 +2409,31 @@ denoServe(protect(async (req) => {
         round++;
       }
       selected = balanced;
+    }
+
+    // Le unità lunghe (es. elenchi di un paragrafo) sono divise in parti
+    // "Parte i/n": se il re-ranking ne ha scelta una, includi le altre così il
+    // modello vede l'elenco completo e non dichiara "testo non presente".
+    const partPrefix = (content: string): string | null => {
+      const firstLine = content.split("\n")[0] || "";
+      const m = /^(\[.*)\. Parte \d+\/\d+\]$/.exec(firstLine);
+      return m ? m[1] : null;
+    };
+    const selectedIdsNow = new Set(selected.map((c) => c.id));
+    const wantedPrefixes = new Set(
+      selected.map((c) => partPrefix(c.content)).filter((v): v is string => !!v),
+    );
+    if (wantedPrefixes.size > 0) {
+      const siblings = allCandidateChunks.filter((c) => {
+        if (selectedIdsNow.has(c.id)) return false;
+        const prefix = partPrefix(c.content);
+        return !!prefix && wantedPrefixes.has(prefix);
+      });
+      const room = Math.max(0, MAX_CHUNKS + 10 - selected.length);
+      if (siblings.length > 0) {
+        console.log(`Part completion: adding ${Math.min(siblings.length, room)} sibling part(s)`);
+        selected.push(...siblings.slice(0, room).map((c) => ({ ...c, relevanceScore: 0 })));
+      }
     }
 
     // Sort by document + position for logical reading order
