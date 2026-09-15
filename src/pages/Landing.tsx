@@ -638,9 +638,9 @@ const Landing = () => {
               </p>
             </div>
             <div className="space-y-2">
-              <h3 className="text-lg font-bold text-foreground">Luca D'Agostino — Chief Legal Officer</h3>
+              <h3 className="text-lg font-bold text-foreground">Avv. Mara Parpaglioni — Chief Legal Officer</h3>
               <p className="text-sm text-muted-foreground">
-                Avvocato specializzato in privacy e cybersecurity EU, autore del codice della cibersicurezza. LLM Privacy Law.
+                Avvocato specializzato in privacy e cybersecurity EU.
               </p>
             </div>
           </div>
