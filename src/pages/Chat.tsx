@@ -59,6 +59,17 @@ function formatRAGResponse(text: string): string {
   return formatted.trim();
 }
 
+interface ClarifyQuestion {
+  text: string;
+  why?: string;
+  options?: string[];
+}
+
+interface CaseFact {
+  question: string;
+  answer: string;
+}
+
 interface RecentChat {
   id: string;
   question: string;
@@ -292,6 +303,10 @@ const Chat = () => {
       </nav>
 
       <div className="space-y-1">
+        <Button variant="outline" size="sm" className="w-full justify-start mb-2" onClick={startNewConversation}>
+          <Send className="w-4 h-4 mr-2" />
+          Nuova conversazione
+        </Button>
         <p className="px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Conversazioni recenti</p>
         {recentChats.length === 0 ? (
           <p className="px-3 text-xs text-muted-foreground">Le domande che fai vengono salvate qui e nell'Audit Log.</p>
@@ -341,7 +356,36 @@ const Chat = () => {
     navigate('/');
   };
 
-  const [messages, setMessages] = useState<Array<{ role: string; content: string; citations?: any[]; allContextChunks?: any[]; confidence?: { level: string; score: number; explanation: string } }>>([]);
+  const [messages, setMessages] = useState<Array<{ role: string; content: string; citations?: any[]; allContextChunks?: any[]; confidence?: { level: string; score: number; explanation: string }; kind?: 'clarification'; questions?: ClarifyQuestion[]; answered?: boolean }>>([]);
+  const [goal, setGoal] = useState<string | null>(null);
+  const [caseContext, setCaseContext] = useState<CaseFact[]>([]);
+  const [clarifyDrafts, setClarifyDrafts] = useState<Record<string, string>>({});
+
+  const startNewConversation = () => {
+    setMessages([]);
+    setGoal(null);
+    setCaseContext([]);
+    setClarifyDrafts({});
+    setSidebarOpen(false);
+  };
+
+  const submitClarification = async (messageIndex: number, skip: boolean) => {
+    const target = messages[messageIndex];
+    if (!target?.questions || target.answered || loading) return;
+    const facts: CaseFact[] = target.questions.map((q, i) => ({
+      question: q.text,
+      answer: (clarifyDrafts[`${messageIndex}-${i}`] || '').trim() || 'non specificato',
+    }));
+    const provided = facts.filter((f) => f.answer !== 'non specificato');
+    const nextContext = [...caseContext, ...provided];
+    setCaseContext(nextContext);
+    setMessages((prev) => prev.map((m, i) => (i === messageIndex ? { ...m, answered: true } : m)));
+    const text = skip || provided.length === 0
+      ? 'Rispondi comunque con le informazioni disponibili, dichiarando le ipotesi che fai.'
+      : 'Ecco le informazioni richieste:\n' + provided.map((f) => `- ${f.question} ${f.answer}`).join('\n') +
+        (provided.length < facts.length ? '\nPer le altre domande non ho una risposta: procedi con le ipotesi più prudenti.' : '');
+    await handleSendMessage(text, nextContext);
+  };
   const [recentChats, setRecentChats] = useState<RecentChat[]>([]);
 
   const loadRecentChats = async () => {
@@ -365,6 +409,8 @@ const Chat = () => {
   }, []);
 
   const openRecentChat = (chat: RecentChat) => {
+    setGoal(null);
+    setCaseContext([]);
     setMessages([
       { role: 'user', content: chat.question },
       { role: 'assistant', content: chat.answer, citations: (chat.citations as any[]) || [] },
@@ -372,11 +418,13 @@ const Chat = () => {
     setSidebarOpen(false);
   };
 
-  const handleSendMessage = async () => {
-    if (!message.trim() && attachedFiles.length === 0) return;
-    
+  const handleSendMessage = async (textOverride?: string, contextOverride?: CaseFact[]) => {
+    const outgoing = typeof textOverride === 'string' ? textOverride : message;
+    if (!outgoing.trim() && attachedFiles.length === 0) return;
+
     setLoading(true);
-    const userMessage = message;
+    const userMessage = outgoing;
+    const activeContext = contextOverride ?? caseContext;
     const files = attachedFiles;
     setMessage("");
     setAttachedFiles([]);
@@ -429,6 +477,8 @@ const Chat = () => {
           userProfile: profile,
           files: filesData,
           conversationHistory: recentMessages.length > 0 ? recentMessages : undefined,
+          goal: goal || undefined,
+          caseContext: activeContext.length > 0 ? activeContext : undefined,
         }
       });
 
@@ -443,6 +493,21 @@ const Chat = () => {
         allContextCount: data.allContextChunks?.length || 0,
         citations: data.citations 
       });
+
+      if (data.goal && typeof data.goal === 'string') setGoal(data.goal);
+
+      // The assistant stops and asks for the facts it needs before answering
+      if (data.type === 'clarification' && Array.isArray(data.questions) && data.questions.length > 0) {
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          kind: 'clarification',
+          content: data.answer,
+          questions: data.questions,
+          citations: [],
+        }]);
+        loadRecentChats();
+        return;
+      }
 
       // Add assistant response with both explicit citations and all context chunks
       setMessages(prev => [...prev, {
@@ -610,12 +675,69 @@ const Chat = () => {
               </div>
             ) : (
               <div className="space-y-4 lg:space-y-6">
+                {goal && (
+                  <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs sm:text-sm text-muted-foreground">
+                    <span className="font-semibold text-primary">Obiettivo:</span> {goal}
+                    {caseContext.length > 0 && (
+                      <span className="ml-2 text-xs">({caseContext.length} {caseContext.length === 1 ? 'informazione fornita' : 'informazioni fornite'})</span>
+                    )}
+                  </div>
+                )}
                 {messages.map((msg, idx) => (
                   <div key={idx} className={msg.role === 'user' ? 'text-right' : 'text-left'}>
                     <Card className={`inline-block max-w-[85%] lg:max-w-none ${msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-card'}`}>
                       <div className="p-3 lg:p-4">
                         {msg.role === 'user' ? (
                           <p className="whitespace-pre-wrap text-sm lg:text-base">{msg.content}</p>
+                        ) : msg.kind === 'clarification' && msg.questions ? (
+                          <div className="space-y-4 text-sm lg:text-base">
+                            <p className="font-semibold">Prima di rispondere ho bisogno di qualche informazione</p>
+                            <p className="text-muted-foreground text-sm">Per darti una valutazione sulla tua situazione, e non una risposta generica, mi servono questi dettagli. Rispondi anche solo a quelle che conosci.</p>
+                            {msg.questions.map((q, qi) => {
+                              const key = `${idx}-${qi}`;
+                              const value = clarifyDrafts[key] || '';
+                              return (
+                                <div key={key} className="space-y-2">
+                                  <p className="font-medium">{qi + 1}. {q.text}</p>
+                                  {q.why && <p className="text-xs text-muted-foreground">{q.why}</p>}
+                                  {q.options && q.options.length > 0 && (
+                                    <div className="flex flex-wrap gap-2">
+                                      {q.options.map((opt) => (
+                                        <Button
+                                          key={opt}
+                                          type="button"
+                                          size="sm"
+                                          variant={value === opt ? 'default' : 'outline'}
+                                          disabled={msg.answered}
+                                          onClick={() => setClarifyDrafts((prev) => ({ ...prev, [key]: opt }))}
+                                        >
+                                          {opt}
+                                        </Button>
+                                      ))}
+                                    </div>
+                                  )}
+                                  <Textarea
+                                    value={value}
+                                    disabled={msg.answered}
+                                    placeholder="Scrivi qui la risposta"
+                                    className="min-h-[44px] text-sm"
+                                    onChange={(e) => setClarifyDrafts((prev) => ({ ...prev, [key]: e.target.value }))}
+                                  />
+                                </div>
+                              );
+                            })}
+                            {!msg.answered && (
+                              <div className="flex flex-wrap gap-2 pt-1">
+                                <Button type="button" size="sm" disabled={loading} onClick={() => submitClarification(idx, false)}>
+                                  Invia le risposte
+                                </Button>
+                                <Button type="button" size="sm" variant="ghost" disabled={loading} onClick={() => submitClarification(idx, true)}>
+                                  Rispondi comunque
+                                </Button>
+                              </div>
+                            )}
+                            {msg.answered && <p className="text-xs text-muted-foreground">Risposte inviate.</p>}
+                          </div>
                         ) : (
                           <div className="prose prose-sm lg:prose-base dark:prose-invert max-w-none">
                             <ReactMarkdown 
@@ -765,7 +887,7 @@ const Chat = () => {
                 }}
               />
               <Button 
-                onClick={handleSendMessage} 
+                onClick={() => handleSendMessage()} 
                 disabled={loading || (!message.trim() && attachedFiles.length === 0)}
                 size="icon"
                 className="h-12 w-12 lg:h-[60px] lg:w-[60px] shrink-0 active:scale-95 transition-all disabled:opacity-50 touch-manipulation"

@@ -1529,6 +1529,173 @@ function enrichChunkContent(
   return parts.join("\n");
 }
 
+// ── Intake: decide whether to ask the user before answering ──────────────
+
+interface IntakeQuestion {
+  text: string;
+  why?: string;
+  options?: string[];
+}
+interface IntakeResult {
+  mode: "answer" | "clarify";
+  goal: string | null;
+  questions: IntakeQuestion[];
+}
+interface CaseFact {
+  question: string;
+  answer: string;
+}
+
+const CLARIFICATION_PREFIX = "**Prima di rispondere ho bisogno di qualche informazione**";
+
+// Questions that describe the user's own situation or ask for a deliverable
+// are the ones where missing facts change the legal answer.
+const SITUATIONAL_PATTERN =
+  /\b(mia|mio|miei|mie|nostra|nostro|nostri|nostre|siamo|abbiamo|dobbiamo|devo|dovrei|dovremmo|posso|possiamo|vorrei|vogliamo|voglio|come faccio|come facciamo|aiutami|aiutaci|redig\w*|prepar\w*|scriv\w*|predispon\w*|valut\w*|verific\w*|analizz\w*|controll\w*|conform\w*|adegu\w*|rientr\w*|obbligat\w*|applic\w*|impatt\w*)\b/i;
+const SKIP_INTAKE_PATTERN =
+  /\b(rispondi comunque|non lo so|non so|vai avanti|procedi|senza altre domande|rispondi e basta|non chiedere)\b/i;
+const LOOKUP_PATTERN =
+  /^\s*(cosa (dice|prevede|stabilisce)|qual[ei] (è|sono) (la definizione|le definizioni)|definizione di|elenca|riassumi|spiega(mi)? (l')?art)/i;
+
+function extractJsonObject(text: string): any | null {
+  const cleaned = text.replace(/```json|```/gi, "").trim();
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start < 0 || end <= start) return null;
+  try {
+    return JSON.parse(cleaned.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+}
+
+async function runIntake(params: {
+  question: string;
+  history: Array<{ role: string; content: string }>;
+  caseContext: CaseFact[];
+  goal: string | null;
+  userProfile: any;
+  fileNames: string[];
+  apiKey: string;
+}): Promise<IntakeResult> {
+  const { question, history, caseContext, goal, userProfile, fileNames, apiKey } = params;
+  const none: IntakeResult = { mode: "answer", goal, questions: [] };
+
+  const lastAssistant = [...history].reverse().find((m) => m.role === "assistant");
+  const previousTurnWasClarification = !!lastAssistant &&
+    lastAssistant.content.startsWith(CLARIFICATION_PREFIX);
+  // Never chain two rounds of questions: after one round we answer with explicit assumptions.
+  if (previousTurnWasClarification) return none;
+  if (SKIP_INTAKE_PATTERN.test(question)) return none;
+  const situational = SITUATIONAL_PATTERN.test(question) || fileNames.length > 0 ||
+    caseContext.length > 0 || history.length > 0;
+  if (!situational || LOOKUP_PATTERN.test(question)) return none;
+
+  const profileLines = [
+    userProfile?.compliance_role ? `Ruolo: ${userProfile.compliance_role}` : null,
+    userProfile?.sector ? `Settore: ${userProfile.sector}` : null,
+    userProfile?.jurisdiction ? `Giurisdizione: ${userProfile.jurisdiction}` : null,
+    userProfile?.company_size ? `Dimensione azienda: ${userProfile.company_size}` : null,
+  ].filter(Boolean).join("\n") || "Nessun dato di profilo.";
+  const knownFacts = caseContext.length > 0
+    ? caseContext.map((f) => `- ${f.question} → ${f.answer}`).join("\n")
+    : "Nessuna.";
+  const recent = history.slice(-6).map((m) =>
+    `${m.role === "assistant" ? "ASSISTENTE" : "UTENTE"}: ${m.content.substring(0, 600)}`
+  ).join("\n") || "Nessuno.";
+
+  const systemPrompt = `Sei la fase di intake di un assistente esperto di compliance privacy e cyber (GDPR, NIS2, DORA, AI Act, CRA).
+Devi decidere se rispondere subito oppure fermarti e fare all'utente le domande indispensabili prima di procedere, come farebbe un consulente serio che non vuole rispondere a caso.
+
+Rispondi SOLO con un oggetto JSON con questa forma:
+{"mode":"answer"|"clarify","goal":"obiettivo dell'utente in una frase","questions":[{"text":"domanda","why":"perché cambia la risposta","options":["scelta breve","scelta breve"]}]}
+
+Regole:
+- "clarify" SOLO se mancano fatti che cambiano davvero la risposta giuridica o il lavoro da fare (es. ruolo di titolare o responsabile, perimetro e dimensione dell'organizzazione per NIS2 o DORA, tipo di dati o di trattamento, quale documento vuole ottenere, se esiste già una policy o una DPIA, quale settore o Stato). In caso di dubbio scegli "answer".
+- Massimo 3 domande, dalla più decisiva alla meno decisiva. Ogni domanda deve essere concreta, in italiano semplice, con "why" di una riga. Aggiungi "options" (2-4 scelte brevi) solo quando le risposte possibili sono poche e note.
+- Non chiedere MAI cose già note dal profilo, dalle informazioni fornite, dai messaggi precedenti o dai documenti allegati.
+- Non fare domande su una lettura o definizione della norma: quelle si rispondono direttamente.
+- "goal" descrive l'obiettivo finale della conversazione (es. "Capire se l'azienda rientra nella NIS2 e cosa deve fare"), non la singola domanda.`;
+
+  const userPrompt = `PROFILO UTENTE:
+${profileLines}
+
+OBIETTIVO GIÀ NOTO: ${goal || "non ancora definito"}
+
+INFORMAZIONI GIÀ FORNITE DALL'UTENTE:
+${knownFacts}
+
+DOCUMENTI ALLEGATI: ${fileNames.length > 0 ? fileNames.join(", ") : "nessuno"}
+
+MESSAGGI PRECEDENTI:
+${recent}
+
+NUOVO MESSAGGIO DELL'UTENTE:
+${question}`;
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12000);
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "google/gemini-3-pro-preview",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0,
+        max_tokens: 700,
+        response_format: { type: "json_object" },
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!res.ok) {
+      console.warn(`Intake call failed with status ${res.status}; answering directly`);
+      return none;
+    }
+    const data = await res.json();
+    const parsed = extractJsonObject(data?.choices?.[0]?.message?.content || "");
+    if (!parsed) return none;
+    const nextGoal = typeof parsed.goal === "string" && parsed.goal.trim()
+      ? parsed.goal.trim().substring(0, 300)
+      : goal;
+    if (parsed.mode !== "clarify" || !Array.isArray(parsed.questions)) {
+      return { mode: "answer", goal: nextGoal, questions: [] };
+    }
+    const questions: IntakeQuestion[] = parsed.questions
+      .filter((q: any) => q && typeof q.text === "string" && q.text.trim())
+      .slice(0, 3)
+      .map((q: any) => ({
+        text: q.text.trim().substring(0, 300),
+        why: typeof q.why === "string" ? q.why.trim().substring(0, 200) : undefined,
+        options: Array.isArray(q.options)
+          ? q.options.filter((o: any) => typeof o === "string" && o.trim()).slice(0, 4).map((o: string) => o.trim().substring(0, 80))
+          : undefined,
+      }));
+    if (questions.length === 0) return { mode: "answer", goal: nextGoal, questions: [] };
+    return { mode: "clarify", goal: nextGoal, questions };
+  } catch (error) {
+    console.warn("Intake skipped:", error instanceof Error ? error.message : String(error));
+    return none;
+  }
+}
+
+function renderClarification(goal: string | null, questions: IntakeQuestion[]): string {
+  const lines = [CLARIFICATION_PREFIX, ""];
+  if (goal) lines.push(`Obiettivo: ${goal}`, "");
+  lines.push("Per darti una risposta corretta sulla tua situazione, e non una risposta generica, mi servono questi dettagli:", "");
+  questions.forEach((q, i) => {
+    lines.push(`${i + 1}. ${q.text}`);
+    if (q.why) lines.push(`   _(${q.why})_`);
+    lines.push("");
+  });
+  lines.push("Rispondi anche solo a quelle che conosci: se preferisci, scrivi \"rispondi comunque\" e procedo con le ipotesi più prudenti, dichiarandole.");
+  return lines.join("\n");
+}
+
 // ── Main handler ────────────────────────────────────────────────────────
 
 denoServe(protect(async (req) => {
@@ -1537,8 +1704,21 @@ denoServe(protect(async (req) => {
   }
 
   try {
-    const { question, userProfile, files, conversationHistory } = await req
-      .json();
+    const requestBody = await req.json();
+    const { question, userProfile, files, conversationHistory } = requestBody;
+    const caseContext: CaseFact[] = Array.isArray(requestBody.caseContext)
+      ? requestBody.caseContext
+        .filter((f: any) => f && typeof f.question === "string" && typeof f.answer === "string")
+        .slice(-12)
+        .map((f: any) => ({
+          question: f.question.substring(0, 300),
+          answer: f.answer.substring(0, 500),
+        }))
+      : [];
+    const conversationGoal: string | null =
+      typeof requestBody.goal === "string" && requestBody.goal.trim()
+        ? requestBody.goal.trim().substring(0, 300)
+        : null;
 
     if (
       !question || typeof question !== "string" || question.trim().length === 0
@@ -1584,6 +1764,52 @@ denoServe(protect(async (req) => {
     // ── Step 0.5: Extract context from conversation history ───────────
     const history: Array<{ role: string; content: string }> =
       Array.isArray(conversationHistory) ? conversationHistory.slice(-4) : [];
+
+    // ── Step 0.7: Intake — stop and ask when facts that change the answer are missing ──
+    const attachedFileNames: string[] = Array.isArray(files)
+      ? files.map((f: any) => String(f?.name || "documento")).slice(0, 10)
+      : [];
+    const intake = await runIntake({
+      question,
+      history,
+      caseContext,
+      goal: conversationGoal,
+      userProfile,
+      fileNames: attachedFileNames,
+      apiKey: lovableApiKey,
+    });
+    const activeGoal = intake.goal || conversationGoal;
+    if (intake.mode === "clarify") {
+      const clarificationText = renderClarification(activeGoal, intake.questions);
+      console.log(`Intake: asking ${intake.questions.length} clarifying question(s)`);
+      const { data: intakeUser } = await supabase.auth.getUser(
+        req.headers.get("Authorization")?.replace("Bearer ", "") || "",
+      );
+      if (intakeUser?.user?.email && (intakeUser.user as any)?.is_anonymous !== true) {
+        const { error: logError } = await supabase.from("query_log").insert({
+          user_id: intakeUser.user.id,
+          question,
+          answer: clarificationText,
+          model: getAIModel(),
+          latency_ms: 0,
+          citations: [],
+        });
+        if (logError) console.error("query_log insert failed:", logError.message);
+      }
+      return new Response(
+        JSON.stringify({
+          type: "clarification",
+          goal: activeGoal,
+          questions: intake.questions,
+          answer: clarificationText,
+          citations: [],
+          allContextChunks: [],
+          relevantChunks: 0,
+          confidence: { level: "high", score: 100, explanation: "Richiesta di chiarimenti" },
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
     // Extract keywords and regulations from previous messages to enrich search
     let historyKeywords: string[] = [];
@@ -2544,12 +2770,22 @@ CONTESTO UTENTE:
 - Ruolo: ${roleDescription}
 - Settore: ${userProfile?.sector || "Non specificato"}
 - Giurisdizione: ${userProfile?.jurisdiction || "Non specificata"}
-
+${activeGoal ? `- Obiettivo della conversazione: ${activeGoal}` : ""}
+${
+        caseContext.length > 0
+          ? `
+INFORMAZIONI FORNITE DALL'UTENTE SULLA SUA SITUAZIONE (usale come fatti accertati, non chiederle di nuovo):
+${caseContext.map((f) => `- ${f.question} → ${f.answer}`).join("\n")}
+`
+          : ""
+      }
 STILE DI RISPOSTA E DIVIETI:
 
 1. DIVIETO DI PREAMBOLI: Inizia a rispondere immediatamente alla domanda. Niente saluti formali, niente giri di parole e MAI iniziare con frasi come "In qualità di professionista...", "Di seguito l'analisi..." o "Ecco i dettagli".
 
-2. DIVIETO DI SCARICABARILE: Se l'utente chiede "La mia organizzazione deve fare X?" o "Devo adempiere a questo obbligo?", NON dirgli mai di "redigere un documento", "fare un assessment interno" o "consultare un legale". Sei TU che devi guidarlo nell'assessment attraverso le tue domande.
+2. DIVIETO DI SCARICABARILE: Se l'utente chiede "La mia organizzazione deve fare X?" o "Devo adempiere a questo obbligo?", NON dirgli mai di "redigere un documento", "fare un assessment interno" o "consultare un legale". Sei TU che devi guidarlo, passo dopo passo, verso il suo obiettivo, usando le informazioni che ti ha già dato.
+
+2-bis. NIENTE DOMANDE DI ROUTINE: le domande di chiarimento vengono poste in una fase separata, prima della risposta. Qui devi RISPONDERE. Non chiudere mai la risposta con un elenco di domande all'utente.
 
 3. ZERO ASSUNZIONI: Usa il settore e il ruolo dell'utente solo per contestualizzare, ma NON dare per scontato che bastino per determinare un obbligo di legge (es. un'azienda "Tech" non ha in automatico gli stessi obblighi di un'altra). Se il contesto utente dice "Non specificato", trattalo come sconosciuto.
 
@@ -2567,9 +2803,9 @@ Fornisci una sintesi secca e chiara dell'obbligo o requisito normativo. Usa le f
 
 Se conosci il settore o il ruolo dell'utente, fai esempi pertinenti di come la regola si applica generalmente a quel mondo (es. per il settore Tech: tracciamento online, profilazione). Usa paragrafi brevi e separati da una riga vuota. Se non lo conosci, salta questa parte.
 
-**3. Domande per te**
+**3. Prossimo passo**
 
-Se l'utente chiede una valutazione specifica sulla sua situazione e non hai tutti i dettagli operativi per rispondere con un "Sì" o "No" definitivo, elenca le domande usando SEMPRE un elenco numerato (1., 2., 3.). Manda a capo ogni singola domanda. Non scriverle mai sulla stessa riga. Concludi chiedendogli di rispondere per permetterti di dargli una valutazione esatta.
+Questa sezione è FACOLTATIVA e serve a portare l'utente verso il suo obiettivo, non a fargli domande di routine. Includila SOLO se esiste un passo concreto e utile (es. "il prossimo passo è mappare i trattamenti X", "posso prepararti la bozza di Y"). Se l'utente ha risposto a domande di chiarimento, usa le sue risposte e concludi con una valutazione netta, dichiarando le eventuali ipotesi che hai dovuto fare. Puoi porre AL MASSIMO UNA domanda, e solo se senza quella risposta non puoi procedere: MAI elenchi di domande, MAI domande generiche o retoriche. Se non c'è nulla di utile da aggiungere, ometti del tutto la sezione.
 
 REGOLE DI FORMATTAZIONE TASSATIVE:
 
@@ -2627,7 +2863,8 @@ CHECKLIST INTERNA (Assicurati di rispettare questi punti prima di generare l'out
 □ Ho risposto direttamente senza preamboli inutili?
 □ Ho inserito le citazioni [N] dove necessario?
 □ Ho evitato di dire all'utente di "farsi un assessment interno"?
-□ Se l'utente chiede una valutazione specifica e mancano dati, ho posto 2-3 domande mirate per aiutarlo?
+□ Ho evitato elenchi di domande all'utente (al massimo una, solo se bloccante)?
+□ Se l'utente ha già fornito informazioni sulla sua situazione, le ho usate per dare una valutazione netta?
 □ La risposta è basata SOLO sulle fonti fornite?
 
 REGOLA CRITICA FINALE — RISPOSTE PARZIALI VS MANCANTI:
