@@ -43,7 +43,7 @@ denoServe(protect(async (req) => {
         docId: body._backgroundDocId,
         userId: user.id,
         documentType,
-        assessmentId,
+        assessmentId: assessmentId || '',
         conversationHistory,
         normalizedLanguage,
         normalizedMode,
@@ -58,17 +58,11 @@ denoServe(protect(async (req) => {
     }
 
     // ── PHASE 1: Create pending record and return immediately ──
-    console.log('Creating pending document:', documentType, 'for assessment:', assessmentId);
-
-    const { data: assessment } = await supabase
-      .from('compliance_assessments')
-      .select('*, identified_gaps(*)')
-      .eq('id', assessmentId)
-      .single();
-
-    if (!assessment) {
-      throw new Error('Assessment not found');
+    const fromChat = body.source === 'chat' && !assessmentId;
+    if (!['dpia', 'ropa', 'lia', 'gap_report', 'risk_analysis'].includes(String(documentType))) {
+      throw new Error('Tipo di documento non supportato');
     }
+    console.log('Creating pending document:', documentType, fromChat ? 'from chat context' : `for assessment: ${assessmentId}`);
 
     const { data: profile } = await supabase
       .from('profiles')
@@ -76,17 +70,37 @@ denoServe(protect(async (req) => {
       .eq('id', user.id)
       .maybeSingle();
 
+    let assessment: any = null;
+    let chatHistory: any[] = Array.isArray(conversationHistory) ? conversationHistory : [];
+    if (fromChat) {
+      const built = buildAssessmentFromChat(body.chatContext, profile);
+      assessment = built.assessment;
+      chatHistory = built.history;
+    } else {
+      const { data: found } = await supabase
+        .from('compliance_assessments')
+        .select('*, identified_gaps(*)')
+        .eq('id', assessmentId)
+        .single();
+      if (!found) {
+        throw new Error('Assessment not found');
+      }
+      assessment = found;
+    }
+
     const { data: pendingDoc, error: pendingError } = await supabase
       .from('generated_documents')
       .insert({
         user_id: user.id,
-        assessment_id: assessmentId,
+        assessment_id: fromChat ? null : assessmentId,
         document_type: documentType,
         title: getDefaultTitle(documentType, assessment, normalizedLanguage),
         content: { _status: 'generating', _started_at: new Date().toISOString() },
         metadata: {
           generated_at: new Date().toISOString(),
-          based_on_assessment: assessmentId,
+          based_on_assessment: fromChat ? null : assessmentId,
+          source: fromChat ? 'chat' : 'assessment',
+          goal: fromChat ? assessment.title : undefined,
           regulations: assessment.scope_regulations,
           mode: normalizedMode,
           status: 'generating',
@@ -112,8 +126,9 @@ denoServe(protect(async (req) => {
       body: JSON.stringify({
         _backgroundDocId: pendingDoc.id,
         documentType,
-        assessmentId,
-        conversationHistory,
+        assessmentId: fromChat ? undefined : assessmentId,
+        source: fromChat ? 'chat' : undefined,
+        conversationHistory: chatHistory,
         language: normalizedLanguage,
         mode: normalizedMode,
         userDocumentsSummary,
@@ -341,7 +356,7 @@ async function doGenerateDocument(supabase: any, params: {
 
     // Force unique codice identificativo
     if (documentContent.section_4_informazioni_trattamento) {
-      const shortId = assessmentId.substring(0, 8).toUpperCase();
+      const shortId = String(assessmentId || docId).substring(0, 8).toUpperCase();
       const dateCode = new Date().toISOString().split('T')[0].replace(/-/g, '');
       documentContent.section_4_informazioni_trattamento.codice_identificativo = `DPIA-${dateCode}-${shortId}`;
     }
@@ -697,7 +712,9 @@ async function doGenerateDocument(supabase: any, params: {
         content: documentContent,
         metadata: {
           generated_at: new Date().toISOString(),
-          based_on_assessment: assessmentId,
+          based_on_assessment: assessmentId || null,
+          source: assessment?._source === 'chat' ? 'chat' : 'assessment',
+          goal: assessment?._source === 'chat' ? assessment.title : undefined,
           regulations: assessment.scope_regulations,
           mode: normalizedMode,
           status: 'completed',
@@ -806,6 +823,57 @@ async function fetchRegulatoryContext(supabase: any, documentType: string): Prom
 // =====================================================================
 // Helper functions
 // =====================================================================
+
+// Builds an assessment-shaped context from a guided chat (goal, facts the user gave, recent messages)
+function buildAssessmentFromChat(chatContext: any, profile: any): { assessment: any; history: any[] } {
+  const ctx = chatContext && typeof chatContext === 'object' ? chatContext : {};
+  const goal = typeof ctx.goal === 'string' && ctx.goal.trim() ? ctx.goal.trim().substring(0, 200) : '';
+  const facts: Array<{ question: string; answer: string }> = Array.isArray(ctx.caseContext)
+    ? ctx.caseContext
+      .filter((f: any) => f && typeof f.question === 'string' && typeof f.answer === 'string')
+      .slice(0, 20)
+      .map((f: any) => ({ question: f.question.substring(0, 300), answer: f.answer.substring(0, 600) }))
+    : [];
+  const history: any[] = Array.isArray(ctx.history)
+    ? ctx.history
+      .filter((m: any) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+      .slice(-12)
+      .map((m: any) => ({ role: m.role, content: m.content.substring(0, m.role === 'user' ? 2500 : 4000) }))
+    : [];
+  const attached = typeof ctx.attachedDocsSummary === 'string' ? ctx.attachedDocsSummary.substring(0, 6000) : '';
+  const factLines = facts.map((f) => `- ${f.question} ${f.answer}`).join('\n');
+  const description = [
+    goal ? `Obiettivo dichiarato dall'utente: ${goal}` : '',
+    facts.length > 0 ? `Informazioni fornite dall'utente:\n${factLines}` : '',
+    attached ? `Documenti allegati dall'utente (estratto):\n${attached}` : '',
+  ].filter(Boolean).join('\n\n') || 'Trattamento descritto dall\'utente in chat.';
+  const sizeMap: Record<string, string> = {
+    micro: 'micro impresa (meno di 10 addetti)', small: 'piccola impresa (10-49 addetti)',
+    medium: 'media impresa (50-249 addetti)', large: 'grande impresa (250 addetti o più)',
+  };
+  const roleMap: Record<string, string> = {
+    controller: 'titolare del trattamento', processor: 'responsabile del trattamento', both: 'titolare e responsabile a seconda del servizio',
+  };
+  return {
+    assessment: {
+      _source: 'chat',
+      id: null,
+      title: goal || 'Trattamento descritto in chat',
+      description,
+      scope_sector: profile?.sector || 'Non specificato',
+      scope_jurisdiction: profile?.jurisdiction || 'IT',
+      scope_regulations: ['GDPR'],
+      company_size_label: sizeMap[profile?.company_size] || null,
+      data_role_label: roleMap[profile?.data_role] || null,
+      status: 'chat',
+      completed_at: null,
+      identified_gaps: [],
+      overall_compliance_percentage: null,
+      overall_risk_score: null,
+    },
+    history,
+  };
+}
 
 function getDefaultTitle(type: string, assessment: any, language: string = 'it'): string {
   const titles: Record<string, string> = {
@@ -2670,16 +2738,24 @@ REGOLA: Usa queste evidenze per descrivere lo stato attuale dell'organizzazione.
 - Descrizione: ${assessment.description || 'Non specificata'}
 - Fatturato Annuo: EUR ${assessment.annual_revenue_eur?.toLocaleString('it-IT') || 'Non specificato'}
 
-## RISULTATI ASSESSMENT
+${assessment._source === 'chat' ? `## ORIGINE DELLE INFORMAZIONI
+Questo documento nasce da una conversazione guidata con l'utente nella chat RegBrain, NON da un assessment formale: non esistono punteggi di conformità né gap censiti.
+${assessment.company_size_label ? `- Dimensione dell'organizzazione: ${assessment.company_size_label}` : ''}
+${assessment.data_role_label ? `- Ruolo nel trattamento: ${assessment.data_role_label}` : ''}
+REGOLE PER QUESTA ORIGINE:
+- Le informazioni fornite dall'utente (nella Descrizione sopra e nella conversazione sotto) sono FATTI ACCERTATI: usale per descrivere trattamento, finalità, categorie di dati e di interessati, strumenti, misure già in essere, criticità.
+- Le criticità o i dubbi emersi in conversazione vanno trattati come minacce e rischi nella valutazione, con misure "Da applicare".
+- Dove un'informazione manca davvero, usa il placeholder [DA COMPLETARE - descrizione del dato richiesto]: non inventare mai dati, non attribuire misure che l'utente non ha dichiarato.
+` : `## RISULTATI ASSESSMENT
 - Conformità Complessiva: ${assessment.overall_compliance_percentage || 0}%
 - Punteggio Rischio: ${assessment.overall_risk_score || 0}/100
 - Stato: ${assessment.status}
 - Data Completamento: ${assessment.completed_at || 'In corso'}
 
 ## GAP IDENTIFICATI (${assessment.identified_gaps?.length || 0} totali)
-${gapsSection}
+${gapsSection}`}
 ${userDocsSection}${gapDocEvidence}
-${conversation ? `## CONTESTO AGGIUNTIVO:\n${conversation}\n` : ''}`;
+${conversation ? `## ${assessment._source === 'chat' ? 'CONVERSAZIONE CON L\'UTENTE (fonte primaria)' : 'CONTESTO AGGIUNTIVO'}:\n${conversation}\n` : ''}`;
 
   const configBlock = userConfig ? `
 

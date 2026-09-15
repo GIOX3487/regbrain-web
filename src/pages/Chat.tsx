@@ -69,6 +69,7 @@ interface NextAction {
   type: string;
   documentType?: string;
   label: string;
+  docId?: string;
 }
 
 interface CaseFact {
@@ -366,6 +367,48 @@ const Chat = () => {
   const [goal, setGoal] = useState<string | null>(null);
   const [caseContext, setCaseContext] = useState<CaseFact[]>([]);
   const [clarifyDrafts, setClarifyDrafts] = useState<Record<string, string>>({});
+
+  const [generatingDoc, setGeneratingDoc] = useState(false);
+
+  // Genera il documento suggerito usando obiettivo, risposte e conversazione, senza passare da un assessment
+  const generateDocumentFromChat = async (documentType: string, label: string) => {
+    if (generatingDoc) return;
+    setGeneratingDoc(true);
+    try {
+      const history = messages
+        .filter((m) => m.kind !== 'clarification')
+        .slice(-12)
+        .map((m) => ({ role: m.role, content: m.content.substring(0, 4000) }));
+      const { data, error } = await supabase.functions.invoke('generate-audit-document', {
+        body: {
+          documentType,
+          source: 'chat',
+          mode: 'standard',
+          language: 'it',
+          chatContext: { goal, caseContext, history },
+        },
+      });
+      if (error) {
+        const details = error.context instanceof Response ? await error.context.clone().json().catch(() => null) : null;
+        throw new Error(details?.error || error.message);
+      }
+      if (data?.error) throw new Error(data.error);
+      const docId: string | undefined = data?.document?.id;
+      const docTitle: string = data?.document?.title || label;
+      setMessages((prev) => [...prev, {
+        role: 'assistant',
+        content: `Sto generando **${docTitle}** a partire da questa conversazione: obiettivo, informazioni che hai fornito e analisi fatte finora. Servono circa 1-2 minuti. Lo trovi nel Document Generator, dove puoi vederlo in anteprima ed esportarlo in PDF; i dati che non conosco sono segnati come [DA COMPLETARE].`,
+        citations: [],
+        nextAction: { type: 'open_document', label: 'Apri il Document Generator', documentType, docId },
+      }]);
+      toast({ title: 'Generazione avviata', description: `${docTitle} sarà pronto tra circa un minuto.` });
+    } catch (err: any) {
+      console.error('Document generation from chat failed:', err);
+      toast({ title: 'Generazione non riuscita', description: err.message || 'Riprova tra poco.', variant: 'destructive' });
+    } finally {
+      setGeneratingDoc(false);
+    }
+  };
 
   const startNewConversation = () => {
     setMessages([]);
@@ -792,15 +835,34 @@ const Chat = () => {
                           </div>
                         )}
                         {msg.nextAction?.type === 'generate_document' && msg.nextAction.documentType && (
+                          <div className="mt-3 pt-3 border-t space-y-2">
+                            <Button
+                              size="sm"
+                              disabled={generatingDoc}
+                              onClick={() => generateDocumentFromChat(msg.nextAction!.documentType!, msg.nextAction!.label)}
+                            >
+                              <FileText className="w-4 h-4 mr-2" />
+                              {generatingDoc ? 'Generazione in corso...' : msg.nextAction.label.replace('nel Document Generator', 'da questa conversazione')}
+                            </Button>
+                            <p className="text-xs text-muted-foreground">
+                              Uso obiettivo, risposte e analisi di questa chat. In alternativa{' '}
+                              <button type="button" className="underline" onClick={() => navigate(`/compliance/documents?type=${encodeURIComponent(msg.nextAction!.documentType!)}&nuovo=1`)}>
+                                apri il Document Generator
+                              </button>{' '}
+                              per partire da una valutazione di conformità.
+                            </p>
+                          </div>
+                        )}
+                        {msg.nextAction?.type === 'open_document' && (
                           <div className="mt-3 pt-3 border-t">
                             <Button
                               size="sm"
-                              onClick={() => navigate(`/compliance/documents?type=${encodeURIComponent(msg.nextAction!.documentType!)}&nuovo=1`)}
+                              variant="outline"
+                              onClick={() => navigate(`/compliance/documents${msg.nextAction!.docId ? `?doc=${encodeURIComponent(msg.nextAction!.docId)}` : ''}`)}
                             >
                               <FileText className="w-4 h-4 mr-2" />
                               {msg.nextAction.label}
                             </Button>
-                            <p className="mt-1 text-xs text-muted-foreground">Il generatore parte da una valutazione di conformità completata: se non ne hai ancora una, ti viene chiesto di crearla.</p>
                           </div>
                         )}
                         {/* Show grouped citations by document */}

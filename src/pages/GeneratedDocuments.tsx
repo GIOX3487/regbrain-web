@@ -68,6 +68,14 @@ export default function GeneratedDocuments() {
     checkAuthAndLoadData();
   }, []);
 
+  // Finché un documento è in generazione, ricarica l'elenco ogni 8 secondi
+  useEffect(() => {
+    const pending = documents.some((d) => (d.content as any)?._status === 'generating');
+    if (!pending) return;
+    const timer = setInterval(() => { loadData(); }, 8000);
+    return () => clearInterval(timer);
+  }, [documents]);
+
   // Arrivo dalla chat: tipo di documento preselezionato e dialogo già aperto
   useEffect(() => {
     const requestedType = searchParams.get('type');
@@ -340,6 +348,18 @@ export default function GeneratedDocuments() {
                           {getDocumentTypeLabel(doc.document_type)}
                         </Badge>
                         <Badge variant="outline">v{doc.version}</Badge>
+                        {(doc.content as any)?._status === 'generating' && (
+                          <Badge variant="secondary" className="gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Generazione in corso</Badge>
+                        )}
+                        {(doc.content as any)?._status === 'failed' && (
+                          <Badge variant="destructive">Generazione fallita</Badge>
+                        )}
+                        {(doc.metadata as any)?.source === 'chat' && (
+                          <Badge variant="outline">Dalla chat</Badge>
+                        )}
+                        {searchParams.get('doc') === doc.id && (
+                          <Badge>Nuovo</Badge>
+                        )}
                         <span className="text-sm text-muted-foreground">
                           {format(new Date(doc.created_at), 'dd/MM/yyyy HH:mm')}
                         </span>
@@ -350,6 +370,7 @@ export default function GeneratedDocuments() {
                       <Button
                         variant="outline"
                         size="sm"
+                        disabled={(doc.content as any)?._status === 'generating'}
                         onClick={() => setPreviewDoc(doc)}
                       >
                         <Eye className="h-4 w-4 mr-2" />
@@ -358,6 +379,7 @@ export default function GeneratedDocuments() {
                       <Button
                         variant="outline"
                         size="sm"
+                        disabled={(doc.content as any)?._status === 'generating'}
                         onClick={() => downloadDocumentPDF(doc)}
                       >
                         <Download className="h-4 w-4 mr-2" />
