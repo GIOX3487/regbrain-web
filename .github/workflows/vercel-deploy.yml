@@ -1,0 +1,26 @@
+name: Deploy frontend to Vercel
+# Vercel blocca i deploy automatici dei commit di autori che non riconosce.
+# Il Deploy Hook lancia comunque il deploy dell'ultimo commit di main,
+# indipendentemente dall'autore. Il secret VERCEL_DEPLOY_HOOK contiene l'URL
+# creato in Vercel (Project Settings, Git, Deploy Hooks, branch main).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+concurrency:
+  group: vercel-deploy
+  cancel-in-progress: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Vercel deploy hook
+        env:
+          HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "::error::Secret VERCEL_DEPLOY_HOOK mancante: creare il Deploy Hook in Vercel e salvarne l'URL nei secret del repository."
+            exit 1
+          fi
+          curl -fsS -X POST "$HOOK" | head -c 400; echo
+          echo "::notice::Deploy Vercel avviato tramite Deploy Hook"
