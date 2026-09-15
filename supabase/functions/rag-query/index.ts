@@ -304,7 +304,8 @@ function verifyCitationRelevance(
   // For long sentences (> 12 words), require at least 30%
   let minRequired: number;
   if (words.length <= 5) {
-    minRequired = Math.max(3, Math.ceil(words.length * 0.5));
+    // Short list items ("- Gestione degli incidenti [14];") paraphrase the source: two shared terms are enough.
+    minRequired = Math.max(2, Math.ceil(words.length * 0.5));
   } else if (words.length <= 12) {
     minRequired = Math.max(3, Math.ceil(words.length * 0.35));
   } else {
