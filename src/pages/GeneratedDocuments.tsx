@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -52,6 +52,7 @@ const DOCUMENT_TYPES = [
 
 export default function GeneratedDocuments() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const [documents, setDocuments] = useState<GeneratedDocument[]>([]);
   const [assessments, setAssessments] = useState<Assessment[]>([]);
@@ -66,6 +67,15 @@ export default function GeneratedDocuments() {
   useEffect(() => {
     checkAuthAndLoadData();
   }, []);
+
+  // Arrivo dalla chat: tipo di documento preselezionato e dialogo già aperto
+  useEffect(() => {
+    const requestedType = searchParams.get('type');
+    if (requestedType && DOCUMENT_TYPES.some((t) => t.value === requestedType)) {
+      setSelectedType(requestedType);
+      if (searchParams.get('nuovo') === '1') setShowGenerateDialog(true);
+    }
+  }, [searchParams]);
 
   const checkAuthAndLoadData = async () => {
     const { data: { session } } = await supabase.auth.getSession();

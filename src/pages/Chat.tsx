@@ -65,6 +65,12 @@ interface ClarifyQuestion {
   options?: string[];
 }
 
+interface NextAction {
+  type: string;
+  documentType?: string;
+  label: string;
+}
+
 interface CaseFact {
   question: string;
   answer: string;
@@ -356,7 +362,7 @@ const Chat = () => {
     navigate('/');
   };
 
-  const [messages, setMessages] = useState<Array<{ role: string; content: string; citations?: any[]; allContextChunks?: any[]; confidence?: { level: string; score: number; explanation: string }; kind?: 'clarification'; questions?: ClarifyQuestion[]; answered?: boolean }>>([]);
+  const [messages, setMessages] = useState<Array<{ role: string; content: string; citations?: any[]; allContextChunks?: any[]; confidence?: { level: string; score: number; explanation: string }; kind?: 'clarification'; questions?: ClarifyQuestion[]; answered?: boolean; nextAction?: NextAction | null }>>([]);
   const [goal, setGoal] = useState<string | null>(null);
   const [caseContext, setCaseContext] = useState<CaseFact[]>([]);
   const [clarifyDrafts, setClarifyDrafts] = useState<Record<string, string>>({});
@@ -515,7 +521,8 @@ const Chat = () => {
         content: data.answer,
         citations: data.citations || [],
         allContextChunks: data.allContextChunks || [],
-        confidence: data.confidence || undefined
+        confidence: data.confidence || undefined,
+        nextAction: data.nextAction || null,
       }]);
       // La chat è stata salvata lato server: aggiorna l'elenco delle conversazioni recenti
       loadRecentChats();
@@ -782,6 +789,18 @@ const Chat = () => {
                             >
                               {formatRAGResponse(msg.content)}
                             </ReactMarkdown>
+                          </div>
+                        )}
+                        {msg.nextAction?.type === 'generate_document' && msg.nextAction.documentType && (
+                          <div className="mt-3 pt-3 border-t">
+                            <Button
+                              size="sm"
+                              onClick={() => navigate(`/compliance/documents?type=${encodeURIComponent(msg.nextAction!.documentType!)}&nuovo=1`)}
+                            >
+                              <FileText className="w-4 h-4 mr-2" />
+                              {msg.nextAction.label}
+                            </Button>
+                            <p className="mt-1 text-xs text-muted-foreground">Il generatore parte da una valutazione di conformità completata: se non ne hai ancora una, ti viene chiesto di crearla.</p>
                           </div>
                         )}
                         {/* Show grouped citations by document */}

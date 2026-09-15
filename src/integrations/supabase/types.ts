@@ -1285,24 +1285,30 @@ export type Database = {
       }
       profiles: {
         Row: {
+          company_size: string | null
           compliance_role: string
           created_at: string
+          data_role: string | null
           id: string
           jurisdiction: string
           sector: string
           updated_at: string
         }
         Insert: {
+          company_size?: string | null
           compliance_role: string
           created_at?: string
+          data_role?: string | null
           id: string
           jurisdiction: string
           sector: string
           updated_at?: string
         }
         Update: {
+          company_size?: string | null
           compliance_role?: string
           created_at?: string
+          data_role?: string | null
           id?: string
           jurisdiction?: string
           sector?: string

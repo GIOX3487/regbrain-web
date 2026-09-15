@@ -14,6 +14,28 @@ const Onboarding = () => {
   const [jurisdiction, setJurisdiction] = useState("");
   const [sector, setSector] = useState("");
   const [role, setRole] = useState("");
+  const [companySize, setCompanySize] = useState("");
+  const [dataRole, setDataRole] = useState("");
+
+  useEffect(() => {
+    // Precompila il modulo se il profilo esiste già (modifica profilo)
+    const loadExisting = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
+      const { data } = await supabase
+        .from('profiles')
+        .select('jurisdiction, sector, compliance_role, company_size, data_role')
+        .eq('id', session.user.id)
+        .maybeSingle();
+      if (!data) return;
+      setJurisdiction(data.jurisdiction || "");
+      setSector(data.sector || "");
+      setRole(data.compliance_role || "");
+      setCompanySize(data.company_size || "");
+      setDataRole(data.data_role || "");
+    };
+    loadExisting();
+  }, []);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -64,6 +86,8 @@ const Onboarding = () => {
             jurisdiction,
             sector,
             compliance_role: role,
+            company_size: companySize || null,
+            data_role: dataRole || null,
             updated_at: new Date().toISOString(),
           })
           .eq('id', session.user.id);
@@ -77,6 +101,8 @@ const Onboarding = () => {
             jurisdiction,
             sector,
             compliance_role: role,
+            company_size: companySize || null,
+            data_role: dataRole || null,
           });
         error = result.error;
       }
@@ -197,6 +223,35 @@ const Onboarding = () => {
               <option value="legal">Legal Counsel</option>
               <option value="compliance">Compliance Officer</option>
               <option value="other">Altro</option>
+            </NativeSelect>
+
+            <NativeSelect
+              id="companySize"
+              label="Dimensione dell'organizzazione (facoltativo)"
+              value={companySize}
+              onChange={(e) => setCompanySize(e.target.value)}
+              helperText="Le soglie di NIS2, DORA e di molti obblighi dipendono da addetti e fatturato: indicarla evita domande in chat"
+            >
+              <option value="">Seleziona la dimensione</option>
+              <option value="micro">Micro (meno di 10 addetti)</option>
+              <option value="small">Piccola (10-49 addetti)</option>
+              <option value="medium">Media (50-249 addetti)</option>
+              <option value="large">Grande (250 addetti o più)</option>
+              <option value="unknown">Non lo so</option>
+            </NativeSelect>
+
+            <NativeSelect
+              id="dataRole"
+              label="Ruolo nel trattamento dei dati (facoltativo)"
+              value={dataRole}
+              onChange={(e) => setDataRole(e.target.value)}
+              helperText="Titolare e responsabile hanno obblighi diversi: il RAG ne tiene conto nelle risposte"
+            >
+              <option value="">Seleziona il ruolo</option>
+              <option value="controller">Titolare del trattamento</option>
+              <option value="processor">Responsabile del trattamento (fornitore/processor)</option>
+              <option value="both">Entrambi, a seconda del servizio</option>
+              <option value="unknown">Non lo so</option>
             </NativeSelect>
 
             <div className="flex gap-3">

@@ -1548,6 +1548,34 @@ interface CaseFact {
 
 const CLARIFICATION_PREFIX = "**Prima di rispondere ho bisogno di qualche informazione**";
 
+function describeCompanySize(code: string | null | undefined): string | null {
+  const map: Record<string, string> = {
+    micro: "micro impresa (meno di 10 addetti)",
+    small: "piccola impresa (10-49 addetti)",
+    medium: "media impresa (50-249 addetti)",
+    large: "grande impresa (250 addetti o più)",
+  };
+  if (!code || code === "unknown") return null;
+  return map[code] || code;
+}
+
+function describeDataRole(code: string | null | undefined): string | null {
+  const map: Record<string, string> = {
+    controller: "titolare del trattamento",
+    processor: "responsabile del trattamento",
+    both: "sia titolare sia responsabile, a seconda del servizio",
+  };
+  if (!code || code === "unknown") return null;
+  return map[code] || code;
+}
+
+// Machine-readable next action the model may append as the very last line of the answer.
+const NEXT_ACTION_PATTERN = /\s*\[\[AZIONE:(dpia|ropa)\]\]\s*$/i;
+const NEXT_ACTION_LABELS: Record<string, string> = {
+  dpia: "Genera la DPIA nel Document Generator",
+  ropa: "Genera il RoPA nel Document Generator",
+};
+
 // Questions that describe the user's own situation or ask for a deliverable
 // are the ones where missing facts change the legal answer.
 const SITUATIONAL_PATTERN =
@@ -1595,7 +1623,8 @@ async function runIntake(params: {
     userProfile?.compliance_role ? `Ruolo: ${userProfile.compliance_role}` : null,
     userProfile?.sector ? `Settore: ${userProfile.sector}` : null,
     userProfile?.jurisdiction ? `Giurisdizione: ${userProfile.jurisdiction}` : null,
-    userProfile?.company_size ? `Dimensione azienda: ${userProfile.company_size}` : null,
+    userProfile?.company_size ? `Dimensione azienda: ${describeCompanySize(userProfile.company_size)}` : null,
+    userProfile?.data_role ? `Ruolo nel trattamento: ${describeDataRole(userProfile.data_role)}` : null,
   ].filter(Boolean).join("\n") || "Nessun dato di profilo.";
   const knownFacts = caseContext.length > 0
     ? caseContext.map((f) => `- ${f.question} → ${f.answer}`).join("\n")
@@ -2770,6 +2799,8 @@ CONTESTO UTENTE:
 - Ruolo: ${roleDescription}
 - Settore: ${userProfile?.sector || "Non specificato"}
 - Giurisdizione: ${userProfile?.jurisdiction || "Non specificata"}
+- Dimensione dell'organizzazione: ${describeCompanySize(userProfile?.company_size) || "Non specificata"}
+- Ruolo nel trattamento dei dati: ${describeDataRole(userProfile?.data_role) || "Non specificato"}
 ${activeGoal ? `- Obiettivo della conversazione: ${activeGoal}` : ""}
 ${
         caseContext.length > 0
@@ -2806,6 +2837,8 @@ Se conosci il settore o il ruolo dell'utente, fai esempi pertinenti di come la r
 **3. Prossimo passo**
 
 Questa sezione è FACOLTATIVA e serve a portare l'utente verso il suo obiettivo, non a fargli domande di routine. Includila SOLO se esiste un passo concreto e utile (es. "il prossimo passo è mappare i trattamenti X", "posso prepararti la bozza di Y"). Se l'utente ha risposto a domande di chiarimento, usa le sue risposte e concludi con una valutazione netta, dichiarando le eventuali ipotesi che hai dovuto fare. Puoi porre AL MASSIMO UNA domanda, e solo se senza quella risposta non puoi procedere: MAI elenchi di domande, MAI domande generiche o retoriche. Se non c'è nulla di utile da aggiungere, ometti del tutto la sezione.
+
+AZIONE SUCCESSIVA (tag per l'interfaccia): se il prossimo passo concreto per l'utente è produrre un documento che RegBrain genera in automatico, aggiungi come ULTIMISSIMA riga della risposta, da sola, esattamente uno di questi tag: [[AZIONE:dpia]] se serve una valutazione d'impatto (DPIA, art. 35 GDPR), [[AZIONE:ropa]] se serve il registro dei trattamenti (RoPA, art. 30 GDPR). In tutti gli altri casi non aggiungere nessun tag. Il tag non sostituisce la sezione "Prossimo passo": spiega comunque a parole perché quel documento serve.
 
 REGOLE DI FORMATTAZIONE TASSATIVE:
 
@@ -3206,9 +3239,19 @@ REGOLA CRITICA FINALE — RISPOSTE PARZIALI VS MANCANTI:
     }
 
     const aiData = await aiResponse.json();
-    const answer = typeof aiData?.choices?.[0]?.message?.content === "string"
+    const rawAnswer = typeof aiData?.choices?.[0]?.message?.content === "string"
       ? aiData.choices[0].message.content
       : "";
+    const nextActionMatch = rawAnswer.match(NEXT_ACTION_PATTERN);
+    const nextAction = nextActionMatch
+      ? {
+        type: "generate_document",
+        documentType: nextActionMatch[1].toLowerCase(),
+        label: NEXT_ACTION_LABELS[nextActionMatch[1].toLowerCase()],
+      }
+      : null;
+    const answer = rawAnswer.replace(NEXT_ACTION_PATTERN, "").trim();
+    if (nextAction) console.log(`Next action suggested: ${nextAction.documentType}`);
     const latencyMs = Date.now() - startTime;
     console.log("Answer generated in", latencyMs, "ms");
 
@@ -3546,6 +3589,8 @@ REGOLA CRITICA FINALE — RISPOSTE PARZIALI VS MANCANTI:
     return new Response(
       JSON.stringify({
         answer: outputAnswer,
+        goal: activeGoal,
+        nextAction,
         citations,
         allContextChunks,
         relevantChunks: selected.length,
