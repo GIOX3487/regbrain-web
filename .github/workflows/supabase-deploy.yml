@@ -1,0 +1,41 @@
+name: Deploy Supabase Edge Functions
+# Deploya SOLO le funzioni già in produzione (più ingest-eurlex-formex), così un
+# push non attiva per errore funzioni presenti nel repo ma mai pubblicate.
+# Tutte le funzioni gestiscono l'autenticazione internamente: --no-verify-jwt
+# riproduce la configurazione attuale del progetto.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/**'
+      - '.github/workflows/supabase-deploy.yml'
+  workflow_dispatch:
+concurrency:
+  group: supabase-deploy
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      PROJECT_REF: ndwozjlasabsdfqcyeoy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Deploy production functions
+        run: |
+          for fn in \
+            rag-query ingest-eurlex-formex index-normative-documents \
+            verify-site-password start-demo gap-analysis ai-compliance-copilot \
+            process-document predictive-analytics generate-audit-document \
+            generate-policy generate-risk-register generate-benchmark \
+            generate-acn-report translate-content initialize-monitoring \
+            orchestrate-remediation generate-embedding extract-requirements \
+            balance-requirements cleanup-requirements restructure-chunks \
+            rag-eval continuous-monitoring-scan; do
+            echo "::group::$fn"
+            supabase functions deploy "$fn" --project-ref "$PROJECT_REF" --no-verify-jwt
+            echo "::endgroup::"
+          done
