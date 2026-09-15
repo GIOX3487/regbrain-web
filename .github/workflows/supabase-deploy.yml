@@ -26,6 +26,7 @@ jobs:
           version: latest
       - name: Deploy production functions
         run: |
+          failed=""
           for fn in \
             rag-query ingest-eurlex-formex index-normative-documents \
             verify-site-password start-demo gap-analysis ai-compliance-copilot \
@@ -36,6 +37,12 @@ jobs:
             balance-requirements cleanup-requirements restructure-chunks \
             rag-eval continuous-monitoring-scan; do
             echo "::group::$fn"
-            supabase functions deploy "$fn" --project-ref "$PROJECT_REF" --no-verify-jwt
+            if supabase functions deploy "$fn" --project-ref "$PROJECT_REF" --no-verify-jwt > "/tmp/$fn.log" 2>&1; then
+              cat "/tmp/$fn.log"; echo "::notice title=$fn::deploy ok"
+            else
+              cat "/tmp/$fn.log"; failed="$failed $fn"
+              echo "::error title=$fn::$(tail -c 600 "/tmp/$fn.log" | tr '\n' ' ')"
+            fi
             echo "::endgroup::"
           done
+          if [ -n "$failed" ]; then echo "::error::Deploy falliti:$failed"; exit 1; fi
