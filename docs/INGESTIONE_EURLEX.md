@@ -47,7 +47,10 @@ curl -X POST "$SUPABASE_URL/functions/v1/ingest-eurlex-formex" \
 
 `reset: true` con `offset: 0` cancella le unità precedenti dello stesso
 documento prima di reinserirle. Le chiamate successive (`offset` crescente)
-sono idempotenti per `chunk_key`.
+sono idempotenti per `chunk_key`. All'ultimo lotto (`done: true`) la funzione
+chiama `rebuild_embedding_indexes()`: gli indici HNSW perdono richiamo dopo
+cancellazioni e reinserimenti massivi e vanno ricostruiti, altrimenti la
+ricerca vettoriale restituisce vicini sbagliati.
 
 ## Stato al 15 settembre 2026
 

@@ -1399,14 +1399,16 @@ function groundingVerification(
               technicalTerms.join(",")
             }] but chunk only matches [${termsFoundInChunk.join(",")}]`,
           );
-          verifiedAnswer = verifiedAnswer.replace(
+          // Solo la frase incriminata perde il marker: le altre affermazioni
+          // che citano [N] restano verificabili singolarmente.
+          const cleanedSentence = sentence.replace(
             new RegExp(`\\s*\\[${num}\\]`, "g"),
             "",
           );
+          verifiedAnswer = verifiedAnswer.replace(sentence, cleanedSentence);
           removedClaims.push(
-            `[${num}] - thematic mismatch: key terms not in chunk`,
+            `[${num}] - thematic mismatch in one sentence: key terms not in chunk`,
           );
-          break;
         }
       }
     }
@@ -1809,7 +1811,7 @@ denoServe(protect(async (req) => {
           structuredQuery = structuredQuery.in("document_id", targetDocIds);
         }
 
-        const { data: structuredMatches } = await structuredQuery.limit(40);
+        const { data: structuredMatches } = await structuredQuery.limit(20);
         if (structuredMatches && structuredMatches.length > 0) {
           addChunks(
             structuredMatches.map((sc: any) => ({
@@ -2356,8 +2358,17 @@ denoServe(protect(async (req) => {
 
     scoredChunks.sort((a, b) => b.relevanceScore - a.relevanceScore);
 
-    // Pre-filter: take top 60 by keyword score for re-ranking
-    const preFiltered = scoredChunks.slice(0, 60);
+    // Pre-filter: i risultati della ricerca semantica passano sempre (sono al
+    // massimo 40 e sono i più pertinenti per significato), il resto del budget
+    // di 60 va ai candidati con il punteggio lessicale più alto.
+    const semanticHits = scoredChunks.filter((c) =>
+      c.source === "vector_gemini" || c.source?.startsWith("structured_vector_")
+    );
+    const semanticIds = new Set(semanticHits.map((c) => c.id));
+    const preFiltered = [
+      ...semanticHits.slice(0, 40),
+      ...scoredChunks.filter((c) => !semanticIds.has(c.id)),
+    ].slice(0, 60);
 
     // ── Step 5: Re-rank with Gemini Flash ─────────────────────────────
     // Adaptive chunk count based on question specificity

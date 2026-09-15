@@ -674,7 +674,16 @@ Deno.serve(async (req) => {
 
     const nextOffset = offset + slice.length;
     const done = nextOffset >= deduped.length;
+    // Dopo cancellazioni e reinserimenti massivi gli indici HNSW perdono
+    // richiamo: a fine ingestione vengono ricostruiti.
+    let indexesRebuilt = false;
+    if (done) {
+      const { error: reindexError } = await admin.rpc("rebuild_embedding_indexes");
+      if (reindexError) console.warn("[formex] ricostruzione indici fallita:", reindexError.message);
+      else indexesRebuilt = true;
+    }
     return json({
+      indexesRebuilt,
       success: true,
       ...stats,
       documentId,
