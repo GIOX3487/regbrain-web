@@ -25,7 +25,6 @@ max_client_conn = 100
 
 [realtime]
 enabled = true
-ip_version = "ipv4"
 tenant_id = ""
 
 [studio]
