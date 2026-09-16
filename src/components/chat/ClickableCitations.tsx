@@ -53,7 +53,7 @@ export const renderWithClickableCitations = (
                   }, 1800);
                 }
               }}
-              className="inline-flex items-center justify-center min-w-[0.75rem] h-3.5 px-0.5 mx-0.5 text-[8px] leading-none font-semibold rounded-sm bg-primary/15 text-primary hover:bg-primary hover:text-primary-foreground transition-colors cursor-pointer align-baseline"
+              className="citation-chip inline-flex items-center justify-center min-w-[1.25em] h-[1.25em] px-[0.3em] mx-[0.15em] text-[0.68em] leading-none font-semibold rounded bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground transition-colors cursor-pointer relative -top-[0.35em]"
               title={`Vai alla fonte normativa [${n}]`}
               aria-label={`Vai alla fonte ${n}`}
             >

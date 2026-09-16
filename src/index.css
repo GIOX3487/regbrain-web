@@ -131,6 +131,12 @@ All colors MUST be HSL.
     min-height: 44px;
   }
 
+  /* I marker di citazione [N] nel testo sono apici, non pulsanti: niente altezza minima da touch target */
+  .citation-chip {
+    min-height: 0;
+    vertical-align: baseline;
+  }
+
   /* Better mobile input focus */
   input, textarea, select {
     font-size: 16px !important; /* Prevents zoom on iOS */
