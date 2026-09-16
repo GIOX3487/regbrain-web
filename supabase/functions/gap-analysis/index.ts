@@ -2291,7 +2291,7 @@ denoServe(protect(async (req) => {
 
     const { data: assessment } = await supabase
       .from('compliance_assessments')
-      .select('id, annual_revenue_eur, scope_regulations, requirement_checks, status')
+      .select('id, annual_revenue_eur, scope_regulations, analysis_progress, status')
       .eq('id', assessmentId).eq('user_id', user.id).maybeSingle();
     if (!assessment) return errorResponse(404, 'Assessment not found');
 
