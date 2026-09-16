@@ -36,3 +36,11 @@ create policy "assessment_documents_owner_delete" on public.assessment_documents
 -- I default privilege del progetto non coprono le tabelle nuove: concessioni esplicite
 grant select, insert, update, delete on public.assessment_documents to service_role;
 grant select, delete on public.assessment_documents to authenticated;
+
+-- Embedding del requisito calcolato una volta sola e riusato da ogni analisi
+alter table public.regulatory_requirements
+  add column if not exists embedding vector(768);
+
+-- Avanzamento leggero dell'analisi, letto dalla pagina durante la verifica
+alter table public.compliance_assessments
+  add column if not exists analysis_progress jsonb;

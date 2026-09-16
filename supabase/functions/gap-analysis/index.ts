@@ -2152,9 +2152,16 @@ async function runWithConcurrency<T>(tasks: Array<() => Promise<T>>, limit: numb
 // MAIN HANDLER
 // ============================================================
 
-// Numero di requisiti valutati per invocazione: ogni chiamata resta sotto i limiti di esecuzione,
-// il client richiama la funzione con { continue: true } finché lo stato non è "completed".
-const SLICE_SIZE = 20;
+// Parametri di velocità. Una invocazione lavora finché resta tempo (BUDGET_MS) e poi
+// restituisce l'avanzamento: il client richiama con { continue: true } solo se serve.
+// I requisiti vengono valutati a gruppi; ogni gruppo è spezzato in chiamate AI piccole
+// eseguite in parallelo, perché il tempo di risposta dipende dai token prodotti per chiamata.
+const BUDGET_MS = 70000;
+const GROUP_SIZE = 36;
+const LLM_BATCH_SIZE = 3;
+const LLM_CONCURRENCY = 12;
+const EVIDENCE_CHARS = 4200;
+const SECTION_CHARS = 1100;
 
 interface AnalysisState {
   version: string;
@@ -2375,44 +2382,57 @@ denoServe(protect(async (req) => {
         documents_analyzed: readableDocuments.map(d => d.name),
       };
       if (cachedChecks) console.log('✅ CACHE HIT - reusing cached requirement checks');
-      await supabase.from('compliance_assessments').update({ requirement_checks: state, status: 'in_progress' }).eq('id', assessmentId);
+      await supabase.from('compliance_assessments').update({
+        requirement_checks: state,
+        analysis_progress: { done: state.checks.length, total: state.total, updated_at: now },
+        status: 'in_progress',
+      }).eq('id', assessmentId);
     }
 
     // ------------------------------------------------------------
-    // Valutazione documentale della tranche corrente
-    // ------------------------------------------------------------
-    const sliceIds = state.pending.slice(0, SLICE_SIZE);
-    const sliceRequirements = sliceIds.map(id => requirementById.get(id)).filter((r): r is RegulatoryRequirement => !!r);
+    // Valutazione documentale: setup una volta sola, poi gruppi di requisiti
+    // finché resta tempo nell'invocazione. Il client richiama con continue:true
+    // solo se il budget si esaurisce prima della fine.
+    const deadline = Date.now() + BUDGET_MS;
 
-    if (sliceRequirements.length > 0) {
+    if (state.pending.length > 0) {
       const userCorpus = readableDocuments.map(d => `${d.name} ${d.content}`.toLowerCase()).join(' \n ');
       const corpusNormalized = normalizeQuote(readableDocuments.map(d => d.content).join(' \n '));
-
-      // Sezioni dei documenti + embedding (persistiti per l'assessment)
       const geminiKey = Deno.env.get('GEMINI_API_KEY');
+      const aiKey = getAIKey();
+
+      // 1) Sezioni dei documenti + embedding (persistiti per l'assessment)
       const sections: EvidenceSection[] = [];
       for (const doc of readableDocuments) {
-        for (const s of splitIntoSections(`${doc.name}: ${doc.content}`, 600)) {
+        for (const s of splitIntoSections(`${doc.name}: ${doc.content}`, SECTION_CHARS)) {
           if (s.trim().length >= 50) sections.push({ text: s, norm: normalizeForMatch(s), docName: doc.name, embedding: null });
         }
       }
       if (geminiKey && sections.length > 0) {
+        const t0 = Date.now();
         try {
-          const { data: cached } = await supabase
-            .from('user_document_embeddings')
-            .select('section_text, embedding')
-            .eq('assessment_id', assessmentId);
           const cachedByText = new Map<string, number[]>();
-          for (const row of cached || []) {
-            let emb: any = row.embedding;
-            if (typeof emb === 'string') { try { emb = JSON.parse(emb); } catch { emb = null; } }
-            if (Array.isArray(emb) && emb.length === GAP_EMBEDDING_DIMENSIONS) cachedByText.set(row.section_text, emb);
+          for (let from = 0; ; from += 1000) {
+            const { data } = await supabase
+              .from('user_document_embeddings')
+              .select('section_text, embedding')
+              .eq('assessment_id', assessmentId)
+              .range(from, from + 999);
+            if (!data || data.length === 0) break;
+            for (const row of data) {
+              let emb: any = row.embedding;
+              if (typeof emb === 'string') { try { emb = JSON.parse(emb); } catch { emb = null; } }
+              if (Array.isArray(emb) && emb.length === GAP_EMBEDDING_DIMENSIONS) cachedByText.set(row.section_text, emb);
+            }
+            if (data.length < 1000) break;
           }
           const missing = sections.filter(s => !cachedByText.has(s.text));
           if (missing.length > 0) {
-            console.log(`📐 Generating ${missing.length} section embeddings (${sections.length - missing.length} cached)`);
+            console.log(`📐 ${sections.length} sezioni, ${missing.length} da vettorializzare`);
             const fresh = await generateBatchEmbeddingsForGap(geminiKey, missing.map(s => s.text));
             missing.forEach((s, i) => { s.embedding = fresh[i] || null; });
+            for (const s of sections) if (!s.embedding) s.embedding = cachedByText.get(s.text) || null;
+            // Scrittura in blocchi grandi e paralleli: su documenti corposi sono centinaia di righe
             await supabase.from('user_document_embeddings').delete().eq('assessment_id', assessmentId);
             const rows = sections.map((s, idx) => ({
               user_id: user.id,
@@ -2420,169 +2440,218 @@ denoServe(protect(async (req) => {
               document_name: s.docName,
               section_text: s.text,
               section_index: idx,
-              embedding: JSON.stringify(s.embedding || cachedByText.get(s.text) || []),
+              embedding: JSON.stringify(s.embedding || []),
             })).filter(r => r.embedding.length > 2);
-            for (let b = 0; b < rows.length; b += 20) {
-              await supabase.from('user_document_embeddings').insert(rows.slice(b, b + 20));
-            }
+            const chunks: any[][] = [];
+            for (let b = 0; b < rows.length; b += 150) chunks.push(rows.slice(b, b + 150));
+            await Promise.all(chunks.map(c => supabase.from('user_document_embeddings').insert(c)));
+          } else {
+            for (const s of sections) s.embedding = cachedByText.get(s.text) || null;
           }
-          for (const s of sections) if (!s.embedding) s.embedding = cachedByText.get(s.text) || null;
+          console.log(`📐 Embedding sezioni pronti in ${Date.now() - t0}ms (${sections.filter(s => s.embedding).length}/${sections.length})`);
         } catch (e) {
           console.error('Section embeddings unavailable, evidence selection will use keywords only:', e);
         }
       }
 
-      let reqEmbeddings: Array<number[] | null> = sliceRequirements.map(() => null);
+      // 2) Embedding dei requisiti: calcolati una volta e conservati nel catalogo
+      const reqEmbeddingById = new Map<string, number[]>();
       if (geminiKey && sections.some(s => s.embedding)) {
+        const t0 = Date.now();
         try {
-          reqEmbeddings = await generateBatchEmbeddingsForGap(
-            geminiKey,
-            sliceRequirements.map(r => `${r.reference}. ${r.description_it} ${evidenceExpectedFor(r)}`.substring(0, 4000)),
-          );
+          const { data: stored } = await supabase
+            .from('regulatory_requirements')
+            .select('requirement_id, embedding')
+            .in('requirement_id', applicableRequirements.map(r => r.id));
+          for (const row of stored || []) {
+            let emb: any = row.embedding;
+            if (typeof emb === 'string') { try { emb = JSON.parse(emb); } catch { emb = null; } }
+            if (Array.isArray(emb) && emb.length === GAP_EMBEDDING_DIMENSIONS) reqEmbeddingById.set(row.requirement_id, emb);
+          }
+          const missingReqs = applicableRequirements.filter(r => !reqEmbeddingById.has(r.id));
+          if (missingReqs.length > 0) {
+            const fresh = await generateBatchEmbeddingsForGap(
+              geminiKey,
+              missingReqs.map(r => `${r.reference}. ${r.description_it} ${evidenceExpectedFor(r)}`.substring(0, 4000)),
+            );
+            const updates: Array<Promise<unknown>> = [];
+            missingReqs.forEach((r, i) => {
+              const emb = fresh[i];
+              if (!emb) return;
+              reqEmbeddingById.set(r.id, emb);
+              // Il requisito può venire dal catalogo integrato: l'update semplicemente non tocca nulla
+              updates.push(supabase.from('regulatory_requirements').update({ embedding: JSON.stringify(emb) }).eq('requirement_id', r.id));
+            });
+            await Promise.all(updates);
+            console.log(`📐 Embedding requisiti: ${reqEmbeddingById.size - missingReqs.length} dalla cache, ${missingReqs.length} calcolati in ${Date.now() - t0}ms`);
+          }
         } catch (e) {
           console.error('Requirement embeddings failed:', e);
         }
       }
 
-      const keywordInfo = new Map<string, { covered: string[]; ratio: number }>();
-      for (const req of sliceRequirements) {
-        const covered = getCoveredKeywords(userCorpus, req.coverage_keywords);
-        const unique = Math.max(1, getUniqueKeywordCount(req.coverage_keywords));
-        keywordInfo.set(req.id, { covered, ratio: covered.length / unique });
-      }
+      // 3) Gruppi di requisiti finché resta tempo
+      let processedInThisRun = 0;
+      while (state.pending.length > 0 && Date.now() < deadline) {
+        const groupIds = state.pending.slice(0, GROUP_SIZE);
+        const groupRequirements = groupIds.map(id => requirementById.get(id)).filter((r): r is RegulatoryRequirement => !!r);
+        const tGroup = Date.now();
 
-      const aiKey = getAIKey();
-      const llmResults = new Map<string, any>();
-      if (aiKey) {
-        const BATCH_SIZE = 5;
-        const batches: Array<Array<{ req: RegulatoryRequirement; evidence: Array<{ docName: string; text: string }> }>> = [];
-        for (let i = 0; i < sliceRequirements.length; i += BATCH_SIZE) {
-          batches.push(sliceRequirements.slice(i, i + BATCH_SIZE).map((req) => {
-            const idx = sliceRequirements.indexOf(req);
-            const evidence = selectEvidenceForRequirement(req, reqEmbeddings[idx], sections, 6000)
-              .map(e => ({ docName: e.docName, text: e.text }));
-            return { req, evidence };
-          }));
-        }
-        const documentNames = readableDocuments.map(d => d.name);
-        const results = await runWithConcurrency(batches.map((batch) => async () => {
-          for (let attempt = 1; attempt <= 2; attempt++) {
-            try {
-              const map = await assessRequirementBatchWithLLM(aiKey, batch, normalizedLanguage, profile, documentNames);
-              if (map.size > 0) return map;
-              console.warn(`LLM batch returned no checks (attempt ${attempt})`);
-            } catch (e) {
-              console.error(`LLM batch failed (attempt ${attempt}):`, e instanceof Error ? e.message : e);
+        if (groupRequirements.length > 0) {
+          const keywordInfo = new Map<string, { covered: string[]; ratio: number }>();
+          for (const req of groupRequirements) {
+            const covered = getCoveredKeywords(userCorpus, req.coverage_keywords);
+            const unique = Math.max(1, getUniqueKeywordCount(req.coverage_keywords));
+            keywordInfo.set(req.id, { covered, ratio: covered.length / unique });
+          }
+
+          const llmResults = new Map<string, any>();
+          if (aiKey) {
+            const batches: Array<Array<{ req: RegulatoryRequirement; evidence: Array<{ docName: string; text: string }> }>> = [];
+            for (let i = 0; i < groupRequirements.length; i += LLM_BATCH_SIZE) {
+              batches.push(groupRequirements.slice(i, i + LLM_BATCH_SIZE).map((req) => ({
+                req,
+                evidence: selectEvidenceForRequirement(req, reqEmbeddingById.get(req.id) || null, sections, EVIDENCE_CHARS)
+                  .map(e => ({ docName: e.docName, text: e.text })),
+              })));
             }
+            const documentNames = readableDocuments.map(d => d.name);
+            const results = await runWithConcurrency(batches.map((batch) => async () => {
+              for (let attempt = 1; attempt <= 3; attempt++) {
+                try {
+                  const map = await assessRequirementBatchWithLLM(aiKey, batch, normalizedLanguage, profile, documentNames);
+                  if (map.size > 0) return map;
+                  console.warn(`LLM batch returned no checks (attempt ${attempt})`);
+                } catch (e) {
+                  const message = e instanceof Error ? e.message : String(e);
+                  console.error(`LLM batch failed (attempt ${attempt}):`, message);
+                  if (/ 429|rate limit/i.test(message)) await new Promise(r => setTimeout(r, 900 * attempt));
+                }
+              }
+              return new Map<string, any>();
+            }), LLM_CONCURRENCY);
+            for (const map of results) for (const [k, v] of map) llmResults.set(k, v);
+          } else if (processedInThisRun === 0) {
+            console.log('⚠️ AI key not available, using keyword rules only');
           }
-          return new Map<string, any>();
-        }), 4);
-        for (const map of results) for (const [k, v] of map) llmResults.set(k, v);
-        console.log(`🤖 LLM assessed ${llmResults.size}/${sliceRequirements.length} requirements in this slice`);
-      } else {
-        console.log('⚠️ AI key not available, using keyword rules only');
-      }
 
-      const allowedStatuses = new Set(['covered', 'partial', 'missing', 'not_applicable']);
-      const newChecks: RequirementCheck[] = sliceRequirements.map((req) => {
-        const kw = keywordInfo.get(req.id) || { covered: [], ratio: 0 };
-        const llm = llmResults.get(req.id);
-        const base = {
-          requirement_id: req.id,
-          regulation: req.regulation,
-          reference: req.reference,
-          description: isIt ? req.description_it : req.description_en,
-          severity: req.risk_level,
-          remediation_effort: req.remediation_effort,
-          conditional: !!req.conditional,
-          applicability_note: req.applicability_note_it || null,
-          keyword_coverage: Math.round(kw.ratio * 100) / 100,
-        };
+          const allowedStatuses = new Set(['covered', 'partial', 'missing', 'not_applicable']);
+          const newChecks: RequirementCheck[] = groupRequirements.map((req) => {
+            const kw = keywordInfo.get(req.id) || { covered: [], ratio: 0 };
+            const llm = llmResults.get(req.id);
+            const base = {
+              requirement_id: req.id,
+              regulation: req.regulation,
+              reference: req.reference,
+              description: isIt ? req.description_it : req.description_en,
+              severity: req.risk_level,
+              remediation_effort: req.remediation_effort,
+              conditional: !!req.conditional,
+              applicability_note: req.applicability_note_it || null,
+              keyword_coverage: Math.round(kw.ratio * 100) / 100,
+            };
 
-        if (llm && allowedStatuses.has(String(llm.status))) {
-          let status = String(llm.status) as CheckStatus;
-          const rawEvidence: any[] = Array.isArray(llm.evidence) ? llm.evidence : [];
-          const evidence = rawEvidence
-            .filter(e => e && typeof e.quote === 'string')
-            .map(e => ({ document: String(e.document || '').substring(0, 200), quote: String(e.quote).substring(0, 300) }))
-            .filter(e => quoteIsVerified(e.quote, corpusNormalized))
-            .slice(0, 5);
-          const missingElements: string[] = (Array.isArray(llm.missing_elements) ? llm.missing_elements : [])
-            .filter((m: any) => typeof m === 'string' && m.trim()).map((m: string) => m.trim().substring(0, 300)).slice(0, 8);
-          let actions: string[] = (Array.isArray(llm.recommended_actions) ? llm.recommended_actions : [])
-            .filter((a: any) => typeof a === 'string' && a.trim()).map((a: string) => a.trim().substring(0, 500)).slice(0, 3);
-          let assessmentText = typeof llm.assessment === 'string' ? llm.assessment.trim().substring(0, 1200) : '';
+            if (llm && allowedStatuses.has(String(llm.status))) {
+              let status = String(llm.status) as CheckStatus;
+              const rawEvidence: any[] = Array.isArray(llm.evidence) ? llm.evidence : [];
+              const evidence = rawEvidence
+                .filter(e => e && typeof e.quote === 'string')
+                .map(e => ({ document: String(e.document || '').substring(0, 200), quote: String(e.quote).substring(0, 300) }))
+                .filter(e => quoteIsVerified(e.quote, corpusNormalized))
+                .slice(0, 5);
+              const missingElements: string[] = (Array.isArray(llm.missing_elements) ? llm.missing_elements : [])
+                .filter((m: any) => typeof m === 'string' && m.trim()).map((m: string) => m.trim().substring(0, 300)).slice(0, 8);
+              let actions: string[] = (Array.isArray(llm.recommended_actions) ? llm.recommended_actions : [])
+                .filter((a: any) => typeof a === 'string' && a.trim()).map((a: string) => a.trim().substring(0, 500)).slice(0, 3);
+              let assessmentText = typeof llm.assessment === 'string' ? llm.assessment.trim().substring(0, 1200) : '';
 
-          if (status === 'covered' && evidence.length === 0) {
-            status = 'partial';
-            missingElements.unshift(isIt
-              ? 'Le evidenze indicate non sono state ritrovate testualmente nei documenti: verificare che il contenuto sia effettivamente presente.'
-              : 'The cited evidence could not be found verbatim in the documents: verify that the content is actually present.');
-          }
-          if (status === 'not_applicable' && !req.conditional) status = 'missing';
-          if (req.conditional && status === 'missing' && evidence.length === 0) status = 'to_verify';
+              if (status === 'covered' && evidence.length === 0) {
+                status = 'partial';
+                missingElements.unshift(isIt
+                  ? 'Le evidenze indicate non sono state ritrovate testualmente nei documenti: verificare che il contenuto sia effettivamente presente.'
+                  : 'The cited evidence could not be found verbatim in the documents: verify that the content is actually present.');
+              }
+              if (status === 'not_applicable' && !req.conditional) status = 'missing';
+              if (req.conditional && status === 'missing' && evidence.length === 0) status = 'to_verify';
 
-          if (actions.length === 0 && (status === 'missing' || status === 'partial')) {
-            actions = [isIt ? req.recommended_action_it : req.recommended_action_en].filter(Boolean);
-          }
-          if (!assessmentText) {
-            assessmentText = status === 'missing'
-              ? (isIt ? 'Nessuna documentazione pertinente individuata nei documenti caricati.' : 'No relevant documentation found in the uploaded documents.')
-              : status === 'to_verify'
-              ? (isIt ? 'Dalla documentazione non risulta se il requisito si applica all\'organizzazione.' : 'The documentation does not show whether the requirement applies to the organisation.')
-              : '';
-          }
-          return {
-            ...base,
-            status,
-            risk_level: riskProfileFor(req.risk_level, status),
-            assessment: assessmentText,
-            evidence,
-            missing_elements: missingElements,
-            recommended_actions: actions,
-            confidence: typeof llm.confidence === 'number' ? Math.max(0, Math.min(1, llm.confidence)) : null,
-            method: 'llm_evidence' as const,
-          };
+              if (actions.length === 0 && (status === 'missing' || status === 'partial')) {
+                actions = [isIt ? req.recommended_action_it : req.recommended_action_en].filter(Boolean);
+              }
+              if (!assessmentText) {
+                assessmentText = status === 'missing'
+                  ? (isIt ? 'Nessuna documentazione pertinente individuata nei documenti caricati.' : 'No relevant documentation found in the uploaded documents.')
+                  : status === 'to_verify'
+                  ? (isIt ? 'Dalla documentazione non risulta se il requisito si applica all\'organizzazione.' : 'The documentation does not show whether the requirement applies to the organisation.')
+                  : '';
+              }
+              return {
+                ...base,
+                status,
+                risk_level: riskProfileFor(req.risk_level, status),
+                assessment: assessmentText,
+                evidence,
+                missing_elements: missingElements,
+                recommended_actions: actions,
+                confidence: typeof llm.confidence === 'number' ? Math.max(0, Math.min(1, llm.confidence)) : null,
+                method: 'llm_evidence' as const,
+              };
+            }
+
+            // Fallback deterministico a parole chiave
+            const threshold = req.coverage_threshold || 0.10;
+            const minMatches = req.min_keyword_matches || 1;
+            const covered = kw.covered.length >= minMatches && kw.ratio >= threshold;
+            let status: CheckStatus = covered ? 'covered' : 'missing';
+            if (!covered && req.conditional && kw.covered.length === 0) status = 'to_verify';
+            return {
+              ...base,
+              status,
+              risk_level: riskProfileFor(req.risk_level, status),
+              assessment: covered
+                ? (isIt
+                  ? `Nei documenti caricati compaiono riferimenti al tema (${kw.covered.slice(0, 5).join(', ')}). Verifica basata su parole chiave: controllare che il contenuto sia completo.`
+                  : `The uploaded documents refer to the topic (${kw.covered.slice(0, 5).join(', ')}). Keyword-based check: verify that the content is complete.`)
+                : kw.covered.length > 0
+                ? (isIt
+                  ? `Documentazione parziale: compaiono solo alcuni riferimenti (${kw.covered.join(', ')}).`
+                  : `Partial documentation: only some references appear (${kw.covered.join(', ')}).`)
+                : (isIt ? 'Nessuna documentazione pertinente individuata nei documenti caricati.' : 'No relevant documentation found in the uploaded documents.'),
+              evidence: [],
+              missing_elements: covered ? [] : [isIt ? req.gap_description_it : req.gap_description_en].filter(Boolean),
+              recommended_actions: covered ? [] : [isIt ? req.recommended_action_it : req.recommended_action_en].filter(Boolean),
+              confidence: null,
+              method: 'keyword' as const,
+            };
+          });
+
+          const done = new Set(newChecks.map(c => c.requirement_id));
+          state.checks = [...state.checks.filter(c => !done.has(c.requirement_id)), ...newChecks];
+          processedInThisRun += newChecks.length;
         }
 
-        // Fallback deterministico a parole chiave
-        const threshold = req.coverage_threshold || 0.10;
-        const minMatches = req.min_keyword_matches || 1;
-        const covered = kw.covered.length >= minMatches && kw.ratio >= threshold;
-        let status: CheckStatus = covered ? 'covered' : 'missing';
-        if (!covered && req.conditional && kw.covered.length === 0) status = 'to_verify';
-        return {
-          ...base,
-          status,
-          risk_level: riskProfileFor(req.risk_level, status),
-          assessment: covered
-            ? (isIt
-              ? `Nei documenti caricati compaiono riferimenti al tema (${kw.covered.slice(0, 5).join(', ')}). Verifica basata su parole chiave: controllare che il contenuto sia completo.`
-              : `The uploaded documents refer to the topic (${kw.covered.slice(0, 5).join(', ')}). Keyword-based check: verify that the content is complete.`)
-            : kw.covered.length > 0
-            ? (isIt
-              ? `Documentazione parziale: compaiono solo alcuni riferimenti (${kw.covered.join(', ')}).`
-              : `Partial documentation: only some references appear (${kw.covered.join(', ')}).`)
-            : (isIt ? 'Nessuna documentazione pertinente individuata nei documenti caricati.' : 'No relevant documentation found in the uploaded documents.'),
-          evidence: [],
-          missing_elements: covered ? [] : [isIt ? req.gap_description_it : req.gap_description_en].filter(Boolean),
-          recommended_actions: covered ? [] : [isIt ? req.recommended_action_it : req.recommended_action_en].filter(Boolean),
-          confidence: null,
-          method: 'keyword' as const,
-        };
-      });
+        state.pending = state.pending.slice(groupIds.length);
+        state.updated_at = new Date().toISOString();
+        console.log(`✓ ${groupRequirements.length} requisiti in ${Date.now() - tGroup}ms (${state.checks.length}/${state.total})`);
 
-      const done = new Set(newChecks.map(c => c.requirement_id));
-      state.checks = [...state.checks.filter(c => !done.has(c.requirement_id)), ...newChecks];
+        // Avanzamento salvato a ogni gruppo: se la chiamata cade, l'analisi riprende da qui
+        if (state.pending.length > 0) {
+          await supabase.from('compliance_assessments').update({
+            requirement_checks: state,
+            analysis_progress: { done: state.checks.length, total: state.total, updated_at: state.updated_at },
+          }).eq('id', assessmentId);
+        }
+      }
     }
 
-    // Requisiti in pending non più presenti nel catalogo vengono semplicemente saltati
-    state.pending = state.pending.filter(id => !sliceIds.includes(id));
     state.updated_at = new Date().toISOString();
 
     if (state.pending.length > 0) {
-      await supabase.from('compliance_assessments').update({ requirement_checks: state, status: 'in_progress' }).eq('id', assessmentId);
-      console.log(`Slice done: ${state.checks.length}/${state.total} checks, ${state.pending.length} pending`);
+      await supabase.from('compliance_assessments').update({
+        requirement_checks: state,
+        analysis_progress: { done: state.checks.length, total: state.total, updated_at: state.updated_at },
+        status: 'in_progress',
+      }).eq('id', assessmentId);
+      console.log(`Invocazione conclusa: ${state.checks.length}/${state.total} verificati, ${state.pending.length} rimanenti`);
       return new Response(JSON.stringify({
         success: true,
         status: 'in_progress',
@@ -2716,6 +2785,7 @@ denoServe(protect(async (req) => {
       overall_risk_score: overallRisk,
       overall_compliance_percentage: overallCompliance,
       requirement_checks: finalState,
+      analysis_progress: { done: checks.length, total: checks.length, updated_at: new Date().toISOString() },
       status: 'completed',
       completed_at: new Date().toISOString(),
     }).eq('id', assessmentId);
@@ -3108,56 +3178,54 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return denominator === 0 ? 0 : dotProduct / denominator;
 }
 
+// Embedding a lotti: l'API accetta fino a 100 testi per richiesta e i lotti vanno in parallelo.
+// Su documenti reali (centinaia di sezioni) questo è il punto che determina il tempo di avvio.
 async function generateBatchEmbeddingsForGap(apiKey: string, texts: string[]): Promise<number[][]> {
   const cleaned = texts.map(t => t.replace(/\n+/g, ' ').trim().substring(0, 8000));
-  const batchSize = 20;
-  const allEmbeddings: number[][] = [];
+  const BATCH = 100;
+  const CONCURRENCY = 4;
 
-  for (let i = 0; i < cleaned.length; i += batchSize) {
-    const batch = cleaned.slice(i, i + batchSize);
+  const batches: Array<{ index: number; texts: string[] }> = [];
+  for (let i = 0; i < cleaned.length; i += BATCH) batches.push({ index: i, texts: cleaned.slice(i, i + BATCH) });
 
-    const requests = batch.map(text => ({
+  const results: number[][][] = new Array(batches.length);
+
+  const runBatch = async (batchIdx: number) => {
+    const batch = batches[batchIdx];
+    const requests = batch.texts.map(text => ({
       model: 'models/gemini-embedding-001',
       content: { parts: [{ text }] },
       outputDimensionality: GAP_EMBEDDING_DIMENSIONS,
     }));
-
-    let retries = 0;
-    let success = false;
-    while (retries < 3 && !success) {
+    for (let attempt = 1; attempt <= 4; attempt++) {
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:batchEmbedContents?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ requests }),
-        }
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requests }) },
       );
-
       if (response.ok) {
         const data = await response.json();
-        for (const emb of data.embeddings) {
-          allEmbeddings.push(emb.values);
-        }
-        success = true;
-      } else if (response.status === 429) {
-        retries++;
-        const waitSec = 5 * retries;
-        console.log(`⏳ Embedding rate limited, waiting ${waitSec}s (retry ${retries}/3)...`);
-        await response.text();
-        await new Promise(r => setTimeout(r, waitSec * 1000));
-      } else {
-        const err = await response.text();
-        throw new Error(`Gemini Embedding API error ${response.status}: ${err}`);
+        results[batchIdx] = (data.embeddings || []).map((e: any) => e.values);
+        return;
       }
+      const errText = await response.text();
+      if (response.status === 429 || response.status >= 500) {
+        const waitMs = Math.min(8000, 700 * Math.pow(2, attempt - 1));
+        console.log(`⏳ Embedding ${response.status}, retry ${attempt}/4 tra ${waitMs}ms`);
+        await new Promise(r => setTimeout(r, waitMs));
+        continue;
+      }
+      throw new Error(`Gemini Embedding API error ${response.status}: ${errText.substring(0, 200)}`);
     }
-    if (!success) throw new Error('Max retries exceeded for gap analysis embedding');
+    throw new Error('Max retries exceeded for gap analysis embedding');
+  };
 
-    // Small delay between batches
-    if (i + batchSize < cleaned.length) {
-      await new Promise(r => setTimeout(r, 500));
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, batches.length) }, async () => {
+    while (next < batches.length) {
+      const idx = next++;
+      await runBatch(idx);
     }
-  }
+  }));
 
-  return allEmbeddings;
+  return results.flat();
 }

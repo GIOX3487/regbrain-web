@@ -46,6 +46,7 @@ interface Assessment {
   completed_at: string;
   annual_revenue_eur?: number;
   requirement_checks?: RequirementChecksPayload | null;
+  analysis_progress?: { done: number; total: number; updated_at?: string } | null;
 }
 
 interface RequirementCheck {
@@ -700,8 +701,9 @@ export default function AssessmentDetail() {
     const timer = setInterval(() => {
       loadAssessment(true);
       const payload = assessment.requirement_checks as RequirementChecksPayload | null;
+      const lastBeat = assessment.analysis_progress?.updated_at || payload?.updated_at;
       const stale = payload?.status === 'in_progress' && Array.isArray(payload.pending) && payload.pending.length > 0
-        && payload.updated_at && Date.now() - Date.parse(payload.updated_at) > 45000;
+        && lastBeat && Date.now() - Date.parse(lastBeat) > 40000;
       if (stale && !resumingRef.current) resumeAnalysis();
     }, 5000);
     return () => clearInterval(timer);
@@ -1646,6 +1648,8 @@ export default function AssessmentDetail() {
   const overallProfile: RiskProfile = overallRiskProfile(gaps);
   const profileLabel: Record<RiskProfile, string> = { high: t.riskHigh, medium: t.riskMedium, low: t.riskLow, none: t.riskNone };
   const analysisInProgress = assessment.status !== 'completed';
+  const progressDone = assessment.analysis_progress?.done ?? checks.length;
+  const progressTotal = assessment.analysis_progress?.total ?? checksPayload?.total ?? 0;
 
   return (
     <div className="min-h-screen bg-background">
@@ -1722,14 +1726,14 @@ export default function AssessmentDetail() {
                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary shrink-0"></div>
                 <p className="text-sm flex-1">
                   {t.analysisInProgress}
-                  {checksPayload?.total ? ` ${checks.length} / ${checksPayload.total}` : ''}
+                  {progressTotal ? ` ${progressDone} / ${progressTotal}` : ''}
                 </p>
                 {!resuming && checksPayload?.status === 'in_progress' && (
                   <Button size="sm" variant="outline" onClick={resumeAnalysis}>{t.resumeAnalysis}</Button>
                 )}
               </div>
-              {checksPayload?.total ? (
-                <Progress value={Math.round((checks.length / Math.max(1, checksPayload.total)) * 100)} />
+              {progressTotal ? (
+                <Progress value={Math.round((progressDone / Math.max(1, progressTotal)) * 100)} />
               ) : null}
             </CardContent>
           </Card>

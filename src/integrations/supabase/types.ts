@@ -349,6 +349,7 @@ export type Database = {
       }
       compliance_assessments: {
         Row: {
+          analysis_progress: Json | null
           annual_revenue_eur: number | null
           assessment_type: string
           completed_at: string | null
@@ -367,6 +368,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          analysis_progress?: Json | null
           annual_revenue_eur?: number | null
           assessment_type: string
           completed_at?: string | null
@@ -385,6 +387,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          analysis_progress?: Json | null
           annual_revenue_eur?: number | null
           assessment_type?: string
           completed_at?: string | null

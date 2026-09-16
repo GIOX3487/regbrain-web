@@ -180,24 +180,43 @@ export default function NewAssessment() {
         if (!response.ok) throw new Error(data?.error || `Errore ${response.status}`);
         return data as { status: 'in_progress' | 'completed'; progress?: { done: number; total: number }; unreadable_documents?: string[] };
       };
+      let analysisResult: { status: 'in_progress' | 'completed'; progress?: { done: number; total: number } } = { status: 'in_progress' };
 
       toast({
         title: "Analisi avviata",
         description: "Lettura dei documenti e verifica dei requisiti in corso. Non chiudere la pagina.",
       });
 
-      let result = await callAnalysis({
-        userDocuments: safeDocuments,
-        regulations: formData.scope_regulations,
-        language,
-      });
-      setProgress(result.progress || null);
-      let guard = 0;
-      while (result.status === 'in_progress' && guard < 60) {
-        guard++;
-        result = await callAnalysis({ continue: true });
+      // L'avanzamento viene salvato dalla funzione a ogni gruppo di requisiti:
+      // lo leggiamo mentre la chiamata è ancora in corso, così la barra si muove.
+      const progressPoller = setInterval(async () => {
+        const { data } = await supabase
+          .from('compliance_assessments')
+          .select('analysis_progress')
+          .eq('id', assessment.id)
+          .maybeSingle();
+        const p = (data?.analysis_progress || null) as { done: number; total: number } | null;
+        if (p && typeof p.done === 'number' && typeof p.total === 'number') setProgress(p);
+      }, 3000);
+
+      try {
+        let result = await callAnalysis({
+          userDocuments: safeDocuments,
+          regulations: formData.scope_regulations,
+          language,
+        });
         setProgress(result.progress || null);
+        let guard = 0;
+        while (result.status === 'in_progress' && guard < 20) {
+          guard++;
+          result = await callAnalysis({ continue: true });
+          setProgress(result.progress || null);
+        }
+        analysisResult = result;
+      } finally {
+        clearInterval(progressPoller);
       }
+      const result = analysisResult;
 
       if (result.status === 'completed') {
         const { data: gaps } = await supabase
