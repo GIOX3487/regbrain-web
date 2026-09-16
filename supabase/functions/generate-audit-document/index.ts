@@ -556,8 +556,14 @@ async function doGenerateDocument(supabase: any, params: {
       const minacce = documentContent.section_7_valutazione_rischio?.valutazione_minacce || [];
       const allMinacceText = JSON.stringify(minacce).toLowerCase();
       
-      for (let gIdx = 0; gIdx < assessment.identified_gaps.length; gIdx++) {
-        const gap = assessment.identified_gaps[gIdx];
+      // Con il catalogo completo i gap possono essere molte decine: solo i più gravi
+      // diventano minacce esplicite, altrimenti la valutazione del rischio diventa illeggibile.
+      const dpiaGapRank: Record<string, number> = { critical: 0, high: 0, medium: 1, low: 2 };
+      const dpiaGaps = [...assessment.identified_gaps]
+        .sort((a: any, b: any) => (dpiaGapRank[String(a.risk_level).toLowerCase()] ?? 3) - (dpiaGapRank[String(b.risk_level).toLowerCase()] ?? 3) || (a.priority || 9) - (b.priority || 9))
+        .slice(0, 25);
+      for (let gIdx = 0; gIdx < dpiaGaps.length; gIdx++) {
+        const gap = dpiaGaps[gIdx];
         const gapNum = gIdx + 1;
         const gapRef = gap.requirement_reference || '';
         const gapRefLower = gapRef.toLowerCase();
@@ -2606,7 +2612,8 @@ function getSectorActivities(sector: string): string {
 function buildGapRiskMapping(gaps: any[]): string {
   if (!gaps || gaps.length === 0) return '';
 
-  const criticalHighGaps = gaps.filter((g: any) => g.risk_level === 'critical' || g.risk_level === 'high');
+  // Cap: con il catalogo completo i gap ad alto rischio possono essere decine
+  const criticalHighGaps = gaps.filter((g: any) => g.risk_level === 'critical' || g.risk_level === 'high').slice(0, 20);
   
   let mapping = `\n\n## COLLEGAMENTO GAP → VALUTAZIONE RISCHIO
 
@@ -2642,7 +2649,7 @@ ISTRUZIONI OBBLIGATORIE: Le minacce e il livello di rischio nella Sezione 7 DEVO
   if (criticalHighGaps.length > 0) {
     mapping += `\n### GAP CRITICI/ALTI CHE RICHIEDONO MINACCE CORRISPONDENTI:\n`;
     for (const gap of criticalHighGaps) {
-      mapping += `- [${gap.risk_level.toUpperCase()}] ${gap.requirement_reference}: "${gap.gap_description}" -> DEVE esserci una minaccia corrispondente\n`;
+      mapping += `- [${gap.risk_level.toUpperCase()}] ${gap.requirement_reference}: "${String(gap.gap_description || '').substring(0, 300)}" -> DEVE esserci una minaccia corrispondente\n`;
       mapping += `  Azioni raccomandate (da usare come "Misure da applicare"): ${formatMitigationActionsForPrompt(gap.recommended_actions)}\n`;
     }
   }
@@ -2680,7 +2687,15 @@ function buildDocumentPrompt(type: string, assessment: any, profile: any, conver
     const l = String(level || '').toLowerCase();
     return l === 'critical' || l === 'high' ? 'ALTO (rosso)' : l === 'medium' ? 'MEDIO (arancione)' : 'BASSO (giallo)';
   };
-  const gapsSection = assessment.identified_gaps?.map((gap: any, i: number) => `
+  // Con il catalogo completo un assessment multi-normativa produce molti gap:
+  // il prompt riporta per intero i più gravi e in forma sintetica i restanti.
+  const allGaps: any[] = Array.isArray(assessment.identified_gaps) ? [...assessment.identified_gaps] : [];
+  const riskRank: Record<string, number> = { critical: 0, high: 0, medium: 1, low: 2 };
+  allGaps.sort((a, b) => (riskRank[String(a.risk_level).toLowerCase()] ?? 3) - (riskRank[String(b.risk_level).toLowerCase()] ?? 3) || (a.priority || 9) - (b.priority || 9));
+  const GAPS_IN_FULL = 45;
+  const detailedGaps = allGaps.slice(0, GAPS_IN_FULL);
+  const remainingGaps = allGaps.slice(GAPS_IN_FULL);
+  const gapsSection = (detailedGaps.map((gap: any, i: number) => `
 ### Gap ${i + 1}: ${gap.requirement_reference}
 - Cosa manca: ${gap.gap_description}
 - Cosa risulta dai documenti: ${gap.current_state || 'Nessuna documentazione pertinente'}
@@ -2690,7 +2705,10 @@ function buildDocumentPrompt(type: string, assessment: any, profile: any, conver
 - Effort: ${gap.remediation_effort || 'Da valutare'}
 ${Array.isArray(gap.evidence) && gap.evidence.length > 0 ? `- Evidenze trovate: ${gap.evidence.map((e: any) => `[${e.document}] "${e.quote}"`).join(' | ')}` : ''}
 - Azioni Raccomandate: ${formatMitigationActionsForPrompt(gap.recommended_actions)}
-`).join('\n') || 'Nessun gap identificato';
+`).join('\n') || 'Nessun gap identificato') + (remainingGaps.length > 0 ? `
+
+### Altri ${remainingGaps.length} gap (in forma sintetica, da riportare comunque nel report)
+${remainingGaps.map((g: any) => `- ${g.requirement_reference} | rischio ${riskLabel(g.risk_level)} | ${g.coverage_status === 'partial' ? 'parziale' : 'assente'} | manca: ${String(g.gap_description || '').substring(0, 200)} | azione: ${formatMitigationActionsForPrompt(g.recommended_actions).substring(0, 200)}`).join('\n')}` : '');
 
   const checksPayload = assessment.requirement_checks && typeof assessment.requirement_checks === 'object' ? assessment.requirement_checks : null;
   const allChecks: any[] = Array.isArray(checksPayload?.checks) ? checksPayload.checks : [];
@@ -2704,13 +2722,13 @@ Documenti analizzati: ${(checksPayload?.documents_analyzed || []).join(', ') || 
 ${(checksPayload?.unreadable_documents || []).length > 0 ? `Documenti esclusi perché non leggibili: ${checksPayload.unreadable_documents.join(', ')}` : ''}
 
 ### Requisiti documentati
-${coveredChecks.map((c: any) => `- ${c.reference}: ${c.assessment || 'documentato'}${Array.isArray(c.evidence) && c.evidence.length > 0 ? ` (evidenza: [${c.evidence[0].document}] "${String(c.evidence[0].quote).substring(0, 160)}")` : ''}`).join('\n') || '- nessuno'}
+${coveredChecks.slice(0, 60).map((c: any) => `- ${c.reference}: ${String(c.assessment || 'documentato').substring(0, 300)}${Array.isArray(c.evidence) && c.evidence.length > 0 ? ` (evidenza: [${c.evidence[0].document}] "${String(c.evidence[0].quote).substring(0, 160)}")` : ''}`).join('\n') || '- nessuno'}${coveredChecks.length > 60 ? `\n- e altri ${coveredChecks.length - 60} requisiti documentati` : ''}
 
 ### Requisiti da verificare (obblighi condizionali, applicabilità non chiara dai documenti)
-${toVerifyChecks.map((c: any) => `- ${c.reference}: ${c.assessment || ''}`).join('\n') || '- nessuno'}
+${toVerifyChecks.slice(0, 60).map((c: any) => `- ${c.reference}: ${String(c.assessment || '').substring(0, 240)}`).join('\n') || '- nessuno'}${toVerifyChecks.length > 60 ? `\n- e altri ${toVerifyChecks.length - 60} requisiti da verificare` : ''}
 
 ### Requisiti non applicabili
-${notApplicableChecks.map((c: any) => `- ${c.reference}: ${c.assessment || ''}`).join('\n') || '- nessuno'}
+${notApplicableChecks.slice(0, 40).map((c: any) => `- ${c.reference}: ${String(c.assessment || '').substring(0, 200)}`).join('\n') || '- nessuno'}${notApplicableChecks.length > 40 ? `\n- e altri ${notApplicableChecks.length - 40} requisiti non applicabili` : ''}
 ` : '';
 
   const userDocsSection = userDocumentsSummary ? `
@@ -2725,7 +2743,8 @@ REGOLA: Se un documento dell'utente contiene informazioni rilevanti (es. una pri
   const gapDocEvidence = !userDocumentsSummary ? (() => {
     const evidences = (assessment.identified_gaps || [])
       .filter((g: any) => g.current_state && g.current_state !== 'Non documentato' && g.current_state.length > 20)
-      .map((g: any) => `- ${g.requirement_reference}: ${g.current_state}`);
+      .slice(0, 50)
+      .map((g: any) => `- ${g.requirement_reference}: ${String(g.current_state).substring(0, 300)}`);
     if (evidences.length === 0) return '';
     return `
 
@@ -2761,7 +2780,7 @@ REGOLE PER QUESTA ORIGINE:
 - Stato: ${assessment.status}
 - Data Completamento: ${assessment.completed_at || 'In corso'}
 
-## GAP IDENTIFICATI (${assessment.identified_gaps?.length || 0} totali)
+## GAP IDENTIFICATI (${allGaps.length} totali)
 ${gapsSection}${checksSection}`}
 ${userDocsSection}${gapDocEvidence}
 ${conversation ? `## ${assessment._source === 'chat' ? 'CONVERSAZIONE CON L\'UTENTE (fonte primaria)' : 'CONTESTO AGGIUNTIVO'}:\n${conversation}\n` : ''}`;

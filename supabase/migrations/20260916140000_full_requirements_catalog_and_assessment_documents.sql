@@ -32,3 +32,7 @@ drop policy if exists "assessment_documents_owner_delete" on public.assessment_d
 create policy "assessment_documents_owner_delete" on public.assessment_documents
   for delete to authenticated using (user_id = auth.uid());
 -- inserimenti e aggiornamenti avvengono solo dalla funzione edge con service role
+
+-- I default privilege del progetto non coprono le tabelle nuove: concessioni esplicite
+grant select, insert, update, delete on public.assessment_documents to service_role;
+grant select, delete on public.assessment_documents to authenticated;
