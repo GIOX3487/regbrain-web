@@ -1981,17 +1981,19 @@ function normalizeQuote(text: string): string {
     .trim();
 }
 
-// Una citazione è verificata se compare nei documenti (intera, oppure una finestra di 6 parole consecutive)
+// Una citazione è verificata solo se ogni suo tratto compare alla lettera nei documenti.
+// Le omissioni segnalate con [...] sono ammesse: ogni segmento viene controllato per intero,
+// così nessuna parte della frase mostrata all'utente può essere inventata.
 function quoteIsVerified(quote: string, corpusNormalized: string): boolean {
-  const q = normalizeQuote(quote);
-  if (q.length < 12) return false;
-  if (corpusNormalized.includes(q)) return true;
-  const words = q.split(' ').filter(Boolean);
-  if (words.length < 6) return false;
-  for (let i = 0; i + 6 <= words.length; i++) {
-    if (corpusNormalized.includes(words.slice(i, i + 6).join(' '))) return true;
-  }
-  return false;
+  const raw = String(quote || '');
+  if (normalizeQuote(raw).length < 12) return false;
+  const segments = raw
+    .split(/\[\s*(?:\.{3}|…)\s*\]|\.{3}|…/)
+    .map(normalizeQuote)
+    .filter(s => s.split(' ').filter(Boolean).length >= 4);
+  if (segments.length === 0) return false;
+  if (!segments.some(s => s.split(' ').filter(Boolean).length >= 6)) return false;
+  return segments.every(s => corpusNormalized.includes(s));
 }
 
 // Frasi che non provano nulla: autodichiarazioni di conformità e impegni per il futuro.
@@ -2098,7 +2100,7 @@ Campo "applicability": riguarda SOLO se l'obbligo ricade sull'organizzazione, no
 - "non_determinabile": requisito condizionale e gli estratti non dicono nulla sulla condizione. Non dedurre l'applicabilità dal settore o dalla forma giuridica dell'organizzazione.
 
 Regole sulle prove:
-- Ogni citazione in evidence deve essere copiata parola per parola da un estratto (massimo 200 caratteri) e attribuita al file corretto.
+- Ogni citazione in evidence deve essere copiata parola per parola da un estratto (massimo 200 caratteri) e attribuita al file corretto. Se ometti una parte segnala l'omissione con [...]: anche i tratti prima e dopo devono restare identici all'originale, parola per parola. Non correggere, non riassumere e non unire frasi di documenti diversi.
 - Il nome di un file non è una prova del suo contenuto. Testo illeggibile, codice binario o metadati di file non sono evidenze.
 - NON sono prove, e non vanno mai citate in evidence: le dichiarazioni generiche di conformità ("l'azienda è pienamente conforme al GDPR", "adottiamo tutte le misure previste"), i rimandi ad articoli di legge senza descrizione della misura adottata, e gli annunci di attività future o non concluse ("documento in corso di redazione", "sarà completato entro"). Un impegno non è una misura attuata: se l'unica cosa che risulta è un impegno, lo status è "missing" e l'impegno va descritto in "assessment", non in "evidence".
 - Una citazione è pertinente solo se descrive una misura, una procedura o un dato concreto riferibile a questo requisito. Se l'unico estratto disponibile riguarda un altro argomento, non citarlo: lascia evidence vuoto.
