@@ -1291,6 +1291,11 @@ function formatBoldTitlesOnOwnLine(text: string | null | undefined): string {
       const index = match.index ?? -1;
 
       if (index < 0 || !isLikelySectionTitle(titleText)) continue;
+      // Only a bold segment that IS the whole line is a section title. Inline bold inside a
+      // sentence ("un massimo di **7.000.000 EUR** o...") must never be broken onto its own line.
+      const beforeText = line.slice(0, index).trim();
+      const afterText = line.slice(index + full.length).trim();
+      if (beforeText || (afterText && afterText !== ":")) continue;
 
       const before = line.slice(cursor, index).trim();
       if (before) output.push(before);
@@ -1969,6 +1974,8 @@ denoServe(protect(async (req) => {
     let targetDocIds: string[] = [];
     const dlgs138DocIds = new Set<string>();
     const acnDeterminationDocIds = new Set<string>();
+    // Documents of each regulation named in the question (used to guarantee coverage in comparisons)
+    const docIdsByRegulation = new Map<string, Set<string>>();
 
     if (detectedConfigs.length > 0) {
       for (const config of detectedConfigs) {
@@ -1979,6 +1986,9 @@ denoServe(protect(async (req) => {
             .ilike("title", `%${term}%`)
             .limit(10);
           if (docs) {
+            const regKey = config.searchTerms[0];
+            if (!docIdsByRegulation.has(regKey)) docIdsByRegulation.set(regKey, new Set());
+            docs.forEach((d) => docIdsByRegulation.get(regKey)!.add(d.id));
             targetDocIds.push(...docs.map((d) => d.id));
             if (docs.length > 0) {
               console.log(
@@ -2744,6 +2754,45 @@ denoServe(protect(async (req) => {
         round++;
       }
       selected = balanced;
+    }
+
+    // Comparison questions name two or more regulations: make sure each one keeps enough
+    // material in the context, otherwise the reranker lets the dominant one crowd the other out
+    // and the answer falls back to recitals for the second regulation.
+    if (docIdsByRegulation.size >= 2) {
+      const MIN_PER_REGULATION = 6;
+      const selectedIdsNow = new Set(selected.map((c) => c.id));
+      const countFor = (ids: Set<string>) => selected.filter((c) => ids.has(c.document_id)).length;
+      for (const [regKey, ids] of docIdsByRegulation) {
+        let have = countFor(ids);
+        if (have >= MIN_PER_REGULATION) continue;
+        const candidates = preFiltered.filter((c) => ids.has(c.document_id) && !selectedIdsNow.has(c.id));
+        for (const c of candidates) {
+          if (have >= MIN_PER_REGULATION) break;
+          selected.push(c);
+          selectedIdsNow.add(c.id);
+          have++;
+        }
+        console.log(`Coverage: ${regKey} now has ${have} chunk(s) in context`);
+      }
+      if (selected.length > MAX_CHUNKS) {
+        // Drop the weakest chunks of the most represented regulation until we are back within budget
+        while (selected.length > MAX_CHUNKS) {
+          let dominant: Set<string> | null = null;
+          let dominantCount = 0;
+          for (const ids of docIdsByRegulation.values()) {
+            const n = countFor(ids);
+            if (n > dominantCount) { dominant = ids; dominantCount = n; }
+          }
+          if (!dominant || dominantCount <= MIN_PER_REGULATION) break;
+          let dropIdx = -1;
+          for (let i = selected.length - 1; i >= 0; i--) {
+            if (dominant.has(selected[i].document_id)) { dropIdx = i; break; }
+          }
+          if (dropIdx < 0) break;
+          selected.splice(dropIdx, 1);
+        }
+      }
     }
 
     // Le unità lunghe (es. elenchi di un paragrafo) sono divise in parti
