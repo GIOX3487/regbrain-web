@@ -1215,6 +1215,9 @@ async function rerankChunks(
 
     const data = await response.json();
     const rankText = data.choices?.[0]?.message?.content || "";
+    if ((rankText.match(/\d+/g) || []).length < 5) {
+      console.warn(`Re-ranking: terse ranker output (finish=${data.choices?.[0]?.finish_reason}): ${rankText.substring(0, 400).replace(/\n/g, " ")}`);
+    }
 
     // Parse the JSON array of indices: take the longest array in the output (the model
     // sometimes writes "[3]" in a preamble before the real list), dedupe, then top up with
