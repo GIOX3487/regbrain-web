@@ -2037,13 +2037,38 @@ const APPLICABILITY_RULES: Array<{ regulation: string; dimension: string; key: s
   { regulation: 'GDPR', dimension: 'org_outside_eu', key: 'org_outside_eu', pattern: /stabilit[ei] fuori dall|fuori dall'unione|non stabilit[ei] nell'unione/, label_it: 'organizzazione stabilita fuori dall\'Unione europea' },
 ];
 
+// Alcune normative si rivolgono per intero a una categoria di soggetti: se l'organizzazione
+// dichiara di non rientrarvi, non ha senso cercare gap nei loro obblighi, nemmeno in quelli
+// che il catalogo non marca come condizionali. Il GDPR non ha una porta d'ingresso di questo
+// tipo: riguarda chiunque tratti dati personali.
+const REGULATION_GATES: Array<{ regulation: string; keys: string[]; label_it: string }> = [
+  { regulation: 'AI Act', keys: ['ai_provider', 'ai_deployer', 'ai_importer_distributor'], label_it: 'alcun ruolo rispetto ai sistemi di intelligenza artificiale (né fornitore, né deployer, né importatore o distributore)' },
+  { regulation: 'CRA', keys: ['cra_manufacturer', 'cra_importer_distributor', 'cra_open_source'], label_it: 'alcun ruolo rispetto ai prodotti con elementi digitali (né fabbricante, né importatore o distributore, né gestore di software open source)' },
+  { regulation: 'Data Act', keys: ['da_data_holder', 'da_cloud_provider', 'da_recipient'], label_it: 'alcun ruolo rispetto ai dati generati da prodotti connessi e servizi di trattamento dati' },
+  { regulation: 'DORA', keys: ['dora_financial_entity', 'dora_ctpp'], label_it: 'la qualifica di entità finanziaria né quella di fornitore di servizi TIC per entità finanziarie' },
+  { regulation: 'NIS2', keys: ['nis2_entity', 'nis2_digital_provider'], label_it: 'la qualifica di soggetto essenziale o importante ai fini NIS2' },
+];
+
+function regulationGateExcludes(regulation: string, profile: ApplicabilityProfile | null): string | null {
+  if (!profile?.answers) return null;
+  const gate = REGULATION_GATES.find(g => g.regulation.toLowerCase() === regulation.toLowerCase());
+  if (!gate) return null;
+  const declared = gate.keys.filter(k => k in profile.answers!);
+  if (declared.length === 0) return null;
+  if (!declared.every(k => profile.answers![k] === 'no')) return null;
+  return `L'intero regolamento non si applica in base a quanto dichiarato all'avvio dell'analisi: l'organizzazione ha dichiarato di non avere ${gate.label_it}.`;
+}
+
 interface ApplicabilityVerdict {
   status: 'applicable' | 'not_applicable' | 'unknown';
   reason_it: string;
 }
 
 function applicabilityVerdict(req: RegulatoryRequirement, profile: ApplicabilityProfile | null): ApplicabilityVerdict | null {
-  if (!profile?.answers || !req.conditional) return null;
+  if (!profile?.answers) return null;
+  const gateReason = regulationGateExcludes(req.regulation, profile);
+  if (gateReason) return { status: 'not_applicable', reason_it: gateReason };
+  if (!req.conditional) return null;
   const haystack = `${req.applicability_note_it || ''} § ${req.description_it || ''}`.toLowerCase();
   const byDimension = new Map<string, Array<{ key: string; label_it: string }>>();
   for (const rule of APPLICABILITY_RULES) {
@@ -2628,7 +2653,7 @@ denoServe(protect(async (req) => {
           description: isIt ? req.description_it : req.description_en,
           severity: req.risk_level,
           remediation_effort: req.remediation_effort,
-          conditional: true,
+          conditional: !!req.conditional,
           applicability_note: req.applicability_note_it || null,
           status: 'not_applicable',
           risk_level: null,
