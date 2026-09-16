@@ -2167,6 +2167,9 @@ const LLM_CONCURRENCY = 12;
 const EVIDENCE_CHARS = 4200;
 const SECTION_CHARS = 1100;
 
+// Stato leggero dell'analisi, salvato in compliance_assessments.analysis_progress.
+// Gli esiti dei requisiti stanno in assessment_requirement_checks, una riga ciascuno:
+// scriverli come unico blob a ogni gruppo costava più dell'analisi stessa.
 interface AnalysisState {
   version: string;
   status: 'in_progress' | 'completed';
@@ -2174,14 +2177,34 @@ interface AnalysisState {
   regulations: string[];
   started_at: string;
   updated_at: string;
-  generated_at?: string;
   cache_key: string;
   total: number;
+  done: number;
   pending: string[];
-  checks: RequirementCheck[];
   unreadable_documents: string[];
   documents_analyzed: string[];
-  counts?: Record<string, number>;
+}
+
+async function saveState(supabase: any, assessmentId: string, state: AnalysisState) {
+  await supabase.from('compliance_assessments')
+    .update({ analysis_progress: state })
+    .eq('id', assessmentId);
+}
+
+async function loadStagedChecks(supabase: any, assessmentId: string): Promise<RequirementCheck[]> {
+  const out: RequirementCheck[] = [];
+  for (let from = 0; ; from += 500) {
+    const { data, error } = await supabase
+      .from('assessment_requirement_checks')
+      .select('check_payload')
+      .eq('assessment_id', assessmentId)
+      .range(from, from + 499);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    out.push(...data.map((r: any) => r.check_payload as RequirementCheck));
+    if (data.length < 500) break;
+  }
+  return out;
 }
 
 function mapDbRequirement(dbReq: any): RegulatoryRequirement {
@@ -2284,7 +2307,7 @@ denoServe(protect(async (req) => {
     let state: AnalysisState | null = null;
 
     if (isContinuation) {
-      const saved = assessment.requirement_checks as AnalysisState | null;
+      const saved = assessment.analysis_progress as AnalysisState | null;
       if (!saved || saved.version !== CHECKS_VERSION || saved.status !== 'in_progress' || !Array.isArray(saved.pending)) {
         return errorResponse(409, 'No analysis in progress for this assessment');
       }
@@ -2348,8 +2371,8 @@ denoServe(protect(async (req) => {
     // quando l'analisi prosegue, l'elenco è già in state.pending e si evita la scansione.
     let applicableRequirements: RegulatoryRequirement[];
     if (isContinuation && state) {
-      const wanted = new Set<string>([...state.pending, ...state.checks.map(c => c.requirement_id)]);
-      applicableRequirements = catalog.filter(r => wanted.has(r.id));
+      const wanted = new Set<string>(state.pending);
+      applicableRequirements = catalog.filter(r => wanted.has(r.id) || true);
     } else {
       const ragValidationCache = await buildRagValidationCache(supabase, normalizedRegulations);
       applicableRequirements = catalog.filter(req => {
@@ -2379,6 +2402,15 @@ denoServe(protect(async (req) => {
         ? cachedResult.result_payload.checks as RequirementCheck[]
         : null;
       const now = new Date().toISOString();
+      await supabase.from('assessment_requirement_checks').delete().eq('assessment_id', assessmentId);
+      if (cachedChecks) {
+        console.log('✅ CACHE HIT - reusing cached requirement checks');
+        for (let i = 0; i < cachedChecks.length; i += 100) {
+          await supabase.from('assessment_requirement_checks').insert(
+            cachedChecks.slice(i, i + 100).map(c => ({ assessment_id: assessmentId, requirement_id: c.requirement_id, check_payload: c })),
+          );
+        }
+      }
       state = {
         version: CHECKS_VERSION,
         status: 'in_progress',
@@ -2388,15 +2420,14 @@ denoServe(protect(async (req) => {
         updated_at: now,
         cache_key: cacheFingerprint,
         total: applicableRequirements.length,
+        done: cachedChecks ? cachedChecks.length : 0,
         pending: cachedChecks ? [] : applicableRequirements.map(r => r.id),
-        checks: cachedChecks || [],
         unreadable_documents: unreadableDocuments,
         documents_analyzed: readableDocuments.map(d => d.name),
       };
-      if (cachedChecks) console.log('✅ CACHE HIT - reusing cached requirement checks');
       await supabase.from('compliance_assessments').update({
-        requirement_checks: state,
-        analysis_progress: { done: state.checks.length, total: state.total, updated_at: now },
+        requirement_checks: null,
+        analysis_progress: state,
         status: 'in_progress',
       }).eq('id', assessmentId);
     }
@@ -2641,38 +2672,33 @@ denoServe(protect(async (req) => {
             };
           });
 
-          const done = new Set(newChecks.map(c => c.requirement_id));
-          state.checks = [...state.checks.filter(c => !done.has(c.requirement_id)), ...newChecks];
+          const { error: stageError } = await supabase.from('assessment_requirement_checks').upsert(
+            newChecks.map(c => ({ assessment_id: assessmentId, requirement_id: c.requirement_id, check_payload: c })),
+            { onConflict: 'assessment_id,requirement_id' },
+          );
+          if (stageError) throw stageError;
+          state.done += newChecks.length;
           processedInThisRun += newChecks.length;
         }
 
         state.pending = state.pending.slice(groupIds.length);
         state.updated_at = new Date().toISOString();
-        console.log(`✓ ${groupRequirements.length} requisiti in ${Date.now() - tGroup}ms (${state.checks.length}/${state.total})`);
+        console.log(`✓ ${groupRequirements.length} requisiti in ${Date.now() - tGroup}ms (${state.done}/${state.total})`);
 
         // Avanzamento salvato a ogni gruppo: se la chiamata cade, l'analisi riprende da qui
-        if (state.pending.length > 0) {
-          await supabase.from('compliance_assessments').update({
-            requirement_checks: state,
-            analysis_progress: { done: state.checks.length, total: state.total, updated_at: state.updated_at },
-          }).eq('id', assessmentId);
-        }
+        if (state.pending.length > 0) await saveState(supabase, assessmentId, state);
       }
     }
 
     state.updated_at = new Date().toISOString();
 
     if (state.pending.length > 0) {
-      await supabase.from('compliance_assessments').update({
-        requirement_checks: state,
-        analysis_progress: { done: state.checks.length, total: state.total, updated_at: state.updated_at },
-        status: 'in_progress',
-      }).eq('id', assessmentId);
-      console.log(`Invocazione conclusa: ${state.checks.length}/${state.total} verificati, ${state.pending.length} rimanenti`);
+      await saveState(supabase, assessmentId, state);
+      console.log(`Invocazione conclusa: ${state.done}/${state.total} verificati, ${state.pending.length} rimanenti`);
       return new Response(JSON.stringify({
         success: true,
         status: 'in_progress',
-        progress: { done: state.checks.length, total: state.total },
+        progress: { done: state.done, total: state.total },
         unreadable_documents: unreadableDocuments,
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
@@ -2680,7 +2706,7 @@ denoServe(protect(async (req) => {
     // ------------------------------------------------------------
     // Finalizzazione: gap, punteggi, piano d'azione
     // ------------------------------------------------------------
-    const checks = state.checks
+    const checks = (await loadStagedChecks(supabase, assessmentId))
       .sort((a, b) => `${a.regulation}|${a.reference}`.localeCompare(`${b.regulation}|${b.reference}`));
 
     await supabase.from('gap_analysis_cache').upsert({
@@ -2798,14 +2824,16 @@ denoServe(protect(async (req) => {
       checks,
     };
 
+    // Il blob completo viene scritto una sola volta, a fine analisi
     await supabase.from('compliance_assessments').update({
       overall_risk_score: overallRisk,
       overall_compliance_percentage: overallCompliance,
       requirement_checks: finalState,
-      analysis_progress: { done: checks.length, total: checks.length, updated_at: new Date().toISOString() },
+      analysis_progress: { ...state, status: 'completed', done: checks.length, total: checks.length, pending: [], updated_at: new Date().toISOString() },
       status: 'completed',
       completed_at: new Date().toISOString(),
     }).eq('id', assessmentId);
+    await supabase.from('assessment_requirement_checks').delete().eq('assessment_id', assessmentId);
 
     const actionPlans = insertedGaps
       .filter((g: any) => g.priority <= 3)

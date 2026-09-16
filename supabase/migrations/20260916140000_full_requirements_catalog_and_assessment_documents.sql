@@ -44,3 +44,20 @@ alter table public.regulatory_requirements
 -- Avanzamento leggero dell'analisi, letto dalla pagina durante la verifica
 alter table public.compliance_assessments
   add column if not exists analysis_progress jsonb;
+
+-- Esiti dei singoli requisiti mentre l'analisi è in corso (il blob finale si compone alla fine)
+create table if not exists public.assessment_requirement_checks (
+  assessment_id uuid not null references public.compliance_assessments(id) on delete cascade,
+  requirement_id text not null,
+  check_payload jsonb not null,
+  created_at timestamptz not null default now(),
+  primary key (assessment_id, requirement_id)
+);
+alter table public.assessment_requirement_checks enable row level security;
+drop policy if exists "arc_owner_select" on public.assessment_requirement_checks;
+create policy "arc_owner_select" on public.assessment_requirement_checks
+  for select to authenticated using (
+    exists (select 1 from public.compliance_assessments a where a.id = assessment_id and a.user_id = auth.uid())
+  );
+grant select, insert, update, delete on public.assessment_requirement_checks to service_role;
+grant select on public.assessment_requirement_checks to authenticated;

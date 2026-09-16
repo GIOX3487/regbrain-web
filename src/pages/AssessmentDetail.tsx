@@ -46,7 +46,7 @@ interface Assessment {
   completed_at: string;
   annual_revenue_eur?: number;
   requirement_checks?: RequirementChecksPayload | null;
-  analysis_progress?: { done: number; total: number; updated_at?: string } | null;
+  analysis_progress?: { done: number; total: number; updated_at?: string; status?: string; pending?: string[] } | null;
 }
 
 interface RequirementCheck {
@@ -700,10 +700,9 @@ export default function AssessmentDetail() {
     if (!assessment || assessment.status === 'completed') return;
     const timer = setInterval(() => {
       loadAssessment(true);
-      const payload = assessment.requirement_checks as RequirementChecksPayload | null;
-      const lastBeat = assessment.analysis_progress?.updated_at || payload?.updated_at;
-      const stale = payload?.status === 'in_progress' && Array.isArray(payload.pending) && payload.pending.length > 0
-        && lastBeat && Date.now() - Date.parse(lastBeat) > 40000;
+      const progress = assessment.analysis_progress;
+      const stale = progress?.status === 'in_progress' && Array.isArray(progress.pending) && progress.pending.length > 0
+        && progress.updated_at && Date.now() - Date.parse(progress.updated_at) > 40000;
       if (stale && !resumingRef.current) resumeAnalysis();
     }, 5000);
     return () => clearInterval(timer);
@@ -1728,7 +1727,7 @@ export default function AssessmentDetail() {
                   {t.analysisInProgress}
                   {progressTotal ? ` ${progressDone} / ${progressTotal}` : ''}
                 </p>
-                {!resuming && checksPayload?.status === 'in_progress' && (
+                {!resuming && assessment.analysis_progress?.status === 'in_progress' && (
                   <Button size="sm" variant="outline" onClick={resumeAnalysis}>{t.resumeAnalysis}</Button>
                 )}
               </div>
