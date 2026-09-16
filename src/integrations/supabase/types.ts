@@ -357,6 +357,7 @@ export type Database = {
           id: string
           overall_compliance_percentage: number | null
           overall_risk_score: number | null
+          requirement_checks: Json | null
           scope_jurisdiction: string
           scope_regulations: string[]
           scope_sector: string
@@ -374,6 +375,7 @@ export type Database = {
           id?: string
           overall_compliance_percentage?: number | null
           overall_risk_score?: number | null
+          requirement_checks?: Json | null
           scope_jurisdiction: string
           scope_regulations?: string[]
           scope_sector: string
@@ -391,6 +393,7 @@ export type Database = {
           id?: string
           overall_compliance_percentage?: number | null
           overall_risk_score?: number | null
+          requirement_checks?: Json | null
           scope_jurisdiction?: string
           scope_regulations?: string[]
           scope_sector?: string
@@ -790,8 +793,10 @@ export type Database = {
           article_text_excerpt: string | null
           assessment_id: string
           created_at: string
+          coverage_status: string | null
           current_state: string | null
           detection_method: string | null
+          evidence: Json | null
           fine_tier_basis: string | null
           gap_description: string
           id: string
@@ -806,6 +811,7 @@ export type Database = {
           risk_level: string
           risk_score: number
           semantic_similarity: number | null
+          severity: string | null
           source_chunk_id: string | null
           status: string
           updated_at: string
@@ -814,8 +820,10 @@ export type Database = {
           article_text_excerpt?: string | null
           assessment_id: string
           created_at?: string
+          coverage_status?: string | null
           current_state?: string | null
           detection_method?: string | null
+          evidence?: Json | null
           fine_tier_basis?: string | null
           gap_description: string
           id?: string
@@ -830,6 +838,7 @@ export type Database = {
           risk_level: string
           risk_score: number
           semantic_similarity?: number | null
+          severity?: string | null
           source_chunk_id?: string | null
           status?: string
           updated_at?: string
@@ -838,8 +847,10 @@ export type Database = {
           article_text_excerpt?: string | null
           assessment_id?: string
           created_at?: string
+          coverage_status?: string | null
           current_state?: string | null
           detection_method?: string | null
+          evidence?: Json | null
           fine_tier_basis?: string | null
           gap_description?: string
           id?: string
@@ -854,6 +865,7 @@ export type Database = {
           risk_level?: string
           risk_score?: number
           semantic_similarity?: number | null
+          severity?: string | null
           source_chunk_id?: string | null
           status?: string
           updated_at?: string

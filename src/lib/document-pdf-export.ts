@@ -1219,33 +1219,27 @@ function exportLIA(doc: jsPDF, content: any) {
 
 function exportGapReport(doc: jsPDF, content: any) {
   let y = MARGIN_TOP;
-  const riskRows = Array.isArray(content.matrice_rischi) ? content.matrice_rischi : [];
-  const fineValue = (row: any, keys: string[]) => keys.map((key) => Number(row?.[key] || 0)).find((value) => value > 0) || 0;
-  const totalRealistic = riskRows.reduce((sum: number, row: any) => sum + fineValue(row, ["sanzione_eur", "potential_fine_eur", "sanzione_realistica_eur"]), 0);
-  const totalMax = riskRows.reduce((sum: number, row: any) => sum + (fineValue(row, ["sanzione_massima_teorica_eur", "potential_fine_max_eur", "massimo_teorico_eur"]) || fineValue(row, ["sanzione_eur", "potential_fine_eur", "sanzione_realistica_eur"])), 0);
-  const formatCurrencyShort = (value: unknown): string => {
-    const amount = Number(value || 0);
-    if (!Number.isFinite(amount)) return "0";
-    if (amount >= 1_000_000) return `${(amount / 1_000_000).toFixed(2).replace(".", ",")}M`;
-    if (amount >= 1_000) return `${(amount / 1_000).toFixed(0)}K`;
-    return formatCurrency(amount);
+  const regs: any[] = Array.isArray(content.risultati_per_normativa) ? content.risultati_per_normativa : [];
+  const allGaps: any[] = regs.flatMap((reg: any) => Array.isArray(reg.gap_identificati) ? reg.gap_identificati.map((g: any) => ({ ...g, normativa: reg.normativa })) : []);
+  const profileOf = (g: any): "alto" | "medio" | "basso" => {
+    const raw = String(g.profilo_rischio || g.rischio || g.risk_level || "").toLowerCase();
+    if (raw.includes("alto") || raw.includes("high") || raw.includes("critic")) return "alto";
+    if (raw.includes("medio") || raw.includes("medium")) return "medio";
+    return "basso";
   };
-  const totalInvestment = Number(content.analisi_finanziaria?.investimento_totale || 0);
-  const totalHours = riskRows.reduce((sum: number, row: any) => sum + Number(row?.ore_stimate || row?.hours || 0), 0);
-  const totalGaps = riskRows.length || content.risultati_per_normativa?.reduce((sum: number, reg: any) => sum + (reg.gap_identificati?.length || 0), 0) || 0;
-  const critical = riskRows.filter((row: any) => String(row.rischio || row.risk_level || "").toLowerCase().includes("critical") || String(row.rischio || row.risk_level || "").toLowerCase().includes("critico")).length;
-  const high = riskRows.filter((row: any) => String(row.rischio || row.risk_level || "").toLowerCase().includes("high") || String(row.rischio || row.risk_level || "").toLowerCase().includes("alto")).length;
-  const regulation = content.ambito_analisi?.normative?.join(", ") || content.ambito_analisi?.normativa || "le normative selezionate";
-  const compliance = content.compliance_percentuale || content.compliance_score || content.risultati_per_normativa?.[0]?.conformita_percentuale || "N/D";
-  const complianceLabel = Number(compliance) >= 80 ? "buono" : Number(compliance) >= 60 ? "parziale" : "critico";
-  const riskScore = content.risk_score || content.punteggio_rischio || "N/D";
-  const summaryText = `L'analisi di conformità ha valutato ${regulation} identificando ${totalGaps} gap di conformità, di cui ${critical} critici e ${high} ad alto rischio. Il livello di compliance complessivo è del ${compliance}% (${complianceLabel}), con un punteggio di rischio di ${riskScore}/100. La stima realistica delle sanzioni potenziali è di €${formatCurrencyShort(totalRealistic)} (massimo teorico €${formatCurrencyShort(totalMax)} in scenario peggiore senza attenuanti). Il piano di remediation prevede un investimento di €${formatCurrency(totalInvestment)} e circa ${totalHours} ore di lavoro per colmare tutti i gap identificati.`;
+  const profileRgb: Record<string, [number, number, number]> = { alto: [220, 38, 38], medio: [234, 88, 12], basso: [161, 98, 7] };
+  const highCount = allGaps.filter((g) => profileOf(g) === "alto").length;
+  const mediumCount = allGaps.filter((g) => profileOf(g) === "medio").length;
+  const lowCount = allGaps.filter((g) => profileOf(g) === "basso").length;
+  const overall = highCount > 0 ? "ALTO" : mediumCount > 0 ? "MEDIO" : allGaps.length > 0 ? "BASSO" : "NESSUN RISCHIO RILEVATO";
+  const documented: any[] = Array.isArray(content.requisiti_documentati) ? content.requisiti_documentati : [];
+  const toVerify: any[] = Array.isArray(content.requisiti_da_verificare) ? content.requisiti_da_verificare : [];
 
   // Title
   doc.setFontSize(18);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(30, 58, 95);
-  const title = content.title || "Gap Analysis Report";
+  const title = stripMarkdown(content.title || "Gap Analysis Report");
   const titleLines = doc.splitTextToSize(title, SAFE_WIDTH);
   for (const line of titleLines) {
     doc.text(line, PAGE_WIDTH / 2, y, { align: "center" });
@@ -1257,172 +1251,183 @@ function exportGapReport(doc: jsPDF, content: any) {
   doc.line(MARGIN_LEFT, y, PAGE_WIDTH - MARGIN_RIGHT, y);
   y += 10;
 
-  // Executive Summary
+  // 1. Executive summary
   y = sectionTitle(doc, y, "1. EXECUTIVE SUMMARY");
-  y = writeWrapped(doc, summaryText, MARGIN_LEFT, y, SAFE_WIDTH);
+  y = writeWrapped(doc, stripMarkdown(content.executive_summary || ""), MARGIN_LEFT, y, SAFE_WIDTH);
   y += 3;
+  y = ensureSpace(doc, y, 20);
   doc.setFontSize(9);
+  doc.setFont("helvetica", "bold");
+  doc.text(`Profilo di rischio complessivo: ${overall}`, MARGIN_LEFT, y);
+  y += 5;
   doc.setFont("helvetica", "normal");
-  y = ensureSpace(doc, y, 14);
-  doc.text(`• Sanzioni potenziali (realistiche): €${formatCurrencyShort(totalRealistic)}`, MARGIN_LEFT, y);
+  doc.text(`Gap identificati: ${allGaps.length} (${highCount} a rischio alto, ${mediumCount} medio, ${lowCount} basso)`, MARGIN_LEFT, y);
   y += 5;
-  doc.setTextColor(150, 30, 30);
-  doc.text(`• Sanzioni massime teoriche: €${formatCurrencyShort(totalMax)}`, MARGIN_LEFT, y);
-  doc.setTextColor(0, 0, 0);
-  y += 5;
-  y += 8;
+  if (documented.length > 0 || toVerify.length > 0) {
+    doc.text(`Requisiti documentati: ${documented.length}${toVerify.length > 0 ? `  |  Da verificare: ${toVerify.length}` : ""}`, MARGIN_LEFT, y);
+    y += 5;
+  }
+  y += 6;
 
-  // Ambito
+  // 2. Ambito
   if (content.ambito_analisi) {
     y = sectionTitle(doc, y, "2. AMBITO DELL'ANALISI");
-    y = fieldRow(doc, y, "Normative", content.ambito_analisi.normative?.join(', '));
+    y = fieldRow(doc, y, "Normative", content.ambito_analisi.normative?.join(", "));
     y = fieldRow(doc, y, "Settore", content.ambito_analisi.settore);
     y = fieldRow(doc, y, "Giurisdizione", content.ambito_analisi.giurisdizione);
+    if (Array.isArray(content.ambito_analisi.documenti_analizzati) && content.ambito_analisi.documenti_analizzati.length > 0) {
+      y = fieldRow(doc, y, "Documenti analizzati", content.ambito_analisi.documenti_analizzati.join(", "));
+    }
+    if (Array.isArray(content.ambito_analisi.documenti_esclusi) && content.ambito_analisi.documenti_esclusi.length > 0) {
+      y = fieldRow(doc, y, "Documenti esclusi (non leggibili)", content.ambito_analisi.documenti_esclusi.join(", "));
+    }
     y = fieldRow(doc, y, "Metodologia", content.ambito_analisi.metodologia);
     y += 8;
   }
 
-  // Risultati per normativa
-  if (content.risultati_per_normativa?.length > 0) {
+  // 3. Risultati per normativa
+  if (regs.length > 0) {
     y = sectionTitle(doc, y, "3. RISULTATI PER NORMATIVA");
-    for (const reg of content.risultati_per_normativa) {
+    for (const reg of regs) {
       y = ensureSpace(doc, y, 20);
-      y = writeSubTitle(doc, `${reg.normativa} — Conformità: ${reg.conformita_percentuale}%`, y);
-      if (reg.gap_identificati?.length > 0) {
-        autoTable(doc, {
-          startY: y,
-          head: [['Riferimento', 'Descrizione', 'Rischio', 'Ore', 'Costo €']],
-          body: reg.gap_identificati.map((g: any) => [g.riferimento, g.descrizione?.substring(0, 60), g.rischio, g.ore_stimate, g.costo_eur?.toLocaleString()]),
-          styles: { fontSize: 7, cellPadding: 2 },
-          headStyles: { fillColor: [30, 58, 95], textColor: 255 },
-          columnStyles: { 1: { cellWidth: 60 } },
-          margin: { left: MARGIN_LEFT, right: MARGIN_RIGHT },
-        });
-        y = (doc as any).lastAutoTable?.finalY + 8 || y + 30;
+      y = writeSubTitle(doc, `${reg.normativa}${reg.conformita_percentuale !== undefined ? ` - Conformità documentale: ${reg.conformita_percentuale}%` : ""}`, y);
+      const gapsOfReg: any[] = Array.isArray(reg.gap_identificati) ? reg.gap_identificati : [];
+      if (gapsOfReg.length === 0) {
+        y = writeWrapped(doc, "Nessun gap identificato per questa normativa.", MARGIN_LEFT + 3, y, SAFE_WIDTH - 3);
+        y += 3;
+        continue;
       }
-    }
-  }
-
-  // Matrice Rischi
-  if (riskRows.length > 0) {
-    y = sectionTitle(doc, y, "4. MATRICE DEI RISCHI");
-    riskRows.forEach((gap: any, index: number) => {
-      y = ensureSpace(doc, y, 42);
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "bold");
-      doc.setTextColor(30, 58, 95);
-      y = writeWrapped(doc, `${index + 1}. ${gap.gap || gap.descrizione || gap.requirement_reference || "Gap identificato"}`, MARGIN_LEFT, y, SAFE_WIDTH, 5);
-      doc.setTextColor(0, 0, 0);
-      doc.setFontSize(9);
-      doc.setFont("helvetica", "normal");
-      const detailY = y;
-      doc.text(`Punteggio Rischio: ${gap.risk_score || gap.punteggio_rischio || "N/D"}/100`, MARGIN_LEFT + 3, y);
-      const x2 = MARGIN_LEFT + 74;
-      doc.setFont("helvetica", "bold");
-      doc.text(`Sanzione attesa (realistica): €${formatCurrency(fineValue(gap, ["sanzione_eur", "potential_fine_eur", "sanzione_realistica_eur"]))}`, x2, y);
-      doc.setFont("helvetica", "normal");
-      y += 5;
-      const maxFine = fineValue(gap, ["sanzione_massima_teorica_eur", "potential_fine_max_eur", "massimo_teorico_eur"]) || fineValue(gap, ["sanzione_eur", "potential_fine_eur", "sanzione_realistica_eur"]);
-      doc.setTextColor(150, 30, 30);
-      doc.text(`Massimo teorico: €${formatCurrency(maxFine)}`, x2, y);
-      doc.setTextColor(0, 0, 0);
-      y += 5;
-      if (gap.fine_tier_basis || gap.base_normativa || gap.base_sanzionatoria) {
-        doc.setFontSize(8);
-        doc.setTextColor(100, 100, 100);
-        doc.text(`Base: ${gap.fine_tier_basis || gap.base_normativa || gap.base_sanzionatoria}`, x2, y);
-        doc.setFontSize(9);
+      gapsOfReg.forEach((gap: any, index: number) => {
+        y = ensureSpace(doc, y, 36);
+        const profile = profileOf(gap);
+        doc.setFillColor(...profileRgb[profile]);
+        doc.circle(MARGIN_LEFT + 1.5, y - 1.3, 1.6, "F");
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(30, 58, 95);
+        y = writeWrapped(doc, `${index + 1}. ${stripMarkdown(gap.riferimento || gap.gap || "Gap identificato")}`, MARGIN_LEFT + 5, y, SAFE_WIDTH - 5, 5);
         doc.setTextColor(0, 0, 0);
-        y += 4;
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.text(`Profilo di rischio: ${profile.toUpperCase()}`, MARGIN_LEFT + 5, y);
+        doc.setFont("helvetica", "normal");
+        doc.text(`Documentazione: ${gap.stato_documentale || "assente"}`, MARGIN_LEFT + 60, y);
+        y += 5;
+        if (gap.cosa_risulta) {
+          doc.setFont("helvetica", "bold");
+          doc.text("Cosa risulta dai documenti:", MARGIN_LEFT + 5, y);
+          y += 4.5;
+          doc.setFont("helvetica", "normal");
+          y = writeWrapped(doc, stripMarkdown(gap.cosa_risulta), MARGIN_LEFT + 5, y, SAFE_WIDTH - 5);
+        }
+        doc.setFont("helvetica", "bold");
+        doc.text("Cosa manca:", MARGIN_LEFT + 5, y);
+        y += 4.5;
+        doc.setFont("helvetica", "normal");
+        y = writeWrapped(doc, stripMarkdown(gap.cosa_manca || gap.descrizione || ""), MARGIN_LEFT + 5, y, SAFE_WIDTH - 5);
+        if (Array.isArray(gap.evidenze) && gap.evidenze.length > 0) {
+          doc.setFont("helvetica", "italic");
+          for (const ev of gap.evidenze.slice(0, 3)) {
+            y = writeWrapped(doc, `Evidenza: ${stripMarkdown(String(ev))}`, MARGIN_LEFT + 8, y, SAFE_WIDTH - 8);
+          }
+          doc.setFont("helvetica", "normal");
+        }
+        const actions: string[] = Array.isArray(gap.azioni) ? gap.azioni : gap.azione ? [gap.azione] : [];
+        if (actions.length > 0) {
+          doc.setFont("helvetica", "bold");
+          doc.text("Azioni raccomandate:", MARGIN_LEFT + 5, y);
+          y += 4.5;
+          doc.setFont("helvetica", "normal");
+          actions.forEach((a: string, i: number) => {
+            y = writeWrapped(doc, `${i + 1}. ${stripMarkdown(a)}`, MARGIN_LEFT + 8, y, SAFE_WIDTH - 8);
+          });
+        }
+        y += 6;
+      });
+    }
+  }
+
+  // 4. Requisiti documentati
+  y = sectionTitle(doc, y, "4. REQUISITI DOCUMENTATI");
+  if (documented.length === 0) {
+    y = writeWrapped(doc, "Nessun requisito risulta documentato in modo completo nei documenti analizzati.", MARGIN_LEFT, y, SAFE_WIDTH);
+  } else {
+    documented.forEach((r: any, i: number) => {
+      y = ensureSpace(doc, y, 16);
+      doc.setFillColor(22, 163, 74);
+      doc.circle(MARGIN_LEFT + 1.5, y - 1.3, 1.6, "F");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      y = writeWrapped(doc, `${i + 1}. ${stripMarkdown(r.riferimento || "")}`, MARGIN_LEFT + 5, y, SAFE_WIDTH - 5);
+      doc.setFont("helvetica", "normal");
+      if (r.sintesi) y = writeWrapped(doc, stripMarkdown(r.sintesi), MARGIN_LEFT + 5, y, SAFE_WIDTH - 5);
+      if (r.evidenza) {
+        doc.setFont("helvetica", "italic");
+        y = writeWrapped(doc, `Evidenza: ${stripMarkdown(r.evidenza)}`, MARGIN_LEFT + 8, y, SAFE_WIDTH - 8);
+        doc.setFont("helvetica", "normal");
       }
-      y = Math.max(y, detailY + 5);
-      doc.text(`Normativa: ${gap.normativa || "N/D"}`, MARGIN_LEFT + 3, y);
-      doc.text(`Rischio: ${gap.rischio || gap.risk_level || "N/D"}`, MARGIN_LEFT + 74, y);
-      doc.text(`Effort: ${gap.remediation_effort || gap.effort || "N/D"}`, MARGIN_LEFT + 124, y);
-      y += 7;
+      y += 3;
     });
-    y += 4;
   }
+  y += 5;
 
-  // Piano Remediation
+  // 5. Requisiti da verificare
+  y = sectionTitle(doc, y, "5. REQUISITI DA VERIFICARE");
+  if (toVerify.length === 0) {
+    y = writeWrapped(doc, "Nessun requisito da verificare.", MARGIN_LEFT, y, SAFE_WIDTH);
+  } else {
+    y = writeWrapped(doc, "Obblighi che valgono solo in determinate situazioni: dai documenti non risulta se ricorrono. Non sono conteggiati come gap, ma vanno chiariti.", MARGIN_LEFT, y, SAFE_WIDTH);
+    y += 2;
+    toVerify.forEach((r: any, i: number) => {
+      y = ensureSpace(doc, y, 16);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      y = writeWrapped(doc, `${i + 1}. ${stripMarkdown(r.riferimento || "")}`, MARGIN_LEFT + 3, y, SAFE_WIDTH - 3);
+      doc.setFont("helvetica", "normal");
+      if (r.motivo) y = writeWrapped(doc, stripMarkdown(r.motivo), MARGIN_LEFT + 5, y, SAFE_WIDTH - 5);
+      if (r.verifica_da_fare) y = writeWrapped(doc, `Verifica da fare: ${stripMarkdown(r.verifica_da_fare)}`, MARGIN_LEFT + 5, y, SAFE_WIDTH - 5);
+      y += 3;
+    });
+  }
+  y += 5;
+
+  // 6. Piano remediation
   if (content.piano_remediation) {
-    y = sectionTitle(doc, y, "5. PIANO DI REMEDIATION");
+    y = sectionTitle(doc, y, "6. PIANO DI REMEDIATION");
     const pr = content.piano_remediation;
-    if (pr.immediate?.length > 0) {
-      y = writeSubTitle(doc, "Immediate (0-30 giorni)", y);
-      for (const a of pr.immediate) {
-        y = writeWrapped(doc, `• ${a}`, MARGIN_LEFT + 3, y, SAFE_WIDTH - 3);
+    const blocks: Array<[string, any]> = [
+      ["Immediate (0-30 giorni)", pr.immediate],
+      ["Breve termine (1-3 mesi)", pr.breve_termine],
+      ["Medio termine (3-6 mesi)", pr.medio_termine],
+      ["Miglioramento continuo", pr.continuo],
+    ];
+    for (const [label, items] of blocks) {
+      if (Array.isArray(items) && items.length > 0) {
+        y = writeSubTitle(doc, label, y);
+        for (const a of items) {
+          y = writeWrapped(doc, `• ${stripMarkdown(String(a))}`, MARGIN_LEFT + 3, y, SAFE_WIDTH - 3);
+        }
+        y += 3;
       }
-      y += 3;
-    }
-    if (pr.breve_termine?.length > 0) {
-      y = writeSubTitle(doc, "Breve termine (1-3 mesi)", y);
-      for (const a of pr.breve_termine) {
-        y = writeWrapped(doc, `• ${a}`, MARGIN_LEFT + 3, y, SAFE_WIDTH - 3);
-      }
-      y += 3;
-    }
-    if (pr.medio_termine?.length > 0) {
-      y = writeSubTitle(doc, "Medio termine (3-6 mesi)", y);
-      for (const a of pr.medio_termine) {
-        y = writeWrapped(doc, `• ${a}`, MARGIN_LEFT + 3, y, SAFE_WIDTH - 3);
-      }
-      y += 3;
     }
     y += 5;
   }
 
-  // Analisi Finanziaria
-  if (content.analisi_finanziaria) {
-    y = sectionTitle(doc, y, "6. ANALISI FINANZIARIA");
-    const af = content.analisi_finanziaria;
-    const realisticTotal = totalRealistic || Number(af.sanzioni_realistiche || af.sanzioni_evitate || 0);
-    const maxTotal = totalMax || Number(af.sanzioni_massime_teoriche || af.sanzioni_evitate || 0);
-    y = ensureSpace(doc, y, 48);
-    doc.setFont("helvetica", "bold");
-    doc.text("Riepilogo Investimento", MARGIN_LEFT, y);
-    doc.setFont("helvetica", "normal");
-    y += 7;
-    doc.text(`Ore totali stimate: ${totalHours} ore`, MARGIN_LEFT + 3, y);
-    y += 5;
-    doc.text(`Investimento totale stimato: €${formatCurrency(totalInvestment)}`, MARGIN_LEFT + 3, y);
-    y += 5;
-    doc.setFont("helvetica", "bold");
-    doc.text(`Sanzioni evitate (stima realistica): €${formatCurrency(realisticTotal)}`, MARGIN_LEFT + 3, y);
-    y += 5;
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(150, 30, 30);
-    doc.text(`Sanzioni evitate (massimo teorico): €${formatCurrency(maxTotal)}`, MARGIN_LEFT + 3, y);
-    doc.setTextColor(0, 0, 0);
-    y += 5;
-    const roiRealistic = totalInvestment > 0 ? (realisticTotal / totalInvestment).toFixed(1) : "0";
-    const roiMax = totalInvestment > 0 ? (maxTotal / totalInvestment).toFixed(1) : "0";
-    doc.text(`ROI realistico: ${roiRealistic}x`, MARGIN_LEFT + 3, y);
-    y += 5;
-    doc.text(`ROI massimo teorico: ${roiMax}x`, MARGIN_LEFT + 3, y);
-    y += 5;
-    doc.setFontSize(7);
-    doc.setTextColor(100, 100, 100);
-    doc.text("Nota: la stima realistica considera fattori attenuanti tipici (prima violazione, cooperazione,", MARGIN_LEFT + 3, y);
-    y += 3;
-    doc.text("piano remediation in corso, fattore PMI). Il massimo teorico rappresenta lo scenario peggiore", MARGIN_LEFT + 3, y);
-    y += 3;
-    doc.text("senza attenuanti, ai sensi delle fasce sanzionatorie applicabili.", MARGIN_LEFT + 3, y);
-    doc.setFontSize(9);
-    doc.setTextColor(0, 0, 0);
-    y += 8;
-  }
-
-  // Conclusioni
+  // 7. Conclusioni
   y = sectionTitle(doc, y, "7. CONCLUSIONI E RACCOMANDAZIONI");
-  y = writeWrapped(doc, content.conclusioni, MARGIN_LEFT, y, SAFE_WIDTH);
+  y = writeWrapped(doc, stripMarkdown(content.conclusioni || ""), MARGIN_LEFT, y, SAFE_WIDTH);
   if (content.raccomandazioni_top3?.length > 0) {
     y += 5;
     y = writeSubTitle(doc, "Top 3 Priorità", y);
     content.raccomandazioni_top3.forEach((r: string, i: number) => {
-      y = writeWrapped(doc, `${i + 1}. ${r}`, MARGIN_LEFT + 3, y, SAFE_WIDTH - 3);
+      y = writeWrapped(doc, `${i + 1}. ${stripMarkdown(r)}`, MARGIN_LEFT + 3, y, SAFE_WIDTH - 3);
     });
   }
+  y += 5;
+  doc.setFontSize(8);
+  doc.setTextColor(100, 100, 100);
+  y = writeWrapped(doc, stripMarkdown(content.limiti_analisi || "Limiti dell'analisi: la verifica riguarda ciò che risulta dai documenti caricati, non l'effettiva applicazione delle misure. Il report non quantifica sanzioni e non sostituisce il parere di un legale o del DPO."), MARGIN_LEFT, y, SAFE_WIDTH, 4);
+  doc.setTextColor(0, 0, 0);
 
   addFooters(doc, title);
 }

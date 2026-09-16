@@ -10,12 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Upload, Loader2, Info } from "lucide-react";
-import * as pdfjsLib from "pdfjs-dist";
-import mammoth from "mammoth";
-import * as XLSX from "xlsx";
-
-// Configure pdf.js worker - force local worker to avoid CDN/network failures
-pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+import { extractDocumentText, DocumentExtractionError } from "@/lib/client-document-extract";
 
 const AVAILABLE_REGULATIONS = [
   { id: 'GDPR', name: 'GDPR', description: 'Regolamento generale sulla protezione dei dati (UE 2016/679)' },
@@ -42,10 +37,12 @@ export default function NewAssessment() {
     annual_revenue_eur: null as number | null
   });
   const [language, setLanguage] = useState('it');
-  const [uploadedFiles, setUploadedFiles] = useState<Array<{ name: string, content: string, type: string }>>([]);
+  const [uploadedFiles, setUploadedFiles] = useState<Array<{ name: string, content: string, type: string, truncated: boolean }>>([]);
+  const [unreadableFiles, setUnreadableFiles] = useState<Array<{ name: string, reason: string }>>([]);
+  const [extracting, setExtracting] = useState(false);
 
   const MAX_FILES = 30;
-  const MAX_CHARS_PER_FILE = 15000;
+  const MAX_CHARS_PER_FILE = 40000;
   const MAX_TOTAL_CHARS = 400000;
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -64,178 +61,69 @@ export default function NewAssessment() {
       return;
     }
 
+    setExtracting(true);
     const currentChars = uploadedFiles.reduce((acc, file) => acc + file.content.length, 0);
     let nextTotalChars = currentChars;
-    const newFiles: Array<{ name: string, content: string, type: string }> = [];
-    const skippedFiles: string[] = [];
+    const newFiles: Array<{ name: string, content: string, type: string, truncated: boolean }> = [];
+    const skipped: Array<{ name: string, reason: string }> = [];
 
     for (const file of filesToProcess) {
+      if (uploadedFiles.some((f) => f.name === file.name) || newFiles.some((f) => f.name === file.name)) {
+        skipped.push({ name: file.name, reason: 'file già caricato' });
+        continue;
+      }
       try {
-        let extractedText = '';
-        const nameLower = file.name.toLowerCase();
-
-        if (nameLower.endsWith('.pdf')) {
-          try {
-            extractedText = await extractPdfText(file);
-          } catch (pdfError) {
-            console.warn('Estrazione PDF standard fallita, provo fallback:', file.name, pdfError);
-            extractedText = await extractBinaryTextFallback(file);
-          }
-        } else if (nameLower.endsWith('.docx') || nameLower.endsWith('.doc')) {
-          try {
-            extractedText = await extractDocxText(file);
-          } catch {
-            extractedText = await extractBinaryTextFallback(file);
-          }
-        } else if (nameLower.endsWith('.xlsx') || nameLower.endsWith('.xls') || nameLower.endsWith('.csv')) {
-          try {
-            extractedText = await extractSpreadsheetText(file);
-          } catch (xlsErr) {
-            console.warn('Estrazione foglio di calcolo fallita:', file.name, xlsErr);
-            extractedText = await extractBinaryTextFallback(file);
-          }
-        } else {
-          // Plain text files (.txt, .md, .json, .xml, .html, .rtf, etc.)
-          extractedText = await file.text();
-        }
-
-        const normalizedContent = extractedText
-          .replace(/\u0000/g, '')
-          .replace(/\s+/g, ' ')
-          .trim();
-
-        if (!normalizedContent || normalizedContent.length < 10) {
-          skippedFiles.push(`${file.name} (vuoto/illeggibile)`);
-          continue;
-        }
-
-        const trimmedContent = normalizedContent.slice(0, MAX_CHARS_PER_FILE);
+        // Estrazione onesta: se il file non è leggibile viene scartato con una spiegazione,
+        // mai inviato come contenuto binario (falserebbe l'analisi).
+        const fullText = await extractDocumentText(file, Number.MAX_SAFE_INTEGER);
+        const truncated = fullText.length > MAX_CHARS_PER_FILE;
+        const trimmedContent = fullText.slice(0, MAX_CHARS_PER_FILE);
 
         if (nextTotalChars + trimmedContent.length > MAX_TOTAL_CHARS) {
-          skippedFiles.push(`${file.name} (limite totale caratteri)`);
+          skipped.push({ name: file.name, reason: 'superato il limite complessivo di testo analizzabile' });
           continue;
         }
 
         newFiles.push({
           name: file.name,
           content: trimmedContent,
-          type: file.type || 'application/octet-stream'
+          type: file.type || 'application/octet-stream',
+          truncated,
         });
-
         nextTotalChars += trimmedContent.length;
       } catch (err) {
-        console.error('Errore lettura file:', file.name, err);
-        const reason = err instanceof Error ? err.message : 'errore sconosciuto';
-        skippedFiles.push(`${file.name} (errore estrazione: ${reason})`);
+        const reason = err instanceof DocumentExtractionError
+          ? err.message
+          : `errore di lettura (${err instanceof Error ? err.message : 'sconosciuto'})`;
+        console.warn('Documento scartato:', file.name, reason);
+        skipped.push({ name: file.name, reason });
       }
     }
-    
+
+    setExtracting(false);
     setUploadedFiles(prev => [...prev, ...newFiles]);
+    setUnreadableFiles(prev => [...prev, ...skipped]);
+    e.target.value = '';
 
     if (newFiles.length > 0) {
-      const desc = skippedFiles.length > 0
-        ? `${newFiles.length} documento/i aggiunto/i. ${skippedFiles.length} non leggibili: ${skippedFiles.join(', ')}`
-        : `${newFiles.length} documento/i aggiunto/i`;
       toast({
-        title: "File caricati",
-        description: desc,
+        title: skipped.length > 0 ? "File caricati, alcuni scartati" : "File caricati",
+        description: skipped.length > 0
+          ? `${newFiles.length} documento/i pronti per l'analisi, ${skipped.length} non leggibili (vedi elenco sotto).`
+          : `${newFiles.length} documento/i pronti per l'analisi`,
       });
     } else {
       toast({
-        title: "Nessun file valido aggiunto",
-        description: skippedFiles.length > 0
-          ? `File non leggibili: ${skippedFiles.join(', ')}`
-          : "Riduci numero/dimensione dei file o riprova con documenti più leggeri",
+        title: "Nessun documento leggibile",
+        description: skipped.map((f) => `${f.name}: ${f.reason}`).join('; '),
         variant: "destructive",
       });
     }
   };
 
-  // Extract text from PDF using pdfjs-dist (tolerant mode)
-  async function extractPdfText(file: File): Promise<string> {
-    const arrayBuffer = await file.arrayBuffer();
-    const loadingTask = pdfjsLib.getDocument({
-      data: arrayBuffer,
-      stopAtErrors: false,
-      isEvalSupported: false,
-    });
-
-    const pdf = await loadingTask.promise;
-    const pages: string[] = [];
-    const maxPages = Math.min(pdf.numPages, 80);
-
-    for (let i = 1; i <= maxPages; i++) {
-      try {
-        const page = await pdf.getPage(i);
-        const textContent = await page.getTextContent();
-        const pageText = textContent.items
-          .map((item: any) => item.str)
-          .join(' ')
-          .trim();
-
-        if (pageText.length > 0) {
-          pages.push(pageText);
-        }
-      } catch (pageError) {
-        console.warn(`Pagina PDF ${i} non leggibile:`, pageError);
-      }
-    }
-
-    const joined = pages.join('\n').trim();
-    if (!joined) {
-      throw new Error('Nessun testo estraibile dal PDF con parser standard');
-    }
-
-    return joined;
-  }
-
-  // Generic fallback for binary formats (.pdf/.doc legacy) when standard parsers fail
-  async function extractBinaryTextFallback(file: File): Promise<string> {
-    const buffer = await file.arrayBuffer();
-
-    const decoders = [
-      new TextDecoder('utf-8', { fatal: false }),
-      new TextDecoder('windows-1252', { fatal: false }),
-      new TextDecoder('iso-8859-1', { fatal: false }),
-    ];
-
-    let bestCandidate = '';
-
-    for (const decoder of decoders) {
-      const raw = decoder.decode(buffer);
-      const candidate = raw
-        .replace(/\u0000/g, ' ')
-        .match(/[A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9\s.,;:()\-_/]{20,}/g)?.join(' ') || '';
-
-      if (candidate.length > bestCandidate.length) {
-        bestCandidate = candidate;
-      }
-    }
-
-    return bestCandidate;
-  }
-
-  // Extract text from DOCX using mammoth
-  async function extractDocxText(file: File): Promise<string> {
-    const arrayBuffer = await file.arrayBuffer();
-    const result = await mammoth.extractRawText({ arrayBuffer });
-    return result.value;
-  }
-
-  // Extract text from Excel/CSV: concatenate all sheets as CSV-like text
-  async function extractSpreadsheetText(file: File): Promise<string> {
-    const arrayBuffer = await file.arrayBuffer();
-    const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-    const parts: string[] = [];
-    for (const sheetName of workbook.SheetNames) {
-      const sheet = workbook.Sheets[sheetName];
-      const csv = XLSX.utils.sheet_to_csv(sheet, { blankrows: false });
-      if (csv && csv.trim().length > 0) {
-        parts.push(`--- ${sheetName} ---\n${csv}`);
-      }
-    }
-    return parts.join('\n\n');
-  }
+  const removeUploadedFile = (name: string) => {
+    setUploadedFiles(prev => prev.filter((f) => f.name !== name));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -264,6 +152,11 @@ export default function NewAssessment() {
         type: file.type,
         content: file.content.slice(0, MAX_CHARS_PER_FILE)
       }));
+      if (safeDocuments.length === 0) {
+        toast({ title: "Nessun documento leggibile", description: "Carica almeno un documento con testo leggibile.", variant: "destructive" });
+        setLoading(false);
+        return;
+      }
 
       // Fire-and-forget: invoke edge function, then poll DB for results
       const supabaseUrl = supabaseHttpUrl;
@@ -384,7 +277,7 @@ export default function NewAssessment() {
                     e quali azioni correttive intraprendere.
                   </p>
                   <div className="text-sm text-muted-foreground">
-                    <strong>Output:</strong> Lista di gap, azioni correttive prioritizzate, punteggio di rischio, stima sanzioni potenziali.
+                    <strong>Come funziona:</strong> ogni requisito della normativa viene confrontato con i tuoi documenti; per ciascuno ottieni l'esito (documentato, parziale, mancante), le evidenze trovate, cosa manca e le azioni per rimediare, con un profilo di rischio a colori.
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">
                     💡 <em>Dopo aver creato almeno 3 assessment, potrai accedere alla <strong>Predictive Analytics</strong> 
@@ -444,9 +337,9 @@ export default function NewAssessment() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="revenue">Fatturato annuale (EUR)</Label>
+                <Label htmlFor="revenue">Fatturato annuale (EUR, facoltativo)</Label>
                 <p className="text-xs text-muted-foreground mb-2">
-                  Il fatturato è necessario per calcolare con precisione le potenziali sanzioni (es. GDPR: fino al 4% del fatturato annuo globale)
+                  Serve solo a inquadrare la dimensione dell'organizzazione nei documenti generati.
                 </p>
                 <div className="grid grid-cols-2 gap-4">
                   <Input
@@ -606,21 +499,62 @@ export default function NewAssessment() {
                   <Input
                     type="file"
                     multiple
-                    accept=".pdf,.doc,.docx,.txt,.xlsx,.xls,.csv"
+                    accept=".pdf,.docx,.txt,.md,.xlsx,.xls,.csv"
                     onChange={handleFileUpload}
+                    disabled={extracting}
                     className="max-w-xs mx-auto"
                   />
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Formati accettati: PDF con testo, Word (.docx), Excel, CSV, testo. Le scansioni senza testo e i file .doc non possono essere letti.
+                  </p>
+                  {extracting && (
+                    <p className="text-sm text-muted-foreground mt-3 flex items-center justify-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Lettura dei documenti in corso...
+                    </p>
+                  )}
                   {uploadedFiles.length > 0 && (
                     <div className="mt-4">
-                      <p className="text-sm font-medium mb-2">{uploadedFiles.length} file caricati:</p>
+                      <p className="text-sm font-medium mb-2">{uploadedFiles.length} documenti pronti per l'analisi:</p>
                       <ul className="text-sm text-left max-w-md mx-auto space-y-1">
-                        {uploadedFiles.map((file, i) => (
-                          <li key={i} className="flex items-center gap-2">
-                            <span className="w-2 h-2 bg-primary rounded-full"></span>
-                            {file.name}
+                        {uploadedFiles.map((file) => (
+                          <li key={file.name} className="flex items-center gap-2">
+                            <span className="w-2 h-2 bg-green-600 rounded-full shrink-0"></span>
+                            <span className="flex-1 truncate">{file.name}</span>
+                            <span className="text-xs text-muted-foreground shrink-0">
+                              {Math.round(file.content.length / 1000)}k car.{file.truncated ? ', tagliato' : ''}
+                            </span>
+                            <button
+                              type="button"
+                              className="text-xs text-muted-foreground hover:text-destructive shrink-0"
+                              onClick={() => removeUploadedFile(file.name)}
+                              aria-label={`Rimuovi ${file.name}`}
+                            >
+                              rimuovi
+                            </button>
                           </li>
                         ))}
                       </ul>
+                    </div>
+                  )}
+                  {unreadableFiles.length > 0 && (
+                    <div className="mt-4 text-left max-w-md mx-auto rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-3">
+                      <p className="text-sm font-medium mb-1 text-amber-800 dark:text-amber-200">
+                        {unreadableFiles.length} file non analizzabili (esclusi dall'analisi):
+                      </p>
+                      <ul className="text-xs text-amber-900 dark:text-amber-100 space-y-1">
+                        {unreadableFiles.map((file, i) => (
+                          <li key={`${file.name}-${i}`}>
+                            <span className="font-medium">{file.name}</span>: {file.reason}
+                          </li>
+                        ))}
+                      </ul>
+                      <button
+                        type="button"
+                        className="mt-2 text-xs underline text-amber-800 dark:text-amber-200"
+                        onClick={() => setUnreadableFiles([])}
+                      >
+                        Nascondi elenco
+                      </button>
                     </div>
                   )}
                 </div>

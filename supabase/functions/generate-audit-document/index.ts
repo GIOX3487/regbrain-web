@@ -1616,57 +1616,37 @@ Always use the generate_compliance_document function to return your response.`;
   }
 
   if (type === 'gap_report') {
-    return `Agisci come consulente senior di compliance normativa. Genera un REPORT ESECUTIVO DI GAP ANALYSIS professionale basato sui risultati dell'assessment fornito. Il documento deve essere pronto per presentazione al management e agli auditor.
+    return `Agisci come consulente senior di compliance normativa. Genera un REPORT ESECUTIVO DI GAP ANALYSIS basato sui risultati della verifica documentale fornita. Il documento deve essere pronto per presentazione al management e agli auditor.
 
 STRUTTURA OBBLIGATORIA
 
 1. EXECUTIVE SUMMARY
-Sintesi dei risultati in 5-8 righe
-Punteggio di compliance complessivo
-Numero di gap identificati per livello di rischio (critico, alto, medio, basso)
-Sanzioni potenziali totali stimate
-Raccomandazione principale
+Sintesi dei risultati in 5-8 righe: normative analizzate, numero di requisiti verificati, quanti risultano documentati, quanti presentano gap (per profilo di rischio: alto, medio, basso), quanti sono da verificare. Conformità documentale complessiva. Raccomandazione principale.
 
 2. AMBITO DELL'ANALISI
-Normative analizzate
-Settore dell'organizzazione
-Giurisdizione
-Documenti aziendali analizzati
-Metodologia utilizzata (rule-based + semantic matching)
+Normative analizzate, settore, giurisdizione, documenti analizzati (ed eventuali documenti esclusi perché non leggibili), metodologia: verifica documentale requisito per requisito con evidenze testuali citate dai documenti; profilo di rischio ottenuto combinando gravità dell'obbligo e stato della documentazione.
 
 3. RISULTATI PER NORMATIVA
-Per ogni normativa analizzata:
-Punteggio di conformità specifico
-Gap identificati con riferimento all'articolo
-Livello di rischio
-Azioni raccomandate
-Stima costi di remediation
+Per ogni normativa: conformità documentale, elenco dei gap con riferimento all'articolo, cosa risulta dai documenti, cosa manca, profilo di rischio (alto/medio/basso), azioni raccomandate.
 
-4. MATRICE DEI RISCHI
-Tabella riepilogativa: Gap | Normativa | Rischio | Sanzione | Priorità | Costo Remediation | Ore Stimate
+4. REQUISITI DOCUMENTATI
+Elenco dei requisiti che risultano soddisfatti, con la sintesi dell'evidenza trovata (documento e contenuto). Se nessuno, dichiararlo.
 
-5. PIANO DI REMEDIATION PRIORITIZZATO
-Azioni immediate (0-30 giorni) per gap critici
-Azioni a breve termine (1-3 mesi) per gap alti
-Azioni a medio termine (3-6 mesi) per gap medi
-Miglioramenti continui per gap bassi
+5. REQUISITI DA VERIFICARE
+Obblighi condizionali la cui applicabilità non risulta dai documenti, con la verifica da fare. Se nessuno, dichiararlo.
 
-6. ANALISI FINANZIARIA
-Investimento totale stimato per la remediation
-Sanzioni potenziali evitate
-ROI della remediation
-Confronto costo remediation vs rischio sanzioni
+6. PIANO DI REMEDIATION PRIORITIZZATO
+Azioni immediate (0-30 giorni) per i gap a rischio alto; breve termine (1-3 mesi) per i gap medi; medio termine (3-6 mesi) per i gap bassi; miglioramenti continui. Ogni azione deve derivare dalle azioni raccomandate dei gap, senza stime di ore, costi o sanzioni.
 
 7. CONCLUSIONI E RACCOMANDAZIONI
-Valutazione complessiva della postura di compliance
-Top 3 priorità immediate
-Prossimi passi raccomandati
+Valutazione complessiva della postura di conformità documentale, top 3 priorità immediate, prossimi passi, e il limite dell'analisi: valuta ciò che risulta dai documenti, non l'effettiva applicazione delle misure, e non sostituisce il parere legale.
 
 REGOLE:
-Basati ESCLUSIVAMENTE sui dati dell'assessment forniti (gap, punteggi, azioni)
-Calcola i totali correttamente dai dati
+Basati ESCLUSIVAMENTE sui dati dell'assessment forniti (gap, requisiti verificati, evidenze, azioni)
+NON quantificare sanzioni in euro, NON stimare ore o costi
+Cita le evidenze documentali con il nome del documento
 Scrivi in italiano professionale
-NON inventare gap o dati non presenti nell'assessment
+NON inventare gap, requisiti o evidenze non presenti nell'assessment
 
 Always use the generate_compliance_document function to return your response.`;
   }
@@ -2334,6 +2314,8 @@ function getDocumentSchema(type: string, mode: string = 'standard'): any {
             normative: { type: 'array', items: { type: 'string' } },
             settore: { type: 'string' },
             giurisdizione: { type: 'string' },
+            documenti_analizzati: { type: 'array', items: { type: 'string' } },
+            documenti_esclusi: { type: 'array', items: { type: 'string' } },
             metodologia: { type: 'string' }
           }
         },
@@ -2350,31 +2332,38 @@ function getDocumentSchema(type: string, mode: string = 'standard'): any {
                   type: 'object',
                   properties: {
                     riferimento: { type: 'string' },
-                    descrizione: { type: 'string' },
-                    rischio: { type: 'string' },
-                    azione: { type: 'string' },
-                    costo_eur: { type: 'number' },
-                    ore_stimate: { type: 'number' }
-                  }
+                    cosa_risulta: { type: 'string', description: 'Cosa risulta dai documenti' },
+                    cosa_manca: { type: 'string', description: 'Elementi mancanti' },
+                    stato_documentale: { type: 'string', enum: ['assente', 'parziale'] },
+                    profilo_rischio: { type: 'string', enum: ['alto', 'medio', 'basso'] },
+                    evidenze: { type: 'array', items: { type: 'string' }, description: 'Citazioni con nome del documento' },
+                    azioni: { type: 'array', items: { type: 'string' } }
+                  },
+                  required: ['riferimento', 'cosa_manca', 'profilo_rischio']
                 }
               }
             }
           }
         },
-        matrice_rischi: {
+        requisiti_documentati: {
           type: 'array',
           items: {
             type: 'object',
             properties: {
-              gap: { type: 'string' },
-              normativa: { type: 'string' },
-              rischio: { type: 'string' },
-              sanzione_eur: { type: 'number' },
-              sanzione_massima_teorica_eur: { type: 'number' },
-              fine_tier_basis: { type: 'string' },
-              priorita: { type: 'number' },
-              costo_remediation: { type: 'number' },
-              ore_stimate: { type: 'number' }
+              riferimento: { type: 'string' },
+              sintesi: { type: 'string' },
+              evidenza: { type: 'string' }
+            }
+          }
+        },
+        requisiti_da_verificare: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              riferimento: { type: 'string' },
+              motivo: { type: 'string' },
+              verifica_da_fare: { type: 'string' }
             }
           }
         },
@@ -2387,17 +2376,9 @@ function getDocumentSchema(type: string, mode: string = 'standard'): any {
             continuo: { type: 'array', items: { type: 'string' } }
           }
         },
-        analisi_finanziaria: {
-          type: 'object',
-          properties: {
-            investimento_totale: { type: 'number' },
-            sanzioni_evitate: { type: 'number' },
-            sanzioni_massime_teoriche: { type: 'number' },
-            roi: { type: 'number' }
-          }
-        },
         conclusioni: { type: 'string' },
-        raccomandazioni_top3: { type: 'array', items: { type: 'string' } }
+        raccomandazioni_top3: { type: 'array', items: { type: 'string' } },
+        limiti_analisi: { type: 'string' }
       },
       required: ['title', 'executive_summary', 'risultati_per_normativa', 'conclusioni']
     };
@@ -2631,11 +2612,10 @@ function buildGapRiskMapping(gaps: any[]): string {
 
 ISTRUZIONI OBBLIGATORIE: Le minacce e il livello di rischio nella Sezione 7 DEVONO riflettere i gap identificati nell'assessment. Concretamente:
 
-### MAPPATURA RISK_SCORE GAP → MATRICE R=f(M,p):
-- Gap con risk_level 'critical' (risk_score > 85): Impatto=4, Probabilità=3-4 -> Rischio iniziale Alto/Altissimo
-- Gap con risk_level 'high' (risk_score 70-84): Impatto=3, Probabilità=2-3 -> Rischio iniziale Medio/Alto
-- Gap con risk_level 'medium' (risk_score 50-69): Impatto=2, Probabilità=2 -> Rischio iniziale Medio
-- Gap con risk_level 'low' (risk_score < 50): Impatto=1-2, Probabilità=1 -> Rischio iniziale Basso
+### MAPPATURA PROFILO DI RISCHIO DEL GAP → MATRICE R=f(M,p):
+- Gap con profilo ALTO (risk_level 'high' o 'critical'): Impatto=3-4, Probabilità=3 -> Rischio iniziale Alto/Altissimo
+- Gap con profilo MEDIO (risk_level 'medium'): Impatto=2-3, Probabilità=2 -> Rischio iniziale Medio
+- Gap con profilo BASSO (risk_level 'low'): Impatto=1-2, Probabilità=1 -> Rischio iniziale Basso
 
 ### REGOLE RISCHIO RESIDUO:
 - Se il gap indica remediation_effort 'low' e ci sono azioni concrete: ridurre Probabilità di 2
@@ -2696,16 +2676,42 @@ ATTENZIONE: Sono stati identificati gap specifici sull'Art. 30 GDPR (registro tr
 // =====================================================================
 
 function buildDocumentPrompt(type: string, assessment: any, profile: any, conversation: string, language: string = 'it', mode: string = 'standard', regulatoryContext: string = '', userDocumentsSummary: string = '', userConfig?: any) {
+  const riskLabel = (level: string) => {
+    const l = String(level || '').toLowerCase();
+    return l === 'critical' || l === 'high' ? 'ALTO (rosso)' : l === 'medium' ? 'MEDIO (arancione)' : 'BASSO (giallo)';
+  };
   const gapsSection = assessment.identified_gaps?.map((gap: any, i: number) => `
 ### Gap ${i + 1}: ${gap.requirement_reference}
-- Descrizione Gap: ${gap.gap_description}
-- Stato Attuale: ${gap.current_state || 'Non documentato'}
-- Livello Rischio: ${gap.risk_level} (Score: ${gap.risk_score}/100)
+- Cosa manca: ${gap.gap_description}
+- Cosa risulta dai documenti: ${gap.current_state || 'Nessuna documentazione pertinente'}
+- Stato documentale: ${gap.coverage_status === 'partial' ? 'documentazione parziale' : 'documentazione assente'}
+- Profilo di rischio: ${riskLabel(gap.risk_level)}
 - Priorità: ${gap.priority}
 - Effort: ${gap.remediation_effort || 'Da valutare'}
-- Potenziale Sanzione: EUR ${gap.potential_fine_eur?.toLocaleString('it-IT') || 'Non quantificata'}
+${Array.isArray(gap.evidence) && gap.evidence.length > 0 ? `- Evidenze trovate: ${gap.evidence.map((e: any) => `[${e.document}] "${e.quote}"`).join(' | ')}` : ''}
 - Azioni Raccomandate: ${formatMitigationActionsForPrompt(gap.recommended_actions)}
 `).join('\n') || 'Nessun gap identificato';
+
+  const checksPayload = assessment.requirement_checks && typeof assessment.requirement_checks === 'object' ? assessment.requirement_checks : null;
+  const allChecks: any[] = Array.isArray(checksPayload?.checks) ? checksPayload.checks : [];
+  const coveredChecks = allChecks.filter((c: any) => c.status === 'covered');
+  const toVerifyChecks = allChecks.filter((c: any) => c.status === 'to_verify');
+  const notApplicableChecks = allChecks.filter((c: any) => c.status === 'not_applicable');
+  const checksSection = allChecks.length > 0 ? `
+
+## REQUISITI VERIFICATI (${allChecks.length} totali: ${coveredChecks.length} documentati, ${assessment.identified_gaps?.length || 0} con gap, ${toVerifyChecks.length} da verificare, ${notApplicableChecks.length} non applicabili)
+Documenti analizzati: ${(checksPayload?.documents_analyzed || []).join(', ') || 'non indicati'}
+${(checksPayload?.unreadable_documents || []).length > 0 ? `Documenti esclusi perché non leggibili: ${checksPayload.unreadable_documents.join(', ')}` : ''}
+
+### Requisiti documentati
+${coveredChecks.map((c: any) => `- ${c.reference}: ${c.assessment || 'documentato'}${Array.isArray(c.evidence) && c.evidence.length > 0 ? ` (evidenza: [${c.evidence[0].document}] "${String(c.evidence[0].quote).substring(0, 160)}")` : ''}`).join('\n') || '- nessuno'}
+
+### Requisiti da verificare (obblighi condizionali, applicabilità non chiara dai documenti)
+${toVerifyChecks.map((c: any) => `- ${c.reference}: ${c.assessment || ''}`).join('\n') || '- nessuno'}
+
+### Requisiti non applicabili
+${notApplicableChecks.map((c: any) => `- ${c.reference}: ${c.assessment || ''}`).join('\n') || '- nessuno'}
+` : '';
 
   const userDocsSection = userDocumentsSummary ? `
 
@@ -2750,13 +2756,13 @@ REGOLE PER QUESTA ORIGINE:
 - Le criticità o i dubbi emersi in conversazione vanno trattati come minacce e rischi nella valutazione, con misure "Da applicare".
 - Dove un'informazione manca davvero, usa il placeholder [DA COMPLETARE - descrizione del dato richiesto]: non inventare mai dati, non attribuire misure che l'utente non ha dichiarato.
 ` : `## RISULTATI ASSESSMENT
-- Conformità Complessiva: ${assessment.overall_compliance_percentage || 0}%
-- Punteggio Rischio: ${assessment.overall_risk_score || 0}/100
+- Conformità documentale complessiva: ${assessment.overall_compliance_percentage || 0}%
+- Profilo di rischio complessivo: ${(assessment.identified_gaps || []).some((g: any) => ['critical', 'high'].includes(String(g.risk_level).toLowerCase())) ? 'ALTO' : (assessment.identified_gaps || []).some((g: any) => String(g.risk_level).toLowerCase() === 'medium') ? 'MEDIO' : (assessment.identified_gaps || []).length > 0 ? 'BASSO' : 'NESSUN RISCHIO RILEVATO'} (rosso = alto, arancione = medio, giallo = basso, verde = documentato)
 - Stato: ${assessment.status}
 - Data Completamento: ${assessment.completed_at || 'In corso'}
 
 ## GAP IDENTIFICATI (${assessment.identified_gaps?.length || 0} totali)
-${gapsSection}`}
+${gapsSection}${checksSection}`}
 ${userDocsSection}${gapDocEvidence}
 ${conversation ? `## ${assessment._source === 'chat' ? 'CONVERSAZIONE CON L\'UTENTE (fonte primaria)' : 'CONTESTO AGGIUNTIVO'}:\n${conversation}\n` : ''}`;
 
@@ -2870,20 +2876,15 @@ IMPORTANTE: Usa SEMPRE la funzione generate_compliance_document per restituire i
 
 Genera un report esecutivo di gap analysis basato ESCLUSIVAMENTE sui dati dell'assessment sopra.
 
-L'executive summary deve sintetizzare: compliance ${assessment.overall_compliance_percentage}%, rischio ${assessment.overall_risk_score}/100, ${assessment.identified_gaps?.length || 0} gap identificati
+L'executive summary deve sintetizzare: conformità documentale ${assessment.overall_compliance_percentage}%, ${assessment.identified_gaps?.length || 0} gap identificati con la ripartizione per profilo di rischio (alto/medio/basso), requisiti documentati e requisiti da verificare.
 
-La matrice dei rischi deve includere TUTTI i gap dall'assessment con i dati esatti (sanzioni, ore, costi dal catalogo)
+Per ogni gap in "risultati_per_normativa" riporta esattamente: riferimento, cosa risulta dai documenti, cosa manca, stato documentale (assente o parziale), profilo di rischio (alto = rosso, medio = arancione, basso = giallo), evidenze citate con il nome del documento, azioni raccomandate.
 
-Per ogni riga della matrice rischi valorizza:
-- sanzione_eur = stima realistica dal campo potential_fine_eur del gap
-- sanzione_massima_teorica_eur = massimo teorico dal campo potential_fine_max_eur, se presente, altrimenti potential_fine_eur
-- fine_tier_basis = base normativa dal campo fine_tier_basis, se presente
+Compila "requisiti_documentati" con i requisiti documentati dell'assessment e "requisiti_da_verificare" con quelli da verificare: non inventarne.
 
-Il piano di remediation deve raggruppare le azioni per urgenza basandosi sulla priorità dei gap
+Il piano di remediation deve raggruppare le azioni per urgenza in base al profilo di rischio dei gap. Nessuna stima di sanzioni, ore o costi.
 
-L'analisi finanziaria deve calcolare: investimento totale = somma costi remediation di tutti i gap, sanzioni_evitate = somma delle stime realistiche, sanzioni_massime_teoriche = somma dei massimi teorici, ROI = sanzioni_evitate / investimento totale
-
-NON inventare gap o dati — usa SOLO quelli presenti nella sezione "GAP IDENTIFICATI" sopra
+NON inventare gap o dati: usa SOLO quelli presenti nelle sezioni "GAP IDENTIFICATI" e "REQUISITI VERIFICATI" sopra.
 
 IMPORTANTE: Usa SEMPRE la funzione generate_compliance_document per restituire il documento completo.`;
   }
@@ -2901,7 +2902,7 @@ Questo documento NON è una DPIA. È un'analisi COMPLESSIVA delle misure dell'or
 4. Nella SEZIONE 5, usa il risk_level dei gap per i valori della matrice: critical→Impatto 4, Probabilità 4; high→Impatto 3, Probabilità 3
 5. Nella SEZIONE 6, le misure "Da applicare" devono essere le azioni raccomandate dei gap
 6. Nella SEZIONE 7, il rischio residuo deve essere coerente: gap critical con misure "Da applicare" → rischio residuo resta Alto o Altissimo
-7. Nella SEZIONE 8, derivare direttamente le azioni, ore e costi dal piano d'azione dell'assessment
+7. Nella SEZIONE 8, derivare direttamente le azioni dal piano d'azione dell'assessment, senza stime di ore o costi
 8. NON inventare nomi di persone o aziende — usa [DA COMPLETARE]
 
 COLLEGAMENTO GAP → RISCHI (FONDAMENTALE):

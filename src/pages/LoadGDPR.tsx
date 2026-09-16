@@ -18,8 +18,7 @@ const LoadGDPR = () => {
       const arrayBuffer = await blob.arrayBuffer();
       
       // Use pdfjs-dist to extract text
-      const pdfjsLib = await import('pdfjs-dist');
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+      const { pdfjsLib } = await import('@/lib/pdf-worker');
       
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
       let fullText = '';

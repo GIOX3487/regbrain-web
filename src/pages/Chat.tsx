@@ -15,7 +15,7 @@ import { renderWithClickableCitations } from "@/components/chat/ClickableCitatio
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import React from 'react';
-import { extractDocumentText } from "@/lib/client-document-extract";
+import { extractDocumentText, DocumentExtractionError } from "@/lib/client-document-extract";
 
 // Walk markdown children and replace plain-text [N] markers with clickable citation buttons.
 function transformChildrenWithCitations(children: React.ReactNode, messageIndex: number): React.ReactNode {
@@ -509,12 +509,11 @@ const Chat = () => {
           text = await extractDocumentText(file);
         } catch (err) {
           console.error('Estrazione testo fallita:', file.name, err);
-        }
-
-        if (!text || text.length < 20) {
           toast({
-            title: "Documento non leggibile",
-            description: `Non è stato possibile estrarre il testo da ${file.name}. Prova con un PDF non scansionato o un file Word.`,
+            title: `Documento non leggibile: ${file.name}`,
+            description: err instanceof DocumentExtractionError
+              ? err.message
+              : 'Non è stato possibile estrarre il testo. Prova con un PDF non scansionato o un file Word (.docx).',
             variant: "destructive",
           });
         }

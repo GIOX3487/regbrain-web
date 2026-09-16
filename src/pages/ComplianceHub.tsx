@@ -24,6 +24,7 @@ import {
   Globe,
   Trash2
 } from "lucide-react";
+import { RISK_STYLE, riskProfileOf, overallRiskProfile, type RiskProfile } from "@/components/compliance/RiskScoreExplanation";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -161,13 +162,15 @@ export default function ComplianceHub() {
     return colors[level] || 'default';
   };
 
-  const criticalGaps = gaps.filter(g => g.risk_level === 'critical').length;
-  const highGaps = gaps.filter(g => g.risk_level === 'high').length;
+  const highGaps = gaps.filter(g => riskProfileOf(g.risk_level) === 'high').length;
+  const mediumGaps = gaps.filter(g => riskProfileOf(g.risk_level) === 'medium').length;
+  const lowGaps = gaps.filter(g => riskProfileOf(g.risk_level) === 'low').length;
+  const hubProfile = overallRiskProfile(gaps);
+  const hubProfileLabel: Record<RiskProfile, string> = { high: 'Alto', medium: 'Medio', low: 'Basso', none: 'Nessuno' };
+  const profileOfScore = (score: number | null | undefined): RiskProfile =>
+    !score || score <= 0 ? 'none' : score >= 66 ? 'high' : score >= 36 ? 'medium' : 'low';
   const avgCompliance = assessments.length > 0
     ? assessments.reduce((acc, a) => acc + (a.overall_compliance_percentage || 0), 0) / assessments.length
-    : 0;
-  const avgRisk = assessments.length > 0
-    ? assessments.reduce((acc, a) => acc + (a.overall_risk_score || 0), 0) / assessments.length
     : 0;
 
   return (
@@ -352,8 +355,11 @@ export default function ComplianceHub() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl sm:text-3xl font-bold">{avgRisk.toFixed(1)}/100</div>
-              <Progress value={avgRisk} className="mt-2" />
+              <div className={`text-2xl sm:text-3xl font-bold flex items-center gap-2 ${RISK_STYLE[hubProfile].text}`}>
+                <span className={`w-3.5 h-3.5 rounded-full shrink-0 ${RISK_STYLE[hubProfile].dot}`} />
+                {hubProfileLabel[hubProfile]}
+              </div>
+              <p className="text-xs sm:text-sm text-muted-foreground mt-1">{highGaps} alti, {mediumGaps} medi, {lowGaps} bassi</p>
             </CardContent>
           </Card>
 
@@ -361,13 +367,13 @@ export default function ComplianceHub() {
             <CardHeader className="pb-2 sm:pb-3">
               <CardTitle className="text-xs sm:text-sm font-medium flex items-center gap-1.5 sm:gap-2">
                 <AlertTriangle className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-red-500 shrink-0" />
-                <span className="truncate">Gap critici</span>
+                <span className="truncate">Gap a rischio alto</span>
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl sm:text-3xl font-bold">{criticalGaps}</div>
+              <div className="text-2xl sm:text-3xl font-bold">{highGaps}</div>
               <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-                {highGaps} alto rischio
+                su {gaps.length} gap aperti
               </p>
             </CardContent>
           </Card>
@@ -474,13 +480,16 @@ export default function ComplianceHub() {
                         </div>
                       </div>
                       <div>
-                        <p className="text-sm text-muted-foreground mb-1">Rischio</p>
-                        <div className="flex items-center gap-2">
-                          <Progress value={assessment.overall_risk_score || 0} className="flex-1" />
-                          <span className="text-sm font-medium">
-                            {(assessment.overall_risk_score || 0).toFixed(0)}/100
-                          </span>
-                        </div>
+                        <p className="text-sm text-muted-foreground mb-1">Profilo di rischio</p>
+                        {(() => {
+                          const p = assessment.status === 'completed' ? profileOfScore(assessment.overall_risk_score) : 'none';
+                          return (
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-xs font-semibold ${RISK_STYLE[p].badge}`}>
+                              <span className={`w-2 h-2 rounded-full ${RISK_STYLE[p].dot}`} />
+                              {assessment.status === 'completed' ? hubProfileLabel[p] : 'In analisi'}
+                            </span>
+                          );
+                        })()}
                       </div>
                     </div>
                   </CardContent>
@@ -506,22 +515,16 @@ export default function ComplianceHub() {
                   <CardHeader>
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Badge variant={getRiskBadgeColor(gap.risk_level)}>
-                            {gap.risk_level}
-                          </Badge>
-                          <Badge variant="outline">Priorità {gap.priority}</Badge>
+                        <div className="flex flex-wrap items-center gap-2 mb-2">
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-xs font-semibold ${RISK_STYLE[riskProfileOf(gap.risk_level)].badge}`}>
+                            <span className={`w-2 h-2 rounded-full ${RISK_STYLE[riskProfileOf(gap.risk_level)].dot}`} />
+                            Rischio {hubProfileLabel[riskProfileOf(gap.risk_level)].toLowerCase()}
+                          </span>
                           <span className="text-sm text-muted-foreground">
                             {gap.requirement_reference}
                           </span>
                         </div>
                         <CardTitle className="text-base">{gap.gap_description}</CardTitle>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-2xl font-bold text-destructive">
-                          {gap.risk_score.toFixed(0)}
-                        </div>
-                        <p className="text-xs text-muted-foreground">Risk Score</p>
                       </div>
                     </div>
                   </CardHeader>

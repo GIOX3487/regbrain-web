@@ -164,7 +164,7 @@ const Landing = () => {
               <h3 className="text-2xl font-semibold">Analisi conformità</h3>
               <p className="text-muted-foreground">
                 <strong>Gap Analysis + Predictive Analytics unificati:</strong> analizza lo stato attuale e prevedi rischi futuri con Machine Learning. 
-                Report dettagliati con priorità, sanzioni potenziali e ROI della rimediazione.
+                Report dettagliati con evidenze documentali, profilo di rischio a colori e azioni di rimediazione.
               </p>
               <ul className="space-y-2 text-sm">
                 <li className="flex items-center gap-2">
@@ -177,7 +177,7 @@ const Landing = () => {
                 </li>
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-green-600" />
-                  <span>Calcolo sanzioni e ROI rimediazione</span>
+                  <span>Evidenze citate dai tuoi documenti e piano di rimediazione</span>
                 </li>
               </ul>
             </div>

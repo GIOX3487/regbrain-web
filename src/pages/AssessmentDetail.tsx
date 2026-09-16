@@ -25,7 +25,7 @@ import {
   XCircle,
   Languages
 } from "lucide-react";
-import { RiskScoreExplanation } from "@/components/compliance/RiskScoreExplanation";
+import { RiskScoreExplanation, RISK_STYLE, riskProfileOf, overallRiskProfile, type RiskProfile } from "@/components/compliance/RiskScoreExplanation";
 import { DocumentConfigDialog, type ConfigDocumentType, type DocumentConfig } from "@/components/DocumentConfigDialog";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -45,6 +45,34 @@ interface Assessment {
   created_at: string;
   completed_at: string;
   annual_revenue_eur?: number;
+  requirement_checks?: RequirementChecksPayload | null;
+}
+
+interface RequirementCheck {
+  requirement_id: string;
+  regulation: string;
+  reference: string;
+  description: string;
+  severity: string;
+  remediation_effort: string;
+  conditional: boolean;
+  status: 'covered' | 'partial' | 'missing' | 'to_verify' | 'not_applicable';
+  risk_level: 'high' | 'medium' | 'low' | null;
+  assessment: string;
+  evidence: Array<{ document: string; quote: string }>;
+  missing_elements: string[];
+  recommended_actions: string[];
+  confidence: number | null;
+  method: string;
+}
+
+interface RequirementChecksPayload {
+  version?: string;
+  generated_at?: string;
+  unreadable_documents?: string[];
+  documents_analyzed?: string[];
+  counts?: Record<string, number>;
+  checks?: RequirementCheck[];
 }
 
 interface Gap {
@@ -63,6 +91,9 @@ interface Gap {
   source_chunk_id: string | null;
   article_text_excerpt: string | null;
   detection_method: string | null;
+  evidence?: Array<{ document: string; quote: string }> | null;
+  coverage_status?: string | null;
+  severity?: string | null;
 }
 
 interface ActionPlan {
@@ -78,50 +109,43 @@ interface ActionPlan {
   assigned_to?: string;
 }
 
-const SCOPE_ESTIMATES: Record<string, number> = {
-  'GDPR': 35, 'NIS2': 20, 'DORA': 25, 'AI Act': 30, 'CRA': 15,
-  'Data Act': 15, 'ISO 27001': 20, 'D.Lgs 81/08': 25, 'Legge Protezione Dati Albania': 15,
-};
-const SCOPE_CATALOG: Record<string, number> = {
-  'GDPR': 10, 'NIS2': 5, 'DORA': 5, 'AI Act': 7, 'CRA': 3,
-  'Data Act': 3, 'ISO 27001': 5, 'D.Lgs 81/08': 5, 'Legge Protezione Dati Albania': 3,
-};
-
-function CoverageScopeDisclaimer({ regulations, gapsCount, compliancePercentage }: { 
-  regulations: string[]; gapsCount: number; compliancePercentage: number 
+function CoverageScopeDisclaimer({ regulations, checks, unreadableDocuments, documentsAnalyzed, language }: {
+  regulations: string[];
+  checks: RequirementCheck[];
+  unreadableDocuments: string[];
+  documentsAnalyzed: string[];
+  language: string;
 }) {
-  const breakdown = regulations.map(reg => {
-    const keyEst = Object.keys(SCOPE_ESTIMATES).find(k => k.toLowerCase() === reg.toLowerCase());
-    const keyCat = Object.keys(SCOPE_CATALOG).find(k => k.toLowerCase() === reg.toLowerCase());
-    const total = keyEst ? SCOPE_ESTIMATES[keyEst] : 15;
-    const analyzed = keyCat ? SCOPE_CATALOG[keyCat] : 3;
-    const ratio = analyzed / total;
-    const depth = ratio >= 0.7 ? 'comprehensive' : ratio >= 0.4 ? 'standard' : 'basic';
-    return { regulation: reg, analyzed, total, depth };
-  });
-  const totalAnalyzed = breakdown.reduce((s, b) => s + b.analyzed, 0);
-  const totalEst = breakdown.reduce((s, b) => s + b.total, 0);
-
+  const isIt = language === 'it';
+  const perRegulation = regulations.map(reg => ({
+    regulation: reg,
+    analyzed: checks.filter(c => c.regulation.toLowerCase() === reg.toLowerCase()).length,
+  }));
   return (
     <Card className="bg-muted/50 border-muted mb-8">
       <CardContent className="p-4">
         <div className="flex items-start gap-2">
           <Info className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
-          <div>
+          <div className="space-y-2">
             <p className="text-sm text-muted-foreground">
-              Analisi basata su {totalAnalyzed} requisiti chiave su {totalEst} totali stimati. 
-              Per una valutazione esaustiva, si consiglia un audit completo con un consulente certificato.
+              {isIt
+                ? `Verifica documentale su ${checks.length} requisiti chiave delle normative selezionate, condotta su ${documentsAnalyzed.length} documenti leggibili. Copre gli obblighi principali, non ogni singola disposizione: per un audit esaustivo affiancare la revisione di un consulente.`
+                : `Documentary check on ${checks.length} key requirements of the selected regulations, carried out on ${documentsAnalyzed.length} readable documents. It covers the main obligations, not every single provision: pair it with a consultant's review for an exhaustive audit.`}
             </p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {breakdown.map(reg => (
-                <Badge 
-                  key={reg.regulation} 
-                  variant={reg.depth === 'comprehensive' ? 'default' : reg.depth === 'standard' ? 'secondary' : 'outline'}
-                >
-                  {reg.regulation}: {reg.analyzed}/{reg.total}
+            <div className="flex flex-wrap gap-2">
+              {perRegulation.map(reg => (
+                <Badge key={reg.regulation} variant="secondary">
+                  {reg.regulation}: {reg.analyzed} {isIt ? 'requisiti' : 'requirements'}
                 </Badge>
               ))}
             </div>
+            {unreadableDocuments.length > 0 && (
+              <p className="text-sm text-amber-700 dark:text-amber-300">
+                {isIt
+                  ? `${unreadableDocuments.length} documenti non erano leggibili e sono stati esclusi: ${unreadableDocuments.join(', ')}. Se contengono evidenze utili, ricaricali in formato testuale (PDF con testo o .docx) e ripeti l'analisi.`
+                  : `${unreadableDocuments.length} documents were not readable and were excluded: ${unreadableDocuments.join(', ')}. If they contain useful evidence, upload them again as text (PDF with text or .docx) and rerun the analysis.`}
+              </p>
+            )}
           </div>
         </div>
       </CardContent>
@@ -196,9 +220,6 @@ export default function AssessmentDetail() {
       progress: 'Progresso',
       currentState: 'Stato attuale',
       hoursAbbr: 'h',
-      estimatedHoursTooltip: 'Ore stimate per completare questa azione. Stime basate su benchmark di mercato per consulenze compliance.',
-      estimatedCostTooltip: 'Costo stimato di implementazione (tariffa: €85/h). Stime indicative basate su benchmark di mercato.',
-      fineTooltip: 'I massimali sanzionatori sono legalmente accurati al 100%, derivati direttamente dagli articoli citati di ogni normativa.',
       noActionPlan: 'Nessun piano d\'azione',
       noActionPlanDesc: 'I piani d\'azione verranno generati automaticamente per i gap prioritari',
       generateDocsTitle: 'Genera Documentazione Audit-Ready',
@@ -219,7 +240,35 @@ export default function AssessmentDetail() {
       statusInProgress: 'in corso',
       statusCompleted: 'completato',
       statusOpen: 'aperto',
-      statusResolved: 'risolto'
+      statusResolved: 'risolto',
+      riskProfile: 'Profilo di rischio',
+      riskHigh: 'Alto',
+      riskMedium: 'Medio',
+      riskLow: 'Basso',
+      riskNone: 'Nessun rischio rilevato',
+      riskCounts: '{h} alti, {m} medi, {l} bassi',
+      requirementsChecked: 'Requisiti verificati',
+      documentedCount: '{n} documentati',
+      toVerifyCount: '{n} da verificare',
+      coveredTab: 'Requisiti documentati',
+      toVerifyTab: 'Da verificare',
+      docMissing: 'Documentazione assente',
+      docPartial: 'Documentazione parziale',
+      whatFound: 'Cosa risulta dai documenti',
+      missingElements: 'Cosa manca',
+      evidenceFound: 'Evidenze trovate',
+      noEvidence: 'Nessuna evidenza testuale',
+      methodAi: 'Verifica documentale AI',
+      methodKeyword: 'Analisi testuale',
+      statusDocumented: 'Documentato',
+      statusToVerify: 'Da verificare',
+      statusNotApplicable: 'Non applicabile',
+      toVerifyIntro: 'Obblighi che valgono solo in certe situazioni: dai documenti non risulta se ricorrono. Non sono conteggiati come gap, ma vanno chiariti.',
+      notApplicableIntro: 'Requisiti non applicabili in base a quanto dichiarato nei documenti:',
+      noCovered: 'Nessun requisito risulta documentato in modo completo.',
+      noToVerify: 'Nessun requisito da verificare.',
+      analysisInProgress: 'Analisi in corso: la pagina si aggiorna da sola appena i risultati sono pronti.',
+      suggestedActions: 'Azioni suggerite'
     },
     en: {
       backToHub: 'Back to Compliance Hub',
@@ -267,9 +316,6 @@ export default function AssessmentDetail() {
       progress: 'Progress',
       currentState: 'Current State',
       hoursAbbr: 'h',
-      estimatedHoursTooltip: 'Estimated hours to complete this action. Based on compliance consulting market benchmarks.',
-      estimatedCostTooltip: 'Estimated implementation cost (rate: €85/h). Indicative estimates based on market benchmarks.',
-      fineTooltip: 'Penalty thresholds are 100% legally accurate, derived directly from the cited articles of each regulation.',
       noActionPlan: 'No action plan',
       noActionPlanDesc: 'Action plans will be automatically generated for priority gaps',
       generateDocsTitle: 'Generate Audit-Ready Documentation',
@@ -290,7 +336,35 @@ export default function AssessmentDetail() {
       statusInProgress: 'in progress',
       statusCompleted: 'completed',
       statusOpen: 'open',
-      statusResolved: 'resolved'
+      statusResolved: 'resolved',
+      riskProfile: 'Risk profile',
+      riskHigh: 'High',
+      riskMedium: 'Medium',
+      riskLow: 'Low',
+      riskNone: 'No risk detected',
+      riskCounts: '{h} high, {m} medium, {l} low',
+      requirementsChecked: 'Requirements checked',
+      documentedCount: '{n} documented',
+      toVerifyCount: '{n} to verify',
+      coveredTab: 'Documented requirements',
+      toVerifyTab: 'To verify',
+      docMissing: 'No documentation',
+      docPartial: 'Partial documentation',
+      whatFound: 'What the documents show',
+      missingElements: 'What is missing',
+      evidenceFound: 'Evidence found',
+      noEvidence: 'No textual evidence',
+      methodAi: 'AI document check',
+      methodKeyword: 'Text analysis',
+      statusDocumented: 'Documented',
+      statusToVerify: 'To verify',
+      statusNotApplicable: 'Not applicable',
+      toVerifyIntro: 'Obligations that apply only in certain situations: the documents do not show whether they occur. Not counted as gaps, but to be clarified.',
+      notApplicableIntro: 'Requirements not applicable according to the documents:',
+      noCovered: 'No requirement is fully documented.',
+      noToVerify: 'Nothing to verify.',
+      analysisInProgress: 'Analysis in progress: this page refreshes automatically when results are ready.',
+      suggestedActions: 'Suggested actions'
     },
     es: {
       backToHub: 'Volver al Centro de Cumplimiento',
@@ -338,9 +412,6 @@ export default function AssessmentDetail() {
       progress: 'Progreso',
       currentState: 'Estado Actual',
       hoursAbbr: 'h',
-      estimatedHoursTooltip: 'Horas estimadas para completar esta acción. Basadas en benchmarks del mercado de consultoría.',
-      estimatedCostTooltip: 'Costo estimado de implementación (tarifa: €85/h). Estimaciones indicativas basadas en benchmarks.',
-      fineTooltip: 'Los umbrales sancionatorios son 100% legalmente precisos, derivados directamente de los artículos citados.',
       noActionPlan: 'Sin plan de acción',
       noActionPlanDesc: 'Los planes de acción se generarán automáticamente para las brechas prioritarias',
       generateDocsTitle: 'Generar Documentación Lista para Auditoría',
@@ -361,7 +432,35 @@ export default function AssessmentDetail() {
       statusInProgress: 'en progreso',
       statusCompleted: 'completado',
       statusOpen: 'abierto',
-      statusResolved: 'resuelto'
+      statusResolved: 'resuelto',
+      riskProfile: 'Perfil de riesgo',
+      riskHigh: 'Alto',
+      riskMedium: 'Medio',
+      riskLow: 'Bajo',
+      riskNone: 'Sin riesgo detectado',
+      riskCounts: '{h} altos, {m} medios, {l} bajos',
+      requirementsChecked: 'Requisitos verificados',
+      documentedCount: '{n} documentados',
+      toVerifyCount: '{n} por verificar',
+      coveredTab: 'Requisitos documentados',
+      toVerifyTab: 'Por verificar',
+      docMissing: 'Sin documentación',
+      docPartial: 'Documentación parcial',
+      whatFound: 'Qué muestran los documentos',
+      missingElements: 'Qué falta',
+      evidenceFound: 'Evidencias encontradas',
+      noEvidence: 'Sin evidencia textual',
+      methodAi: 'Verificación documental IA',
+      methodKeyword: 'Análisis textual',
+      statusDocumented: 'Documentado',
+      statusToVerify: 'Por verificar',
+      statusNotApplicable: 'No aplicable',
+      toVerifyIntro: 'Obligaciones que solo aplican en ciertas situaciones: los documentos no muestran si se dan. No cuentan como brechas, pero deben aclararse.',
+      notApplicableIntro: 'Requisitos no aplicables según los documentos:',
+      noCovered: 'Ningún requisito está documentado por completo.',
+      noToVerify: 'Nada por verificar.',
+      analysisInProgress: 'Análisis en curso: la página se actualiza sola cuando los resultados están listos.',
+      suggestedActions: 'Acciones sugeridas'
     },
     fr: {
       backToHub: 'Retour au Centre de Conformité',
@@ -409,9 +508,6 @@ export default function AssessmentDetail() {
       progress: 'Progrès',
       currentState: 'État actuel',
       hoursAbbr: 'h',
-      estimatedHoursTooltip: 'Heures estimées pour réaliser cette action. Basées sur les benchmarks du marché du conseil.',
-      estimatedCostTooltip: 'Coût estimé de mise en œuvre (tarif: €85/h). Estimations indicatives basées sur les benchmarks.',
-      fineTooltip: 'Les seuils de sanctions sont 100% juridiquement précis, dérivés directement des articles cités.',
       noActionPlan: 'Aucun plan d\'action',
       noActionPlanDesc: 'Les plans d\'action seront générés automatiquement pour les lacunes prioritaires',
       generateDocsTitle: 'Générer une Documentation Prête pour l\'Audit',
@@ -432,7 +528,35 @@ export default function AssessmentDetail() {
       statusInProgress: 'en cours',
       statusCompleted: 'terminé',
       statusOpen: 'ouvert',
-      statusResolved: 'résolu'
+      statusResolved: 'résolu',
+      riskProfile: 'Profil de risque',
+      riskHigh: 'Élevé',
+      riskMedium: 'Moyen',
+      riskLow: 'Faible',
+      riskNone: 'Aucun risque détecté',
+      riskCounts: '{h} élevés, {m} moyens, {l} faibles',
+      requirementsChecked: 'Exigences vérifiées',
+      documentedCount: '{n} documentées',
+      toVerifyCount: '{n} à vérifier',
+      coveredTab: 'Exigences documentées',
+      toVerifyTab: 'À vérifier',
+      docMissing: 'Documentation absente',
+      docPartial: 'Documentation partielle',
+      whatFound: 'Ce que montrent les documents',
+      missingElements: 'Ce qui manque',
+      evidenceFound: 'Preuves trouvées',
+      noEvidence: 'Aucune preuve textuelle',
+      methodAi: 'Vérification documentaire IA',
+      methodKeyword: 'Analyse textuelle',
+      statusDocumented: 'Documentée',
+      statusToVerify: 'À vérifier',
+      statusNotApplicable: 'Non applicable',
+      toVerifyIntro: 'Obligations qui ne s\'appliquent que dans certaines situations : les documents ne montrent pas si elles se présentent. Non comptées comme écarts, mais à clarifier.',
+      notApplicableIntro: 'Exigences non applicables selon les documents :',
+      noCovered: 'Aucune exigence n\'est entièrement documentée.',
+      noToVerify: 'Rien à vérifier.',
+      analysisInProgress: 'Analyse en cours : la page se met à jour automatiquement dès que les résultats sont prêts.',
+      suggestedActions: 'Actions suggérées'
     },
     de: {
       backToHub: 'Zurück zum Compliance Hub',
@@ -480,9 +604,6 @@ export default function AssessmentDetail() {
       progress: 'Fortschritt',
       currentState: 'Aktueller Zustand',
       hoursAbbr: 'Std',
-      estimatedHoursTooltip: 'Geschätzte Stunden zur Fertigstellung dieser Aktion. Basierend auf Markt-Benchmarks.',
-      estimatedCostTooltip: 'Geschätzte Implementierungskosten (Satz: €85/h). Richtwerte basierend auf Markt-Benchmarks.',
-      fineTooltip: 'Die Sanktionshöchstgrenzen sind zu 100% rechtlich korrekt und direkt aus den zitierten Artikeln abgeleitet.',
       noActionPlan: 'Kein Aktionsplan',
       noActionPlanDesc: 'Aktionspläne werden automatisch für prioritäre Lücken generiert',
       generateDocsTitle: 'Audit-bereite Dokumentation Generieren',
@@ -503,7 +624,35 @@ export default function AssessmentDetail() {
       statusInProgress: 'in Bearbeitung',
       statusCompleted: 'abgeschlossen',
       statusOpen: 'offen',
-      statusResolved: 'gelöst'
+      statusResolved: 'gelöst',
+      riskProfile: 'Risikoprofil',
+      riskHigh: 'Hoch',
+      riskMedium: 'Mittel',
+      riskLow: 'Gering',
+      riskNone: 'Kein Risiko festgestellt',
+      riskCounts: '{h} hoch, {m} mittel, {l} gering',
+      requirementsChecked: 'Geprüfte Anforderungen',
+      documentedCount: '{n} dokumentiert',
+      toVerifyCount: '{n} zu prüfen',
+      coveredTab: 'Dokumentierte Anforderungen',
+      toVerifyTab: 'Zu prüfen',
+      docMissing: 'Keine Dokumentation',
+      docPartial: 'Teilweise Dokumentation',
+      whatFound: 'Was die Dokumente zeigen',
+      missingElements: 'Was fehlt',
+      evidenceFound: 'Gefundene Belege',
+      noEvidence: 'Keine Textbelege',
+      methodAi: 'KI-Dokumentenprüfung',
+      methodKeyword: 'Textanalyse',
+      statusDocumented: 'Dokumentiert',
+      statusToVerify: 'Zu prüfen',
+      statusNotApplicable: 'Nicht anwendbar',
+      toVerifyIntro: 'Pflichten, die nur in bestimmten Situationen gelten: aus den Dokumenten geht nicht hervor, ob sie vorliegen. Nicht als Lücken gezählt, aber zu klären.',
+      notApplicableIntro: 'Laut Dokumenten nicht anwendbare Anforderungen:',
+      noCovered: 'Keine Anforderung ist vollständig dokumentiert.',
+      noToVerify: 'Nichts zu prüfen.',
+      analysisInProgress: 'Analyse läuft: die Seite aktualisiert sich automatisch, sobald Ergebnisse vorliegen.',
+      suggestedActions: 'Vorgeschlagene Maßnahmen'
     }
   };
 
@@ -545,7 +694,7 @@ export default function AssessmentDetail() {
     return map[normalized] || map[status.toLowerCase()] || status;
   };
 
-  const t = useMemo(() => uiTranslations[selectedLanguage] || uiTranslations.it, [selectedLanguage]);
+  const t = useMemo(() => ({ ...uiTranslations.it, ...uiTranslations.en, ...(uiTranslations[selectedLanguage] || {}) }), [selectedLanguage]);
   const dateLocale = useMemo(() => 
     selectedLanguage === 'en' ? 'en-US' : 
     selectedLanguage === 'es' ? 'es-ES' : 
@@ -557,7 +706,14 @@ export default function AssessmentDetail() {
     loadAssessment();
   }, [id]);
 
-  const loadAssessment = async () => {
+  // Finché l'analisi è in corso, ricarica ogni 5 secondi
+  useEffect(() => {
+    if (!assessment || assessment.status === 'completed') return;
+    const timer = setInterval(() => { loadAssessment(true); }, 5000);
+    return () => clearInterval(timer);
+  }, [assessment?.status, id]);
+
+  const loadAssessment = async (silent = false) => {
     try {
       const { data: assessmentData, error: assessmentError } = await supabase
         .from('compliance_assessments')
@@ -566,7 +722,7 @@ export default function AssessmentDetail() {
         .single();
 
       if (assessmentError) throw assessmentError;
-      setAssessment(assessmentData);
+      setAssessment(assessmentData as unknown as Assessment);
 
       const { data: gapsData, error: gapsError } = await supabase
         .from('identified_gaps')
@@ -575,7 +731,11 @@ export default function AssessmentDetail() {
         .order('priority', { ascending: true });
 
       if (gapsError) throw gapsError;
-      setGaps(gapsData || []);
+      const riskOrder: Record<string, number> = { high: 0, critical: 0, medium: 1, low: 2 };
+      const sortedGaps = ((gapsData || []) as unknown as Gap[]).sort((a, b) =>
+        (riskOrder[a.risk_level] ?? 3) - (riskOrder[b.risk_level] ?? 3) || (a.priority - b.priority) || a.requirement_reference.localeCompare(b.requirement_reference)
+      );
+      setGaps(sortedGaps);
 
       const { data: plansData, error: plansError } = await supabase
         .from('action_plans')
@@ -588,11 +748,13 @@ export default function AssessmentDetail() {
 
     } catch (error) {
       console.error('Error loading assessment:', error);
-      toast({
-        title: "Errore",
-        description: "Impossibile caricare la valutazione",
-        variant: "destructive",
-      });
+      if (!silent) {
+        toast({
+          title: "Errore",
+          description: "Impossibile caricare la valutazione",
+          variant: "destructive",
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -833,6 +995,7 @@ export default function AssessmentDetail() {
     };
     
     const t = translations[selectedLanguage] || translations.it;
+    const uiT = { ...uiTranslations.it, ...uiTranslations.en, ...(uiTranslations[selectedLanguage] || {}) };
     
     try {
       const doc = new jsPDF();
@@ -919,12 +1082,6 @@ export default function AssessmentDetail() {
         yPos += 6;
       }
       
-      // Show annual revenue used for fine calculation
-      const annualRevenue = assessment.annual_revenue_eur || 5000000;
-      const revenueLabel = selectedLanguage === 'it' ? 'Fatturato di riferimento' : selectedLanguage === 'es' ? 'Facturación de referencia' : selectedLanguage === 'fr' ? 'Chiffre d\'affaires de référence' : selectedLanguage === 'de' ? 'Referenzumsatz' : 'Reference revenue';
-      doc.text(`${revenueLabel}: €${annualRevenue.toLocaleString()}`, 25, yPos);
-      yPos += 6;
-      
       if (assessment.completed_at) {
         doc.text(`${t.completed}: ${new Date(assessment.completed_at).toLocaleDateString(selectedLanguage === 'en' ? 'en-US' : selectedLanguage === 'es' ? 'es-ES' : selectedLanguage === 'fr' ? 'fr-FR' : selectedLanguage === 'de' ? 'de-DE' : 'it-IT')}`, 25, yPos);
       }
@@ -939,18 +1096,30 @@ export default function AssessmentDetail() {
       
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
-      const totalFines = gaps.reduce((sum, gap) => sum + (gap.potential_fine_eur || 0), 0);
-      const criticalGaps = gaps.filter(g => g.risk_level === 'critical').length;
-      const highGaps = gaps.filter(g => g.risk_level === 'high').length;
+      const pdfChecks: RequirementCheck[] = Array.isArray((assessment.requirement_checks as RequirementChecksPayload | null)?.checks)
+        ? ((assessment.requirement_checks as RequirementChecksPayload).checks as RequirementCheck[])
+        : [];
+      const pdfCovered = pdfChecks.filter(c => c.status === 'covered');
+      const pdfToVerify = pdfChecks.filter(c => c.status === 'to_verify');
+      const pdfNotApplicable = pdfChecks.filter(c => c.status === 'not_applicable');
+      const pdfUnreadable: string[] = (assessment.requirement_checks as RequirementChecksPayload | null)?.unreadable_documents || [];
+      const highGaps = gaps.filter(g => riskProfileOf(g.risk_level) === 'high').length;
+      const mediumGaps = gaps.filter(g => riskProfileOf(g.risk_level) === 'medium').length;
+      const lowGaps = gaps.filter(g => riskProfileOf(g.risk_level) === 'low').length;
+      const pdfProfile = overallRiskProfile(gaps);
+      const pdfProfileLabel: Record<string, string> = { high: uiT.riskHigh, medium: uiT.riskMedium, low: uiT.riskLow, none: uiT.riskNone };
+      const riskCountsText = uiT.riskCounts.replace('{h}', String(highGaps)).replace('{m}', String(mediumGaps)).replace('{l}', String(lowGaps));
       
       doc.text(`• ${t.compliance}: ${assessment.overall_compliance_percentage ?? 0}%`, 25, yPos);
       yPos += 8;
-      doc.text(`• ${t.overallRisk}: ${assessment.overall_risk_score ?? 0}/100`, 25, yPos);
+      doc.text(`• ${uiT.riskProfile}: ${pdfProfileLabel[pdfProfile]} (${riskCountsText})`, 25, yPos);
       yPos += 8;
-      doc.text(`• ${t.identifiedGaps}: ${gaps.length} (${criticalGaps} ${t.critical}, ${highGaps} ${t.high})`, 25, yPos);
+      doc.text(`• ${t.identifiedGaps}: ${gaps.length}`, 25, yPos);
       yPos += 8;
-      doc.text(`• ${t.potentialFines}: €${(totalFines / 1000000).toFixed(2)}M`, 25, yPos);
-      yPos += 8;
+      if (pdfChecks.length > 0) {
+        doc.text(`• ${uiT.requirementsChecked}: ${pdfChecks.length} (${uiT.documentedCount.replace('{n}', String(pdfCovered.length))}${pdfToVerify.length > 0 ? `, ${uiT.toVerifyCount.replace('{n}', String(pdfToVerify.length))}` : ''})`, 25, yPos);
+        yPos += 8;
+      }
       doc.text(`• ${t.actionsInPlan}: ${actionPlans.length}`, 25, yPos);
       yPos += 10;
       
@@ -964,15 +1133,17 @@ export default function AssessmentDetail() {
       yPos += 8;
       doc.setTextColor(0, 0, 0);
       
-      const totalRemediation = actionPlans.reduce((sum, p) => sum + (p.estimated_cost_eur || 0), 0);
-      const totalHours = actionPlans.reduce((sum, p) => sum + (p.estimated_hours || 0), 0);
       const complianceLevel = (assessment.overall_compliance_percentage || 0) >= 80 ? (selectedLanguage === 'it' ? 'buono' : 'good') : 
         (assessment.overall_compliance_percentage || 0) >= 60 ? (selectedLanguage === 'it' ? 'sufficiente' : 'sufficient') : 
         (assessment.overall_compliance_percentage || 0) >= 40 ? (selectedLanguage === 'it' ? 'insufficiente' : 'insufficient') : (selectedLanguage === 'it' ? 'critico' : 'critical');
       
+      const checksSentenceIt = pdfChecks.length > 0
+        ? ` Sono stati verificati ${pdfChecks.length} requisiti: ${pdfCovered.length} risultano documentati, ${gaps.length} presentano lacune${pdfToVerify.length > 0 ? `, ${pdfToVerify.length} richiedono una verifica sull'applicabilità` : ''}${pdfNotApplicable.length > 0 ? `, ${pdfNotApplicable.length} non sono applicabili` : ''}.` : '';
+      const checksSentenceEn = pdfChecks.length > 0
+        ? ` ${pdfChecks.length} requirements were checked: ${pdfCovered.length} are documented, ${gaps.length} show gaps${pdfToVerify.length > 0 ? `, ${pdfToVerify.length} need an applicability check` : ''}${pdfNotApplicable.length > 0 ? `, ${pdfNotApplicable.length} are not applicable` : ''}.` : '';
       const summaryText = selectedLanguage === 'it' 
-        ? `L'analisi di conformità ha valutato ${assessment.scope_regulations?.join(', ') || 'le normative selezionate'} identificando ${gaps.length} gap di conformità, di cui ${criticalGaps} critici e ${highGaps} ad alto rischio. Il livello di compliance complessivo è del ${assessment.overall_compliance_percentage ?? 0}% (${complianceLevel}), con un punteggio di rischio di ${assessment.overall_risk_score ?? 0}/100. Le sanzioni potenziali stimate ammontano a €${(totalFines / 1000000).toFixed(2)}M. Il piano di remediation prevede un investimento di €${totalRemediation.toLocaleString()} e circa ${totalHours} ore di lavoro per colmare tutti i gap identificati.`
-        : `The compliance analysis evaluated ${assessment.scope_regulations?.join(', ') || 'selected regulations'} identifying ${gaps.length} compliance gaps, including ${criticalGaps} critical and ${highGaps} high-risk. Overall compliance is ${assessment.overall_compliance_percentage ?? 0}% (${complianceLevel}), with a risk score of ${assessment.overall_risk_score ?? 0}/100. Estimated potential fines total €${(totalFines / 1000000).toFixed(2)}M. The remediation plan requires an investment of €${totalRemediation.toLocaleString()} and approximately ${totalHours} hours.`;
+        ? `L'analisi ha confrontato la documentazione caricata con i requisiti di ${assessment.scope_regulations?.join(', ') || 'le normative selezionate'}.${checksSentenceIt} Il livello di conformità documentale è del ${assessment.overall_compliance_percentage ?? 0}% (${complianceLevel}) e il profilo di rischio complessivo è ${pdfProfileLabel[pdfProfile].toLowerCase()} (${riskCountsText}). Il piano d'azione elenca, per ciascun gap, le azioni per colmarlo. L'analisi valuta ciò che risulta dai documenti, non l'effettiva applicazione delle misure, e non sostituisce il parere di un legale o del DPO.${pdfUnreadable.length > 0 ? ` Documenti esclusi perché non leggibili: ${pdfUnreadable.join(', ')}.` : ''}`
+        : `The analysis compared the uploaded documentation with the requirements of ${assessment.scope_regulations?.join(', ') || 'the selected regulations'}.${checksSentenceEn} Documentary compliance is ${assessment.overall_compliance_percentage ?? 0}% (${complianceLevel}) and the overall risk profile is ${pdfProfileLabel[pdfProfile].toLowerCase()} (${riskCountsText}). The action plan lists, for each gap, the actions to close it. The analysis assesses what the documents show, not the actual application of measures, and does not replace legal or DPO advice.${pdfUnreadable.length > 0 ? ` Documents excluded as unreadable: ${pdfUnreadable.join(', ')}.` : ''}`;
       
       doc.setFontSize(9);
       doc.setFont('helvetica', 'normal');
@@ -1061,20 +1232,42 @@ export default function AssessmentDetail() {
           });
           yPos += sectionSpacing;
           
-          // Risk info - compact single row
+          // Evidence found in the documents
+          const gapEvidence = Array.isArray(gap.evidence) ? gap.evidence.slice(0, 3) : [];
+          if (gapEvidence.length > 0) {
+            checkPageBreak(20);
+            doc.setFont('helvetica', 'bold');
+            doc.text(`${uiT.evidenceFound}:`, gapTextIndent, yPos);
+            yPos += 4;
+            doc.setFont('helvetica', 'italic');
+            gapEvidence.forEach((e) => {
+              const evLines = doc.splitTextToSize(`[${e.document}] "${e.quote}"`, safeGapTextWidth - 4);
+              evLines.forEach((line: string) => {
+                checkPageBreak(5);
+                doc.text(line, gapTextIndent + 2, yPos);
+                yPos += lineHeight;
+              });
+            });
+            doc.setFont('helvetica', 'normal');
+            yPos += sectionSpacing;
+          }
+
+          // Risk profile row (colours become words on paper)
           checkPageBreak(15);
+          const gapProfile = riskProfileOf(gap.risk_level);
+          const profileRgb: Record<string, [number, number, number]> = { high: [220, 38, 38], medium: [234, 88, 12], low: [161, 98, 7] };
+          doc.setFillColor(...profileRgb[gapProfile]);
+          doc.circle(gapTextIndent + 1.5, yPos - 1.2, 1.5, 'F');
           doc.setFontSize(7);
           doc.setFont('helvetica', 'bold');
-          doc.text(`${t.riskLevel}: ${translateRiskLevel(gap.risk_level).toUpperCase()}`, gapTextIndent, yPos);
-          doc.text(`${t.priority}: ${gap.priority}`, gapTextIndent + 45, yPos);
-          doc.text(`${t.status}: ${translateStatus(gap.status)}`, gapTextIndent + 80, yPos);
+          doc.text(`${uiT.riskProfile}: ${pdfProfileLabel[gapProfile].toUpperCase()}`, gapTextIndent + 5, yPos);
+          doc.text(`${gap.coverage_status === 'partial' ? uiT.docPartial : uiT.docMissing}`, gapTextIndent + 55, yPos);
+          if (gap.remediation_effort) {
+            doc.text(`${t.effort}: ${translateEffort(gap.remediation_effort)}`, gapTextIndent + 110, yPos);
+          }
           yPos += 5;
           doc.setFont('helvetica', 'normal');
-          doc.text(`${t.riskScore}: ${gap.risk_score}/100`, gapTextIndent, yPos);
-          doc.text(`${t.potentialFine}: €${((gap.potential_fine_eur || 0) / 1000).toFixed(0)}K`, gapTextIndent + 45, yPos);
-          if (gap.remediation_effort) {
-            doc.text(`${t.effort}: ${translateEffort(gap.remediation_effort)}`, gapTextIndent + 90, yPos);
-          }
+          doc.text(`${t.status}: ${translateStatus(gap.status)}`, gapTextIndent, yPos);
           yPos += 8;
           
           // Recommended Actions
@@ -1179,20 +1372,11 @@ export default function AssessmentDetail() {
           yPos += 5;
           
           doc.setFont('helvetica', 'normal');
-          let metadataX = actionTextIndent;
-          if (plan.estimated_hours) {
-            doc.text(`${plan.estimated_hours} ${t.hours}`, metadataX, yPos);
-            metadataX += 30;
-          }
-          if (plan.estimated_cost_eur) {
-            doc.text(`€${plan.estimated_cost_eur.toLocaleString()}`, metadataX, yPos);
-            metadataX += 35;
-          }
           if (plan.due_date) {
             const dateFormatLocale = selectedLanguage === 'en' ? 'en-US' : selectedLanguage === 'es' ? 'es-ES' : selectedLanguage === 'fr' ? 'fr-FR' : selectedLanguage === 'de' ? 'de-DE' : 'it-IT';
-            doc.text(`${t.dueDate}: ${new Date(plan.due_date).toLocaleDateString(dateFormatLocale)}`, metadataX, yPos);
+            doc.text(`${t.dueDate}: ${new Date(plan.due_date).toLocaleDateString(dateFormatLocale)}`, actionTextIndent, yPos);
+            yPos += 5;
           }
-          yPos += 5;
           
           if (plan.assigned_to) {
             doc.text(`${t.assignedTo}: ${plan.assigned_to}`, actionTextIndent, yPos);
@@ -1211,64 +1395,62 @@ export default function AssessmentDetail() {
         });
       }
       
-      // Investment Summary
-      if (actionPlans.length > 0) {
-        yPos += 5;
-        checkPageBreak(30);
-        
-        const totalInvestmentHours = actionPlans.reduce((sum, p) => sum + (p.estimated_hours || 0), 0);
-        const totalInvestmentCost = actionPlans.reduce((sum, p) => sum + (p.estimated_cost_eur || 0), 0);
-        
-        doc.setDrawColor(20, 60, 120);
-        doc.setLineWidth(0.5);
-        doc.line(marginLeft, yPos, pageWidth - marginRight, yPos);
-        yPos += 8;
-        
-        doc.setFontSize(10);
+      // Documented requirements (green) and requirements to verify
+      const renderCheckList = (title: string, list: RequirementCheck[], intro: string, withEvidence: boolean) => {
+        if (list.length === 0) return;
+        doc.addPage();
+        yPos = 20;
+        doc.setFontSize(14);
         doc.setFont('helvetica', 'bold');
-        doc.setTextColor(20, 60, 120);
-        const investmentTitle = selectedLanguage === 'it' ? 'Riepilogo Investimento' : selectedLanguage === 'es' ? 'Resumen de Inversión' : selectedLanguage === 'fr' ? 'Résumé de l\'Investissement' : selectedLanguage === 'de' ? 'Investitionsübersicht' : 'Investment Summary';
-        doc.text(investmentTitle, marginLeft, yPos);
+        doc.setTextColor(0, 0, 0);
+        doc.text(title, marginLeft, yPos);
         yPos += 8;
-        
-        doc.setTextColor(0, 0, 0);
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'normal');
-        
-        const investLabel1 = selectedLanguage === 'it' ? 'Ore totali stimate' : 'Total estimated hours';
-        const investLabel2 = selectedLanguage === 'it' ? 'Investimento totale stimato' : 'Total estimated investment';
-        const investLabel3 = selectedLanguage === 'it' ? 'Sanzioni potenziali evitate' : 'Potential fines avoided';
-        const investLabel4 = selectedLanguage === 'it' ? 'ROI della remediation' : 'Remediation ROI';
-        
-        doc.text(`${investLabel1}: ${totalInvestmentHours} ore`, marginLeft + 3, yPos);
-        yPos += 6;
-        doc.text(`${investLabel2}: €${totalInvestmentCost.toLocaleString()}`, marginLeft + 3, yPos);
-        yPos += 6;
-        
-        const totalPotentialFines = gaps.reduce((sum, g) => sum + (g.potential_fine_eur || 0), 0);
-        doc.text(`${investLabel3}: €${totalPotentialFines.toLocaleString()}`, marginLeft + 3, yPos);
-        yPos += 6;
-        
-        if (totalInvestmentCost > 0) {
-          const roi = Math.round(totalPotentialFines / totalInvestmentCost);
-          doc.setFont('helvetica', 'bold');
-          doc.text(`${investLabel4}: ${roi}x`, marginLeft + 3, yPos);
+        if (intro) {
+          doc.setFontSize(8);
           doc.setFont('helvetica', 'normal');
-          yPos += 6;
-        }
-        
-        yPos += 4;
-        doc.setFontSize(7);
-        doc.setTextColor(120, 120, 120);
-        const disclaimer = selectedLanguage === 'it' 
-          ? 'Nota: le stime di costo sono calcolate con una tariffa oraria di riferimento di €85/h. I costi effettivi possono variare in base al fornitore e alla complessità specifica.'
-          : 'Note: cost estimates are calculated using a reference hourly rate of €85/h. Actual costs may vary based on provider and specific complexity.';
-        const disclaimerLines = doc.splitTextToSize(disclaimer, contentWidth);
-        disclaimerLines.forEach((line: string) => {
-          doc.text(line, marginLeft + 3, yPos);
+          doc.setTextColor(90, 90, 90);
+          doc.splitTextToSize(intro, contentWidth).forEach((line: string) => { checkPageBreak(5); doc.text(line, marginLeft, yPos); yPos += 4; });
+          doc.setTextColor(0, 0, 0);
           yPos += 4;
+        }
+        list.forEach((c, index) => {
+          checkPageBreak(25);
+          doc.setFontSize(9);
+          doc.setFont('helvetica', 'bold');
+          doc.splitTextToSize(`${index + 1}. ${c.reference}`, contentWidth).forEach((line: string) => { checkPageBreak(5); doc.text(line, marginLeft, yPos); yPos += 5; });
+          doc.setFontSize(8);
+          doc.setFont('helvetica', 'normal');
+          if (c.assessment) {
+            doc.splitTextToSize(c.assessment, contentWidth - 3).forEach((line: string) => { checkPageBreak(5); doc.text(line, marginLeft + 3, yPos); yPos += 4.2; });
+          }
+          if (withEvidence && Array.isArray(c.evidence) && c.evidence.length > 0) {
+            doc.setFont('helvetica', 'italic');
+            c.evidence.slice(0, 2).forEach((e) => {
+              doc.splitTextToSize(`[${e.document}] "${e.quote}"`, contentWidth - 6).forEach((line: string) => { checkPageBreak(5); doc.text(line, marginLeft + 5, yPos); yPos += 4; });
+            });
+            doc.setFont('helvetica', 'normal');
+          }
+          if (!withEvidence && Array.isArray(c.recommended_actions) && c.recommended_actions.length > 0) {
+            c.recommended_actions.forEach((a) => {
+              doc.splitTextToSize(`- ${a}`, contentWidth - 6).forEach((line: string) => { checkPageBreak(5); doc.text(line, marginLeft + 5, yPos); yPos += 4; });
+            });
+          }
+          yPos += 6;
         });
-        doc.setTextColor(0, 0, 0);
+      };
+      renderCheckList(uiT.coveredTab, pdfCovered, '', true);
+      renderCheckList(uiT.toVerifyTab, pdfToVerify, uiT.toVerifyIntro, false);
+      if (pdfNotApplicable.length > 0) {
+        checkPageBreak(20);
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'bold');
+        doc.text(uiT.notApplicableIntro, marginLeft, yPos);
+        yPos += 6;
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        pdfNotApplicable.forEach((c) => {
+          doc.splitTextToSize(`- ${c.reference}${c.assessment ? `: ${c.assessment}` : ''}`, contentWidth - 3).forEach((line: string) => { checkPageBreak(5); doc.text(line, marginLeft + 3, yPos); yPos += 4.2; });
+        });
       }
       
       // Footer on last page
@@ -1427,16 +1609,6 @@ export default function AssessmentDetail() {
     }
   };
 
-  const getRiskBadgeColor = (level: string): "default" | "destructive" | "outline" | "secondary" => {
-    const colors: Record<string, "default" | "destructive" | "outline" | "secondary"> = {
-      critical: 'destructive',
-      high: 'destructive',
-      medium: 'default',
-      low: 'secondary'
-    };
-    return colors[level] || 'default';
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -1462,29 +1634,19 @@ export default function AssessmentDetail() {
     );
   }
 
-  const criticalGaps = gaps.filter(g => g.risk_level === 'critical').length;
-  const highGaps = gaps.filter(g => g.risk_level === 'high').length;
-  const totalFines = gaps.reduce((acc, g) => acc + (g.potential_fine_eur || 0), 0);
-
-  // Coverage scope estimation — aligned with backend TOTAL_REQUIREMENTS_ESTIMATE
-  const TOTAL_REQUIREMENTS_ESTIMATE: Record<string, number> = {
-    'GDPR': 35, 'NIS2': 20, 'DORA': 25, 'AI Act': 30, 'CRA': 15,
-    'Data Act': 15, 'ISO 27001': 20, 'D.Lgs 81/08': 25, 'Legge Protezione Dati Albania': 15,
-  };
-  // Catalog sizes (how many requirements we actually check per regulation)
-  const CATALOG_SIZES: Record<string, number> = {
-    'GDPR': 10, 'NIS2': 5, 'DORA': 5, 'AI Act': 7, 'CRA': 3,
-    'Data Act': 3, 'ISO 27001': 5, 'D.Lgs 81/08': 5, 'Legge Protezione Dati Albania': 3,
-  };
-  const totalEstimatedReqs = (assessment.scope_regulations || []).reduce((sum, reg) => {
-    const key = Object.keys(TOTAL_REQUIREMENTS_ESTIMATE).find(k => k.toLowerCase() === reg.toLowerCase());
-    return sum + (key ? TOTAL_REQUIREMENTS_ESTIMATE[key] : 15);
-  }, 0);
-  const analyzedReqs = (assessment.scope_regulations || []).reduce((sum, reg) => {
-    const key = Object.keys(CATALOG_SIZES).find(k => k.toLowerCase() === reg.toLowerCase());
-    return sum + (key ? CATALOG_SIZES[key] : 3);
-  }, 0);
-  const coveragePercent = totalEstimatedReqs > 0 ? Math.min(100, Math.round((analyzedReqs / totalEstimatedReqs) * 100)) : 0;
+  const checksPayload = (assessment.requirement_checks || null) as RequirementChecksPayload | null;
+  const checks: RequirementCheck[] = Array.isArray(checksPayload?.checks) ? checksPayload!.checks! : [];
+  const coveredChecks = checks.filter(c => c.status === 'covered');
+  const toVerifyChecks = checks.filter(c => c.status === 'to_verify');
+  const notApplicableChecks = checks.filter(c => c.status === 'not_applicable');
+  const unreadableDocuments = checksPayload?.unreadable_documents || [];
+  const documentsAnalyzed = checksPayload?.documents_analyzed || [];
+  const highGaps = gaps.filter(g => riskProfileOf(g.risk_level) === 'high').length;
+  const mediumGaps = gaps.filter(g => riskProfileOf(g.risk_level) === 'medium').length;
+  const lowGaps = gaps.filter(g => riskProfileOf(g.risk_level) === 'low').length;
+  const overallProfile: RiskProfile = overallRiskProfile(gaps);
+  const profileLabel: Record<RiskProfile, string> = { high: t.riskHigh, medium: t.riskMedium, low: t.riskLow, none: t.riskNone };
+  const analysisInProgress = assessment.status !== 'completed';
 
   return (
     <div className="min-h-screen bg-background">
@@ -1554,6 +1716,15 @@ export default function AssessmentDetail() {
           </div>
         </div>
 
+        {analysisInProgress && (
+          <Card className="mb-6 border-primary/40">
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary shrink-0"></div>
+              <p className="text-sm">{t.analysisInProgress}</p>
+            </CardContent>
+          </Card>
+        )}
+
         {/* KPIs */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
           <Card>
@@ -1598,15 +1769,26 @@ export default function AssessmentDetail() {
 
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">{t.overallRisk}</CardTitle>
+              <CardTitle className="text-sm font-medium">{t.riskProfile}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-destructive mb-2">
-                {(assessment.overall_risk_score ?? 0).toFixed(0)}/100
+              <div className={`flex items-center gap-2 text-2xl font-bold mb-2 ${RISK_STYLE[overallProfile].text}`}>
+                <span className={`w-4 h-4 rounded-full shrink-0 ${RISK_STYLE[overallProfile].dot}`} />
+                {profileLabel[overallProfile]}
               </div>
-              <Progress value={assessment.overall_risk_score ?? 0} />
+              <div className="flex gap-1 h-2 rounded-full overflow-hidden bg-muted">
+                {gaps.length > 0 ? (
+                  <>
+                    {highGaps > 0 && <span className={RISK_STYLE.high.dot} style={{ flex: highGaps }} />}
+                    {mediumGaps > 0 && <span className={RISK_STYLE.medium.dot} style={{ flex: mediumGaps }} />}
+                    {lowGaps > 0 && <span className={RISK_STYLE.low.dot} style={{ flex: lowGaps }} />}
+                  </>
+                ) : (
+                  <span className={`${RISK_STYLE.none.dot} flex-1`} />
+                )}
+              </div>
               <p className="text-xs text-muted-foreground mt-2">
-                {criticalGaps} {t.critical}, {highGaps} {t.high}
+                {t.riskCounts.replace('{h}', String(highGaps)).replace('{m}', String(mediumGaps)).replace('{l}', String(lowGaps))}
               </p>
             </CardContent>
           </Card>
@@ -1625,12 +1807,16 @@ export default function AssessmentDetail() {
 
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">{t.potentialFines}</CardTitle>
+              <CardTitle className="text-sm font-medium">{t.requirementsChecked}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-destructive mb-2">
-                €{(totalFines / 1000000).toFixed(1)}M
-              </div>
+              <div className="text-3xl font-bold mb-2">{checks.length > 0 ? checks.length : gaps.length}</div>
+              {checks.length > 0 && (
+                <p className="text-sm text-muted-foreground">
+                  <span className="text-green-700 dark:text-green-400">{t.documentedCount.replace('{n}', String(coveredChecks.length))}</span>
+                  {toVerifyChecks.length > 0 && <>, {t.toVerifyCount.replace('{n}', String(toVerifyChecks.length))}</>}
+                </p>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -1638,109 +1824,125 @@ export default function AssessmentDetail() {
         {/* Risk Score Explanation */}
         <div className="mb-8">
           <RiskScoreExplanation 
-            overallRiskScore={assessment.overall_risk_score}
             gaps={gaps}
+            checks={checks}
             language={selectedLanguage}
           />
         </div>
 
+        {checks.length > 0 && (
+          <CoverageScopeDisclaimer
+            regulations={assessment.scope_regulations || []}
+            checks={checks}
+            unreadableDocuments={unreadableDocuments}
+            documentsAnalyzed={documentsAnalyzed}
+            language={selectedLanguage}
+          />
+        )}
+
         {/* Main Content */}
         <Tabs defaultValue="gaps" className="space-y-4">
-          <TabsList>
+          <TabsList className="flex-wrap h-auto">
             <TabsTrigger value="gaps">{t.gapsTab} ({gaps.length})</TabsTrigger>
+            {checks.length > 0 && (
+              <TabsTrigger value="covered">{t.coveredTab} ({coveredChecks.length})</TabsTrigger>
+            )}
+            {(toVerifyChecks.length > 0 || notApplicableChecks.length > 0) && (
+              <TabsTrigger value="verify">{t.toVerifyTab} ({toVerifyChecks.length})</TabsTrigger>
+            )}
             <TabsTrigger value="actions">{t.actionPlanTab} ({actionPlans.length})</TabsTrigger>
             <TabsTrigger value="documents">{t.documentsTab}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="gaps" className="space-y-4">
-            {gaps.map((gap) => (
-              <Card key={gap.id}>
+            {gaps.length === 0 && (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <CheckCircle2 className="h-12 w-12 mx-auto text-green-600 mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">{t.riskNone}</h3>
+                </CardContent>
+              </Card>
+            )}
+            {gaps.map((gap) => {
+              const profile = riskProfileOf(gap.risk_level);
+              const evidence = Array.isArray(gap.evidence) ? gap.evidence : [];
+              const actions = ((getTranslatedText('gap_recommendedActions', gap.id) as string[]) || gap.recommended_actions || []) as any[];
+              return (
+              <Card key={gap.id} className={`border-l-4 ${profile === 'high' ? 'border-l-red-500' : profile === 'medium' ? 'border-l-orange-500' : 'border-l-yellow-400'}`}>
                 <CardHeader>
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-3">
-                        <Badge variant={getRiskBadgeColor(gap.risk_level)}>
-                          {translateRiskLevel(gap.risk_level)}
-                        </Badge>
-                        <Badge variant="outline">
-                          {t.priority} {gap.priority}
-                        </Badge>
+                  <div className="flex justify-between items-start gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2 mb-3">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-xs font-semibold ${RISK_STYLE[profile].badge}`}>
+                          <span className={`w-2 h-2 rounded-full ${RISK_STYLE[profile].dot}`} />
+                          {t.riskProfile}: {profileLabel[profile]}
+                        </span>
+                        {gap.coverage_status && (
+                          <Badge variant="outline">
+                            {gap.coverage_status === 'partial' ? t.docPartial : t.docMissing}
+                          </Badge>
+                        )}
                         <Badge variant="outline">
                           {translateEffort(gap.remediation_effort)} {t.effort}
                         </Badge>
-                        <span className="text-sm text-muted-foreground">
-                          {gap.requirement_reference}
-                        </span>
                       </div>
+                      <p className="text-sm text-muted-foreground mb-1">{gap.requirement_reference}</p>
                       <CardTitle className="text-lg mb-2">
                         {getTranslatedText('gap_requirement', gap.id) || gap.requirement_description}
                       </CardTitle>
-                      <CardDescription>
-                        {getTranslatedText('gap_description', gap.id) || gap.gap_description}
-                      </CardDescription>
                       {gap.current_state && (
-                        <p className="text-sm mt-2">
-                          <span className="font-medium">{t.currentState}:</span>{' '}
+                        <div className="text-sm mt-2">
+                          <span className="font-medium">{t.whatFound}:</span>{' '}
                           {getTranslatedText('gap_currentState', gap.id) || gap.current_state}
-                        </p>
+                        </div>
                       )}
+                      <CardDescription className="mt-2">
+                        <span className="font-medium text-foreground">{t.missingElements}:</span>{' '}
+                        {((getTranslatedText('gap_description', gap.id) as string) || gap.gap_description).replace(/^(Elementi mancanti|Missing elements):\s*/i, '')}
+                      </CardDescription>
                     </div>
-                    <div className="text-right ml-4">
-                      <div className="text-3xl font-bold text-destructive">
-                        {gap.risk_score.toFixed(0)}
-                      </div>
-                      <p className="text-xs text-muted-foreground">{t.riskScore}</p>
-                      {gap.potential_fine_eur > 0 && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <p className="text-sm text-destructive mt-2 cursor-help flex items-center gap-1">
-                              {t.fine}: €{(gap.potential_fine_eur / 1000000).toFixed(1)}M
-                              <Info className="h-3 w-3 text-muted-foreground" />
-                            </p>
-                          </TooltipTrigger>
-                          <TooltipContent side="left" className="max-w-xs">
-                            <p className="text-xs">{t.fineTooltip}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      )}
+                    <div className={`hidden sm:flex flex-col items-center justify-center rounded-lg border px-4 py-3 shrink-0 ${RISK_STYLE[profile].panel}`}>
+                      <span className={`w-5 h-5 rounded-full ${RISK_STYLE[profile].dot}`} />
+                      <span className={`mt-1 text-xs font-semibold uppercase tracking-wide ${RISK_STYLE[profile].text}`}>{profileLabel[profile]}</span>
                     </div>
                   </div>
                 </CardHeader>
                 <CardContent>
+                  {evidence.length > 0 && (
+                    <Collapsible className="mb-4">
+                      <CollapsibleTrigger asChild>
+                        <Button variant="ghost" size="sm" className="gap-1 text-xs -ml-2">
+                          <FileText className="h-3 w-3" />
+                          {t.evidenceFound} ({evidence.length})
+                          <ChevronDown className="h-3 w-3" />
+                        </Button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="mt-2 space-y-2">
+                        {evidence.map((e, i) => (
+                          <div key={i} className="rounded-md border border-green-200 bg-green-50 dark:bg-green-950/30 dark:border-green-900 p-3">
+                            <p className="text-xs font-medium text-green-800 dark:text-green-200 mb-1">{e.document}</p>
+                            <p className="text-xs italic text-foreground">“{e.quote}”</p>
+                          </div>
+                        ))}
+                      </CollapsibleContent>
+                    </Collapsible>
+                  )}
+
                   <div className="space-y-2">
                     <h4 className="font-semibold text-sm mb-2">{t.recommendedActions}:</h4>
-                    {((getTranslatedText('gap_recommendedActions', gap.id) as string[]) || gap.recommended_actions)?.map((action: any, idx: number) => (
-                      <div key={idx} className="bg-muted p-3 rounded-lg">
-                        <p className="text-sm mb-2">{typeof action === 'string' ? action : action.action}</p>
-                        {typeof action !== 'string' && (
-                          <div className="flex gap-4 text-xs text-muted-foreground">
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="cursor-help">⏱ {action.estimated_hours}{t.hoursAbbr}</span>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>{t.estimatedHoursTooltip || 'Estimated hours to complete'}</p>
-                              </TooltipContent>
-                            </Tooltip>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="cursor-help">💰 €{action.estimated_cost_eur?.toLocaleString()}</span>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>{t.estimatedCostTooltip || 'Estimated implementation cost'}</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </div>
-                        )}
+                    {actions.map((action: any, idx: number) => (
+                      <div key={idx} className="bg-muted p-3 rounded-lg flex gap-3">
+                        <span className="text-xs font-semibold text-muted-foreground mt-0.5">{idx + 1}.</span>
+                        <p className="text-sm">{typeof action === 'string' ? action : action.action}</p>
                       </div>
                     ))}
                   </div>
 
                   {/* Source traceability */}
-                  <div className="flex items-center gap-3 mt-4 pt-3 border-t border-border">
+                  <div className="flex flex-wrap items-center gap-3 mt-4 pt-3 border-t border-border">
                     {gap.detection_method && (
                       <Badge variant="outline" className="text-xs">
-                        {gap.detection_method === 'keyword' ? 'Analisi testuale' : gap.detection_method === 'semantic' ? '📐 Semantic' : '🤖 LLM Discovery'}
+                        {gap.detection_method === 'llm_evidence' ? t.methodAi : t.methodKeyword}
                       </Badge>
                     )}
                     {gap.article_text_excerpt && (
@@ -1763,9 +1965,104 @@ export default function AssessmentDetail() {
                   </div>
                 </CardContent>
               </Card>
+              );
+            })}
+          </TabsContent>
+
+          <TabsContent value="covered" className="space-y-3">
+            {coveredChecks.length === 0 && (
+              <Card><CardContent className="py-8 text-center text-muted-foreground">{t.noCovered}</CardContent></Card>
+            )}
+            {coveredChecks.map((c) => (
+              <Card key={c.requirement_id} className="border-l-4 border-l-green-500">
+                <CardHeader className="pb-3">
+                  <div className="flex flex-wrap items-center gap-2 mb-1">
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-xs font-semibold ${RISK_STYLE.none.badge}`}>
+                      <span className={`w-2 h-2 rounded-full ${RISK_STYLE.none.dot}`} />
+                      {t.statusDocumented}
+                    </span>
+                    <span className="text-sm text-muted-foreground">{c.reference}</span>
+                  </div>
+                  <CardTitle className="text-base">{c.description}</CardTitle>
+                  {c.assessment && <CardDescription className="mt-1">{c.assessment}</CardDescription>}
+                </CardHeader>
+                {(c.evidence?.length > 0 || c.recommended_actions?.length > 0) && (
+                  <CardContent className="pt-0 space-y-3">
+                    {c.evidence?.length > 0 && (
+                      <Collapsible>
+                        <CollapsibleTrigger asChild>
+                          <Button variant="ghost" size="sm" className="gap-1 text-xs -ml-2">
+                            <FileText className="h-3 w-3" />
+                            {t.evidenceFound} ({c.evidence.length})
+                            <ChevronDown className="h-3 w-3" />
+                          </Button>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent className="mt-2 space-y-2">
+                          {c.evidence.map((e, i) => (
+                            <div key={i} className="rounded-md border border-green-200 bg-green-50 dark:bg-green-950/30 dark:border-green-900 p-3">
+                              <p className="text-xs font-medium text-green-800 dark:text-green-200 mb-1">{e.document}</p>
+                              <p className="text-xs italic">“{e.quote}”</p>
+                            </div>
+                          ))}
+                        </CollapsibleContent>
+                      </Collapsible>
+                    )}
+                    {c.recommended_actions?.length > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        <span className="font-medium">{t.suggestedActions}:</span> {c.recommended_actions.join(' ')}
+                      </p>
+                    )}
+                  </CardContent>
+                )}
+              </Card>
             ))}
           </TabsContent>
 
+          <TabsContent value="verify" className="space-y-3">
+            {toVerifyChecks.length > 0 && (
+              <p className="text-sm text-muted-foreground">{t.toVerifyIntro}</p>
+            )}
+            {toVerifyChecks.length === 0 && (
+              <Card><CardContent className="py-8 text-center text-muted-foreground">{t.noToVerify}</CardContent></Card>
+            )}
+            {toVerifyChecks.map((c) => (
+              <Card key={c.requirement_id} className="border-l-4 border-l-slate-400">
+                <CardHeader className="pb-3">
+                  <div className="flex flex-wrap items-center gap-2 mb-1">
+                    <Badge variant="secondary">{t.statusToVerify}</Badge>
+                    <span className="text-sm text-muted-foreground">{c.reference}</span>
+                  </div>
+                  <CardTitle className="text-base">{c.description}</CardTitle>
+                  {c.assessment && <CardDescription className="mt-1">{c.assessment}</CardDescription>}
+                </CardHeader>
+                {c.recommended_actions?.length > 0 && (
+                  <CardContent className="pt-0">
+                    <div className="space-y-2">
+                      {c.recommended_actions.map((a, i) => (
+                        <div key={i} className="bg-muted p-3 rounded-lg text-sm">{a}</div>
+                      ))}
+                    </div>
+                  </CardContent>
+                )}
+              </Card>
+            ))}
+            {notApplicableChecks.length > 0 && (
+              <div className="pt-4">
+                <p className="text-sm text-muted-foreground mb-2">{t.notApplicableIntro}</p>
+                <div className="space-y-2">
+                  {notApplicableChecks.map((c) => (
+                    <div key={c.requirement_id} className="rounded-md border p-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="outline">{t.statusNotApplicable}</Badge>
+                        <span className="text-sm font-medium">{c.reference}</span>
+                      </div>
+                      {c.assessment && <p className="text-xs text-muted-foreground mt-1">{c.assessment}</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </TabsContent>
 
           <TabsContent value="actions" className="space-y-4">
             {actionPlans.length === 0 ? (
@@ -1799,32 +2096,6 @@ export default function AssessmentDetail() {
                         <CardDescription>
                           {getTranslatedText('action_description', plan.id) || plan.description}
                         </CardDescription>
-                      </div>
-                      <div className="text-right ml-4">
-                        {plan.estimated_cost_eur > 0 && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div className="text-xl font-bold cursor-help flex items-center justify-end gap-1">
-                                💰 €{plan.estimated_cost_eur?.toLocaleString()}
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>{t.estimatedCostTooltip || 'Estimated implementation cost'}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        )}
-                        {plan.estimated_hours > 0 && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <p className="text-sm text-muted-foreground cursor-help flex items-center justify-end gap-1">
-                                ⏱ {plan.estimated_hours}{t.hoursAbbr}
-                              </p>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>{t.estimatedHoursTooltip || 'Estimated hours to complete'}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        )}
                       </div>
                     </div>
                   </CardHeader>

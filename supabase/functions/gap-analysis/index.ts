@@ -1990,14 +1990,20 @@ function quoteIsVerified(quote: string, corpusNormalized: string): boolean {
   return false;
 }
 
-// Stima se un testo è leggibile (documenti PDF/DOC non estratti correttamente producono rumore binario)
+// Stima se un testo è leggibile (documenti PDF/DOC non estratti correttamente producono rumore binario).
+// Restituisce la quota di parole "vere" (solo lettere) penalizzata dai caratteri tipici del rumore binario.
+// Testo italiano/inglese: 0.65-0.97; fogli di calcolo: ~0.45; PDF o DOC non estratti: < 0.05.
+const READABLE_THRESHOLD = 0.35;
 function readableRatio(text: string): number {
   if (!text) return 0;
-  const sample = text.substring(0, 4000);
-  const words = sample.split(/\s+/).filter(Boolean);
-  if (words.length === 0) return 0;
-  const good = words.filter(w => /^[\p{L}][\p{L}\p{N}'’.,;:()-]{1,30}$/u.test(w)).length;
-  return good / words.length;
+  const sample = text.substring(0, 6000);
+  const tokens = sample.split(/\s+/).filter(Boolean);
+  if (tokens.length < 5) return 0;
+  const wordRe = /^[("'«\[]?[a-zA-ZàèéìíòóùúÀÈÉÌÒÓÙçÇ]{2,25}[.,;:!?)»\]"']{0,2}$/;
+  const good = tokens.filter(t => wordRe.test(t)).length;
+  const ratio = good / tokens.length;
+  const odd = (sample.match(/[\u00ff\u00fe\u00f0\u00d8\u00d0\u00cd\u00ce\u00d2\u00db\u00cb\u00e5\u0000-\u0008\u000e-\u001f\ufffd]/g) || []).length / Math.max(1, sample.length);
+  return Math.max(0, ratio - odd * 3);
 }
 
 function extractJsonObjectFromText(text: string): any | null {
@@ -2181,7 +2187,7 @@ denoServe(protect(async (req) => {
       return errorResponse(400, 'regulations must be a non-empty array');
     }
 
-    console.log('Starting 100% RULE-BASED gap analysis for assessment:', assessmentId);
+    console.log('Starting evidence-based gap analysis for assessment:', assessmentId);
 
     // --- Canonicalize inputs ---
     const normalizedLanguage = canonicalizeString(language || 'it').toLowerCase() || 'it';
@@ -2274,8 +2280,8 @@ denoServe(protect(async (req) => {
     // in caso di indisponibilità dell'AI si applica la regola a parole chiave.
     // ============================================================
     const isIt = normalizedLanguage === 'it';
-    const readableDocuments = normalizedDocuments.filter(d => readableRatio(d.content) >= 0.55);
-    const unreadableDocuments = normalizedDocuments.filter(d => readableRatio(d.content) < 0.55).map(d => d.name);
+    const readableDocuments = normalizedDocuments.filter(d => readableRatio(d.content) >= READABLE_THRESHOLD);
+    const unreadableDocuments = normalizedDocuments.filter(d => readableRatio(d.content) < READABLE_THRESHOLD).map(d => d.name);
     if (unreadableDocuments.length > 0) {
       console.warn(`⚠️ ${unreadableDocuments.length} documents look unreadable (binary noise) and are excluded from evidence: ${unreadableDocuments.join(', ')}`);
     }
