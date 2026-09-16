@@ -2021,7 +2021,7 @@ function extractJsonObjectFromText(text: string): any | null {
   return null;
 }
 
-interface EvidenceSection { text: string; norm: string; docName: string; embedding: number[] | null }
+interface EvidenceSection { text: string; norm: string; docName: string; embedding: number[] | null; embNorm: number }
 
 // Seleziona gli estratti più pertinenti per un requisito: similarità semantica + presenza di parole chiave
 function selectEvidenceForRequirement(
@@ -2031,9 +2031,10 @@ function selectEvidenceForRequirement(
   maxChars: number,
 ): Array<{ docName: string; text: string; score: number }> {
   const normKeywords = Array.from(new Set(req.coverage_keywords.map(k => normalizeForMatch(k)).filter(k => k.length >= 3)));
+  const reqNorm = reqEmbedding ? vectorNorm(reqEmbedding) : 0;
   const scored = sections.map((s) => {
     const kwHits = normKeywords.filter(k => s.norm.includes(k)).length;
-    const sim = reqEmbedding && s.embedding ? cosineSimilarity(reqEmbedding, s.embedding) : 0;
+    const sim = reqEmbedding && s.embedding ? cosineSimilarityFast(reqEmbedding, reqNorm, s.embedding, s.embNorm) : 0;
     return { docName: s.docName, text: s.text, score: sim + Math.min(0.3, kwHits * 0.08), sim, kwHits };
   });
   scored.sort((a, b) => b.score - a.score);
@@ -2157,6 +2158,9 @@ async function runWithConcurrency<T>(tasks: Array<() => Promise<T>>, limit: numb
 // I requisiti vengono valutati a gruppi; ogni gruppo è spezzato in chiamate AI piccole
 // eseguite in parallelo, perché il tempo di risposta dipende dai token prodotti per chiamata.
 const BUDGET_MS = 70000;
+// Le funzioni edge hanno anche un limite di tempo CPU: oltre questo numero di requisiti
+// per invocazione conviene restituire l'avanzamento e proseguire con una nuova chiamata.
+const MAX_PER_INVOCATION = 80;
 const GROUP_SIZE = 36;
 const LLM_BATCH_SIZE = 3;
 const LLM_CONCURRENCY = 12;
@@ -2340,14 +2344,22 @@ denoServe(protect(async (req) => {
     // Catalogo dei requisiti applicabili (validati sulla knowledge base)
     // ------------------------------------------------------------
     const catalog = await loadApplicableRequirements(supabase, normalizedRegulations);
-    const ragValidationCache = await buildRagValidationCache(supabase, normalizedRegulations);
-    const applicableRequirements = catalog.filter(req => {
-      const regCache = ragValidationCache.get(req.regulation.toLowerCase());
-      if (!regCache || regCache.size === 0) return true; // normativa senza testo strutturato: catalogo integrato
-      const ok = req.rag_validation_keywords.some(kw => regCache.has(kw.toLowerCase()));
-      if (!ok) console.log(`Skipping ${req.id}: not found in RAG knowledge base for regulation ${req.regulation}`);
-      return ok;
-    });
+    // La validazione sulla knowledge base serve solo a comporre l'elenco iniziale:
+    // quando l'analisi prosegue, l'elenco è già in state.pending e si evita la scansione.
+    let applicableRequirements: RegulatoryRequirement[];
+    if (isContinuation && state) {
+      const wanted = new Set<string>([...state.pending, ...state.checks.map(c => c.requirement_id)]);
+      applicableRequirements = catalog.filter(r => wanted.has(r.id));
+    } else {
+      const ragValidationCache = await buildRagValidationCache(supabase, normalizedRegulations);
+      applicableRequirements = catalog.filter(req => {
+        const regCache = ragValidationCache.get(req.regulation.toLowerCase());
+        if (!regCache || regCache.size === 0) return true; // normativa senza testo strutturato: catalogo integrato
+        const ok = req.rag_validation_keywords.some(kw => regCache.has(kw.toLowerCase()));
+        if (!ok) console.log(`Skipping ${req.id}: not found in RAG knowledge base for regulation ${req.regulation}`);
+        return ok;
+      });
+    }
     const requirementById = new Map(applicableRequirements.map(r => [r.id, r]));
     console.log(`Applicable requirements: ${applicableRequirements.length} for regulations: ${normalizedRegulations.join(', ')}`);
 
@@ -2396,7 +2408,7 @@ denoServe(protect(async (req) => {
     const deadline = Date.now() + BUDGET_MS;
 
     if (state.pending.length > 0) {
-      const userCorpus = readableDocuments.map(d => `${d.name} ${d.content}`.toLowerCase()).join(' \n ');
+      const userCorpus = buildDocumentCorpus(readableDocuments.map(d => `${d.name} ${d.content}`).join(' \n '));
       const corpusNormalized = normalizeQuote(readableDocuments.map(d => d.content).join(' \n '));
       const geminiKey = Deno.env.get('GEMINI_API_KEY');
       const aiKey = getAIKey();
@@ -2405,7 +2417,7 @@ denoServe(protect(async (req) => {
       const sections: EvidenceSection[] = [];
       for (const doc of readableDocuments) {
         for (const s of splitIntoSections(`${doc.name}: ${doc.content}`, SECTION_CHARS)) {
-          if (s.trim().length >= 50) sections.push({ text: s, norm: normalizeForMatch(s), docName: doc.name, embedding: null });
+          if (s.trim().length >= 50) sections.push({ text: s, norm: normalizeForMatch(s), docName: doc.name, embedding: null, embNorm: 0 });
         }
       }
       if (geminiKey && sections.length > 0) {
@@ -2448,6 +2460,7 @@ denoServe(protect(async (req) => {
           } else {
             for (const s of sections) s.embedding = cachedByText.get(s.text) || null;
           }
+          for (const s of sections) s.embNorm = s.embedding ? vectorNorm(s.embedding) : 0;
           console.log(`📐 Embedding sezioni pronti in ${Date.now() - t0}ms (${sections.filter(s => s.embedding).length}/${sections.length})`);
         } catch (e) {
           console.error('Section embeddings unavailable, evidence selection will use keywords only:', e);
@@ -2455,6 +2468,10 @@ denoServe(protect(async (req) => {
       }
 
       // 2) Embedding dei requisiti: calcolati una volta e conservati nel catalogo
+      const pendingRequirements = state.pending
+        .map(id => requirementById.get(id))
+        .filter((r): r is RegulatoryRequirement => !!r)
+        .slice(0, MAX_PER_INVOCATION);
       const reqEmbeddingById = new Map<string, number[]>();
       if (geminiKey && sections.some(s => s.embedding)) {
         const t0 = Date.now();
@@ -2462,13 +2479,13 @@ denoServe(protect(async (req) => {
           const { data: stored } = await supabase
             .from('regulatory_requirements')
             .select('requirement_id, embedding')
-            .in('requirement_id', applicableRequirements.map(r => r.id));
+            .in('requirement_id', pendingRequirements.map(r => r.id));
           for (const row of stored || []) {
             let emb: any = row.embedding;
             if (typeof emb === 'string') { try { emb = JSON.parse(emb); } catch { emb = null; } }
             if (Array.isArray(emb) && emb.length === GAP_EMBEDDING_DIMENSIONS) reqEmbeddingById.set(row.requirement_id, emb);
           }
-          const missingReqs = applicableRequirements.filter(r => !reqEmbeddingById.has(r.id));
+          const missingReqs = pendingRequirements.filter(r => !reqEmbeddingById.has(r.id));
           if (missingReqs.length > 0) {
             const fresh = await generateBatchEmbeddingsForGap(
               geminiKey,
@@ -2492,7 +2509,7 @@ denoServe(protect(async (req) => {
 
       // 3) Gruppi di requisiti finché resta tempo
       let processedInThisRun = 0;
-      while (state.pending.length > 0 && Date.now() < deadline) {
+      while (state.pending.length > 0 && Date.now() < deadline && processedInThisRun < MAX_PER_INVOCATION) {
         const groupIds = state.pending.slice(0, GROUP_SIZE);
         const groupRequirements = groupIds.map(id => requirementById.get(id)).filter((r): r is RegulatoryRequirement => !!r);
         const tGroup = Date.now();
@@ -2933,41 +2950,54 @@ const IT_STOP_WORDS = new Set([
   'che', 'the', 'of', 'and', 'for', 'to', 'in', 'on', 'by',
 ]);
 
-function keywordMatchesWithStopWords(corpus: string, keyword: string): boolean {
-  // First try exact substring match
-  if (corpus.includes(` ${keyword} `) || corpus.includes(keyword)) {
-    return true;
-  }
+// Pattern delle stop-word costruito una volta sola: comporlo a ogni confronto costava CPU inutile
+const STOP_WORD_PATTERN = `(?:\\s+(?:${Array.from(IT_STOP_WORDS).join('|')}))*\\s+`;
+const KEYWORD_REGEX_CACHE = new Map<string, RegExp | null>();
 
-  // Then try flexible match: allow 1-2 Italian stop words between keyword terms
+function keywordRegex(keyword: string): RegExp | null {
+  if (KEYWORD_REGEX_CACHE.has(keyword)) return KEYWORD_REGEX_CACHE.get(keyword)!;
   const parts = keyword.split(/\s+/);
-  if (parts.length < 2) return false;
-
-  // Build regex: each keyword term separated by optional stop words
-  // e.g. "diritti interessato" → /diritti\s+(?:di|del|della|dell|...)\s+interessato/
-  // Also allow direct adjacency (no stop word in between)
-  const stopPattern = `(?:\\s+(?:${Array.from(IT_STOP_WORDS).join('|')}))*\\s+`;
-  const regexStr = parts.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join(stopPattern);
-  try {
-    const regex = new RegExp(regexStr, 'i');
-    return regex.test(corpus);
-  } catch {
-    return false;
+  let regex: RegExp | null = null;
+  if (parts.length >= 2) {
+    try {
+      regex = new RegExp(parts.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join(STOP_WORD_PATTERN), 'i');
+    } catch { regex = null; }
   }
+  KEYWORD_REGEX_CACHE.set(keyword, regex);
+  return regex;
 }
 
-function getCoveredKeywords(corpusRaw: string, keywords: string[]): string[] {
-  const corpus = ` ${normalizeForMatch(corpusRaw)} `;
-  const matched = new Set<string>();
+// corpus: già normalizzato. corpusWords: insieme delle parole del corpus, per scartare
+// subito le chiavi assenti senza far girare una regex sull'intero testo dei documenti.
+function keywordMatchesWithStopWords(corpus: string, corpusWords: Set<string>, keyword: string): boolean {
+  if (corpus.includes(keyword)) return true;
+  const parts = keyword.split(/\s+/);
+  if (parts.length < 2) return false;
+  for (const part of parts) {
+    if (!corpusWords.has(part)) return false;
+  }
+  const regex = keywordRegex(keyword);
+  return regex ? regex.test(corpus) : false;
+}
 
+interface DocumentCorpus { text: string; words: Set<string> }
+
+// Il corpus viene normalizzato UNA volta per analisi: rifarlo per ogni requisito
+// significava riprocessare centinaia di migliaia di caratteri decine di volte.
+function buildDocumentCorpus(raw: string): DocumentCorpus {
+  const text = ` ${normalizeForMatch(raw)} `;
+  return { text, words: new Set(text.split(' ').filter(Boolean)) };
+}
+
+function getCoveredKeywords(corpus: DocumentCorpus, keywords: string[]): string[] {
+  const matched = new Set<string>();
   for (const keyword of keywords) {
     const normalizedKeyword = normalizeForMatch(keyword);
     if (!normalizedKeyword) continue;
-    if (keywordMatchesWithStopWords(corpus, normalizedKeyword)) {
+    if (keywordMatchesWithStopWords(corpus.text, corpus.words, normalizedKeyword)) {
       matched.add(normalizedKeyword);
     }
   }
-
   return Array.from(matched).sort((a, b) => a.localeCompare(b));
 }
 
@@ -3164,18 +3194,22 @@ function splitIntoSections(text: string, maxChars: number): string[] {
 
 const GAP_EMBEDDING_DIMENSIONS = 768;
 
+function vectorNorm(v: number[]): number {
+  let sum = 0;
+  for (let i = 0; i < v.length; i++) sum += v[i] * v[i];
+  return Math.sqrt(sum);
+}
+
+// Similarità con norme già note: nel ciclo interno resta solo il prodotto scalare
+function cosineSimilarityFast(a: number[], normA: number, b: number[], normB: number): number {
+  if (a.length !== b.length || normA === 0 || normB === 0) return 0;
+  let dot = 0;
+  for (let i = 0; i < a.length; i++) dot += a[i] * b[i];
+  return dot / (normA * normB);
+}
+
 function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length) return 0;
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dotProduct += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  const denominator = Math.sqrt(normA) * Math.sqrt(normB);
-  return denominator === 0 ? 0 : dotProduct / denominator;
+  return cosineSimilarityFast(a, vectorNorm(a), b, vectorNorm(b));
 }
 
 // Embedding a lotti: l'API accetta fino a 100 testi per richiesta e i lotti vanno in parallelo.
