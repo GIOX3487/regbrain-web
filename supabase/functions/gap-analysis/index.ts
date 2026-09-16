@@ -35,6 +35,9 @@ interface RegulatoryRequirement {
   // Per-requirement coverage thresholds (optional, defaults: 0.40 / 3)
   coverage_threshold?: number;   // 0.0-1.0, default 0.40
   min_keyword_matches?: number;  // default 3
+  // Requisito condizionale: si applica solo se ricorre una situazione (es. trasferimenti extra UE)
+  conditional?: boolean;
+  applicability_note_it?: string;
 }
 
 const REQUIREMENTS_CATALOG: RegulatoryRequirement[] = [
@@ -221,6 +224,8 @@ const REQUIREMENTS_CATALOG: RegulatoryRequirement[] = [
     recommended_action_en: 'Implement a DPIA framework with templates, criteria for identifying high-risk processing and prior consultation process with the DPO.',
     action_hours: 40,
     action_cost_eur: 3400,
+    conditional: true,
+    applicability_note_it: 'La DPIA è obbligatoria solo per trattamenti ad alto rischio (art. 35, par. 3 e criteri EDPB); in ogni caso è attesa una valutazione documentata di necessità.',
   },
   {
     id: 'gdpr_art37_dpo',
@@ -238,8 +243,158 @@ const REQUIREMENTS_CATALOG: RegulatoryRequirement[] = [
     recommended_action_en: 'Appoint a DPO (internal or external), publish contact details and notify the supervisory authority as required by Article 37 GDPR.',
     action_hours: 8,
     action_cost_eur: 680,
+    conditional: true,
+    applicability_note_it: 'La designazione è obbligatoria per autorità pubbliche, monitoraggio regolare e sistematico su larga scala o trattamento su larga scala di categorie particolari; negli altri casi è attesa una valutazione documentata.',
   },
 
+  {
+    id: 'gdpr_art7_consent',
+    regulation: 'GDPR',
+    reference: 'Articolo 7 GDPR - Condizioni per il consenso',
+    description_it: 'Quando il trattamento si basa sul consenso, il titolare deve essere in grado di dimostrare che l\'interessato lo ha prestato; la richiesta deve essere chiaramente distinguibile, formulata in modo comprensibile e il consenso deve essere revocabile con la stessa facilità con cui è stato prestato.',
+    description_en: 'Where processing is based on consent, the controller must be able to demonstrate that the data subject has consented; the request must be clearly distinguishable, intelligible, and consent must be as easy to withdraw as to give.',
+    risk_level: 'high',
+    remediation_effort: 'medium',
+    coverage_keywords: ['consenso', 'revoca del consenso', 'revocare il consenso', 'prova del consenso', 'registro dei consensi', 'consent', 'withdraw consent', 'consent record', 'modulo di consenso', 'opt-in'],
+    rag_validation_keywords: ['articolo 7', 'art. 7', 'art 7'],
+    gap_description_it: 'Non risulta documentato come viene raccolto, registrato e reso revocabile il consenso per i trattamenti che si fondano su questa base giuridica (Art. 7 GDPR).',
+    gap_description_en: 'There is no documentation of how consent is collected, recorded and made withdrawable for processing based on this legal basis (Art. 7 GDPR).',
+    recommended_action_it: 'Predisporre moduli di consenso distinti per finalità, un registro che conservi la prova del consenso (chi, quando, per cosa, con quale testo) e un canale di revoca semplice quanto la prestazione.',
+    recommended_action_en: 'Prepare purpose-specific consent forms, a register holding proof of consent (who, when, for what, with which wording) and a withdrawal channel as simple as the opt-in.',
+    action_hours: 16,
+    action_cost_eur: 1360,
+    conditional: true,
+    applicability_note_it: 'Applicabile solo se almeno un trattamento si fonda sul consenso (marketing, newsletter, cookie non tecnici, foto/video, dati facoltativi).',
+  },
+  {
+    id: 'gdpr_art9_special_categories',
+    regulation: 'GDPR',
+    reference: 'Articolo 9 GDPR - Trattamento di categorie particolari di dati personali',
+    description_it: 'Il trattamento di dati relativi a salute, orientamento sessuale, convinzioni religiose, appartenenza sindacale, dati genetici o biometrici è vietato salvo che ricorra una delle condizioni dell\'art. 9, par. 2; la condizione applicata deve essere individuata e documentata, con garanzie rafforzate.',
+    description_en: 'Processing of data concerning health, sexual orientation, religious beliefs, trade union membership, genetic or biometric data is prohibited unless one of the conditions in Art. 9(2) applies; the condition relied upon must be identified and documented, with strengthened safeguards.',
+    risk_level: 'critical',
+    remediation_effort: 'medium',
+    coverage_keywords: ['categorie particolari', 'dati particolari', 'dati sensibili', 'dati relativi alla salute', 'dati sanitari', 'dati biometrici', 'appartenenza sindacale', 'special categories', 'health data', 'biometric', 'articolo 9', 'art. 9'],
+    rag_validation_keywords: ['articolo 9', 'art. 9', 'art 9'],
+    gap_description_it: 'La documentazione non individua la condizione dell\'art. 9, par. 2 GDPR che legittima il trattamento delle categorie particolari di dati né le garanzie specifiche adottate.',
+    gap_description_en: 'The documentation does not identify the Art. 9(2) GDPR condition legitimising the processing of special categories of data nor the specific safeguards adopted.',
+    recommended_action_it: 'Censire i trattamenti di categorie particolari (es. dati sanitari del personale), indicare per ciascuno la condizione dell\'art. 9, par. 2 applicata e documentare le garanzie rafforzate (accessi limitati, cifratura, istruzioni specifiche agli autorizzati).',
+    recommended_action_en: 'Inventory special-category processing (e.g. staff health data), state for each the Art. 9(2) condition relied upon and document the strengthened safeguards (restricted access, encryption, specific instructions to authorised staff).',
+    action_hours: 16,
+    action_cost_eur: 1360,
+    conditional: true,
+    applicability_note_it: 'Applicabile se l\'organizzazione tratta dati sanitari, biometrici, sindacali o altre categorie particolari (quasi sempre presenti nei rapporti di lavoro: certificati di malattia, idoneità, trattenute sindacali).',
+  },
+  {
+    id: 'gdpr_art22_automated_decisions',
+    regulation: 'GDPR',
+    reference: 'Articolo 22 GDPR - Processo decisionale automatizzato e profilazione',
+    description_it: 'L\'interessato ha diritto a non essere sottoposto a decisioni basate unicamente su un trattamento automatizzato, compresa la profilazione, che producano effetti giuridici o incidano significativamente su di lui, salvo le eccezioni previste e con garanzie adeguate (intervento umano, contestazione).',
+    description_en: 'The data subject has the right not to be subject to decisions based solely on automated processing, including profiling, which produce legal or similarly significant effects, save for the exceptions provided and with suitable safeguards (human intervention, right to contest).',
+    risk_level: 'high',
+    remediation_effort: 'medium',
+    coverage_keywords: ['processo decisionale automatizzato', 'decisione automatizzata', 'profilazione', 'intervento umano', 'automated decision', 'profiling', 'human intervention', 'algoritmo', 'scoring'],
+    rag_validation_keywords: ['articolo 22', 'art. 22', 'art 22'],
+    gap_description_it: 'Non è documentato se l\'organizzazione adotta decisioni unicamente automatizzate o profilazione e, in caso affermativo, quali garanzie (intervento umano, informativa specifica, diritto di contestazione) sono previste.',
+    gap_description_en: 'It is not documented whether the organisation makes solely automated decisions or profiling and, if so, which safeguards (human intervention, specific notice, right to contest) are in place.',
+    recommended_action_it: 'Verificare se esistono decisioni automatizzate con effetti significativi (selezione del personale, scoring, controllo accessi) e, se presenti, documentare logica, garanzie e modalità di richiesta dell\'intervento umano.',
+    recommended_action_en: 'Verify whether automated decisions with significant effects exist (recruitment, scoring, access control) and, if so, document the logic, safeguards and how human intervention can be requested.',
+    action_hours: 12,
+    action_cost_eur: 1020,
+    conditional: true,
+    applicability_note_it: 'Applicabile solo se l\'organizzazione adotta decisioni unicamente automatizzate o attività di profilazione con effetti significativi sulle persone.',
+  },
+  {
+    id: 'gdpr_art24_accountability',
+    regulation: 'GDPR',
+    reference: 'Articolo 24 GDPR - Responsabilità del titolare del trattamento',
+    description_it: 'Il titolare deve mettere in atto misure tecniche e organizzative adeguate per garantire, ed essere in grado di dimostrare, che il trattamento è conforme al Regolamento, riesaminandole e aggiornandole; ciò include politiche interne in materia di protezione dei dati.',
+    description_en: 'The controller must implement appropriate technical and organisational measures to ensure, and be able to demonstrate, that processing complies with the Regulation, reviewing and updating them; this includes internal data protection policies.',
+    risk_level: 'high',
+    remediation_effort: 'high',
+    coverage_keywords: ['responsabilizzazione', 'accountability', 'politica privacy interna', 'regolamento interno privacy', 'modello organizzativo privacy', 'organigramma privacy', 'riesame', 'aggiornamento periodico', 'data protection policy', 'ruoli e responsabilità'],
+    rag_validation_keywords: ['articolo 24', 'art. 24', 'art 24'],
+    gap_description_it: 'Non risulta un modello organizzativo privacy (politiche interne, ruoli e responsabilità, riesame periodico) che permetta di dimostrare la conformità come richiesto dall\'Art. 24 GDPR.',
+    gap_description_en: 'No privacy governance model (internal policies, roles and responsibilities, periodic review) enabling the organisation to demonstrate compliance under Art. 24 GDPR was found.',
+    recommended_action_it: 'Adottare un regolamento interno privacy che definisca ruoli (titolare, referenti, autorizzati, DPO), politiche di protezione dei dati e un ciclo di riesame periodico documentato.',
+    recommended_action_en: 'Adopt an internal privacy policy defining roles (controller, function owners, authorised staff, DPO), data protection policies and a documented periodic review cycle.',
+    action_hours: 32,
+    action_cost_eur: 2720,
+  },
+  {
+    id: 'gdpr_art26_joint_controllers',
+    regulation: 'GDPR',
+    reference: 'Articolo 26 GDPR - Contitolari del trattamento',
+    description_it: 'Quando due o più titolari determinano congiuntamente finalità e mezzi del trattamento, devono definire in modo trasparente, mediante accordo interno, le rispettive responsabilità, in particolare per l\'esercizio dei diritti degli interessati e le informative, rendendone disponibile il contenuto essenziale.',
+    description_en: 'Where two or more controllers jointly determine the purposes and means of processing, they must transparently determine their respective responsibilities by means of an arrangement, in particular for data subject rights and notices, making its essence available to data subjects.',
+    risk_level: 'medium',
+    remediation_effort: 'medium',
+    coverage_keywords: ['contitolari', 'contitolarità', 'accordo di contitolarità', 'joint controller', 'joint controllership', 'titolari congiunti'],
+    rag_validation_keywords: ['articolo 26', 'art. 26', 'art 26'],
+    gap_description_it: 'Non risultano accordi di contitolarità per i trattamenti gestiti insieme ad altri titolari, né una valutazione documentata sull\'assenza di situazioni di contitolarità.',
+    gap_description_en: 'No joint controllership arrangements were found for processing managed together with other controllers, nor a documented assessment on the absence of joint controllership.',
+    recommended_action_it: 'Individuare i trattamenti condivisi con altri titolari (gruppo, partner, capofila di progetto) e formalizzare per ciascuno un accordo ex art. 26 con ripartizione dei compiti e punto di contatto per gli interessati.',
+    recommended_action_en: 'Identify processing shared with other controllers (group companies, partners, project leads) and formalise an Art. 26 arrangement for each, with allocation of duties and a contact point for data subjects.',
+    action_hours: 12,
+    action_cost_eur: 1020,
+    conditional: true,
+    applicability_note_it: 'Applicabile solo se esistono trattamenti le cui finalità e mezzi sono decisi insieme ad altri titolari.',
+  },
+  {
+    id: 'gdpr_art29_staff_instructions',
+    regulation: 'GDPR',
+    reference: 'Articolo 29 e Articolo 32, paragrafo 4 GDPR - Trattamento sotto l\'autorità del titolare e istruzioni agli autorizzati',
+    description_it: 'Chiunque agisca sotto l\'autorità del titolare o del responsabile e abbia accesso a dati personali può trattarli solo su istruzione del titolare; il titolare deve garantire che il personale autorizzato riceva istruzioni documentate e formazione adeguata.',
+    description_en: 'Anyone acting under the authority of the controller or processor who has access to personal data may process them only on the controller\'s instructions; the controller must ensure authorised staff receive documented instructions and adequate training.',
+    risk_level: 'medium',
+    remediation_effort: 'low',
+    coverage_keywords: ['istruzioni operative', 'lettera di incarico', 'autorizzati al trattamento', 'persone autorizzate', 'incaricati', 'designazione', 'formazione privacy', 'formazione del personale', 'training', 'articolo 29', 'art. 29'],
+    rag_validation_keywords: ['articolo 29', 'art. 29', 'art 29'],
+    gap_description_it: 'Non risultano istruzioni documentate e attività di formazione per il personale autorizzato al trattamento dei dati (Art. 29 e Art. 32, par. 4 GDPR).',
+    gap_description_en: 'No documented instructions and training activities for staff authorised to process personal data were found (Art. 29 and Art. 32(4) GDPR).',
+    recommended_action_it: 'Formalizzare lettere di autorizzazione con istruzioni operative per funzione, tenere un registro delle autorizzazioni e pianificare formazione periodica con evidenza di partecipazione.',
+    recommended_action_en: 'Formalise authorisation letters with operating instructions per role, keep a register of authorisations and schedule periodic training with attendance records.',
+    action_hours: 12,
+    action_cost_eur: 1020,
+  },
+  {
+    id: 'gdpr_art38_39_dpo_position',
+    regulation: 'GDPR',
+    reference: 'Articoli 38-39 GDPR - Posizione e compiti del responsabile della protezione dei dati',
+    description_it: 'Il DPO deve essere coinvolto tempestivamente in tutte le questioni relative alla protezione dei dati, disporre delle risorse necessarie, non ricevere istruzioni sull\'esercizio dei compiti, riferire al vertice e svolgere i compiti di sorveglianza, consulenza e cooperazione con l\'autorità; i suoi dati di contatto vanno pubblicati e comunicati al Garante.',
+    description_en: 'The DPO must be involved in a timely manner in all data protection matters, have the necessary resources, receive no instructions on the exercise of tasks, report to the highest management level and carry out monitoring, advisory and cooperation tasks; the DPO\'s contact details must be published and communicated to the supervisory authority.',
+    risk_level: 'medium',
+    remediation_effort: 'low',
+    coverage_keywords: ['relazione del dpo', 'relazione annuale', 'compiti del dpo', 'rpd', 'responsabile della protezione dei dati', 'dpo', 'data protection officer', 'comunicazione al garante', 'contatti del dpo', 'sorveglianza', 'audit privacy'],
+    rag_validation_keywords: ['articolo 38', 'art. 38', 'art 38', 'articolo 39', 'art. 39'],
+    gap_description_it: 'Non risulta documentato come il DPO svolge i propri compiti (relazioni periodiche, coinvolgimento nelle decisioni, comunicazione dei contatti al Garante e pubblicazione).',
+    gap_description_en: 'It is not documented how the DPO carries out the tasks (periodic reports, involvement in decisions, communication of contact details to the supervisory authority and publication).',
+    recommended_action_it: 'Documentare il piano di attività del DPO, le relazioni periodiche al vertice, la comunicazione dei dati di contatto al Garante e la loro pubblicazione nelle informative.',
+    recommended_action_en: 'Document the DPO activity plan, periodic reports to top management, the communication of contact details to the supervisory authority and their publication in privacy notices.',
+    action_hours: 8,
+    action_cost_eur: 680,
+    conditional: true,
+    applicability_note_it: 'Applicabile solo se è stato designato un DPO (obbligatorio o volontario).',
+  },
+  {
+    id: 'gdpr_art44_49_transfers',
+    regulation: 'GDPR',
+    reference: 'Articoli 44-49 GDPR - Trasferimenti di dati personali verso paesi terzi',
+    description_it: 'Il trasferimento di dati personali verso paesi terzi o organizzazioni internazionali è ammesso solo con decisione di adeguatezza, garanzie adeguate (clausole contrattuali tipo, norme vincolanti d\'impresa) o deroghe specifiche, con valutazione documentata del paese di destinazione.',
+    description_en: 'Transfers of personal data to third countries or international organisations are permitted only under an adequacy decision, appropriate safeguards (standard contractual clauses, binding corporate rules) or specific derogations, with a documented assessment of the destination country.',
+    risk_level: 'high',
+    remediation_effort: 'medium',
+    coverage_keywords: ['trasferimento extra ue', 'trasferimenti verso paesi terzi', 'paesi terzi', 'clausole contrattuali standard', 'clausole contrattuali tipo', 'standard contractual clauses', 'scc', 'decisione di adeguatezza', 'data privacy framework', 'transfer impact assessment', 'tia', 'third countries', 'stati uniti', 'extra ue'],
+    rag_validation_keywords: ['articolo 44', 'art. 44', 'art 44', 'articolo 46', 'art. 46'],
+    gap_description_it: 'Non è documentato se avvengono trasferimenti di dati verso paesi terzi (es. fornitori cloud o software con sedi extra UE) e su quale strumento di garanzia si fondano.',
+    gap_description_en: 'It is not documented whether data transfers to third countries take place (e.g. cloud or software providers based outside the EU) and which safeguard instrument they rely on.',
+    recommended_action_it: 'Mappare i fornitori con sedi o server extra UE, indicare per ciascuno lo strumento di trasferimento (adeguatezza, clausole standard con valutazione d\'impatto) e riportarlo nel registro e nelle informative.',
+    recommended_action_en: 'Map suppliers with premises or servers outside the EU, state the transfer tool for each (adequacy, standard clauses with transfer impact assessment) and reflect it in the register and privacy notices.',
+    action_hours: 16,
+    action_cost_eur: 1360,
+    conditional: true,
+    applicability_note_it: 'Applicabile se dati personali sono trasferiti o accessibili da paesi fuori dallo Spazio economico europeo, anche tramite fornitori cloud.',
+  },
   // ===== NIS2 =====
   {
     id: 'nis2_art20_governance',
@@ -1734,211 +1889,255 @@ const REQUIREMENTS_CATALOG: RegulatoryRequirement[] = [
 ];
 // ============================================================
 
-const RISK_SCORE_MAP: Record<string, number> = { critical: 92, high: 74, medium: 52, low: 28 };
+// ============================================================
+// RISK PROFILE
+// Il profilo di rischio di un gap nasce da due elementi:
+//  - la gravità dell'obbligo violato (severity, dal catalogo: dipende da
+//    natura dell'obbligo e fascia sanzionatoria della normativa)
+//  - lo stato della documentazione (missing = nessuna evidenza,
+//    partial = documentazione presente ma incompleta)
+// Il risultato è un livello a tre colori: high (rosso), medium (arancione), low (giallo).
+// I requisiti coperti restano fuori dai gap (verde).
+// ============================================================
 
-// Mappa l'articolo GDPR alla fascia sanzionatoria corretta secondo Art. 83
-// Art. 83(5) = max 4% / 20M EUR — violazioni gravi
-// Art. 83(4) = max 2% / 10M EUR — violazioni di obblighi del titolare
-function getGdprFineTier(articleReference: string): 'tier_5' | 'tier_4' {
-  const ref = articleReference.toLowerCase();
+type CheckStatus = 'covered' | 'partial' | 'missing' | 'to_verify' | 'not_applicable';
+type RiskProfile = 'high' | 'medium' | 'low';
 
-  // Estrai numero articolo principale
-  const artMatch = ref.match(/art(?:icolo)?\.?\s*(\d+)/i);
-  if (!artMatch) return 'tier_4'; // default conservativo
-  const artNum = parseInt(artMatch[1]);
-
-  // Art. 83(5) — fascia alta (max 4% / 20M)
-  // Principi (5-7, 9), diritti (12-22), trasferimenti (44-49)
-  const tier5Articles = [5, 6, 7, 9, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 44, 45, 46, 47, 48, 49];
-  if (tier5Articles.includes(artNum)) return 'tier_5';
-
-  // Art. 83(4) — fascia bassa (max 2% / 10M)
-  // Obblighi titolare (24-39), DPO, certificazione
-  return 'tier_4';
+interface RequirementCheck {
+  requirement_id: string;
+  regulation: string;
+  reference: string;
+  description: string;
+  severity: string;
+  remediation_effort: string;
+  conditional: boolean;
+  status: CheckStatus;
+  risk_level: RiskProfile | null;
+  assessment: string;
+  evidence: Array<{ document: string; quote: string }>;
+  missing_elements: string[];
+  recommended_actions: string[];
+  confidence: number | null;
+  method: 'llm_evidence' | 'keyword' | 'semantic';
+  keyword_coverage: number;
 }
 
-const FINE_CONFIG_BY_REGULATION: Record<string, Record<string, { pct: number; min: number; max: number }>> = {
-  'GDPR': {
-    // Art. 83(5): fino a 20M EUR o 4% fatturato globale
-    critical: { pct: 0.04, min: 100000, max: 20000000 },
-    // Art. 83(4): fino a 10M EUR o 2% fatturato globale
-    high: { pct: 0.02, min: 50000, max: 10000000 },
-    medium: { pct: 0.005, min: 10000, max: 1000000 },
-    low: { pct: 0.001, min: 5000, max: 100000 },
-  },
-  'NIS2': {
-    // Art. 34: soggetti essenziali fino a 10M EUR o 2% fatturato
-    critical: { pct: 0.02, min: 100000, max: 10000000 },
-    high: { pct: 0.01, min: 50000, max: 7000000 },
-    // Art. 34: soggetti importanti fino a 7M EUR o 1.4% fatturato
-    medium: { pct: 0.005, min: 10000, max: 1000000 },
-    low: { pct: 0.001, min: 5000, max: 100000 },
-  },
-  'D.Lgs. 138/2024': {
-    // Stessa configurazione di NIS2 (decreto di recepimento)
-    critical: { pct: 0.02, min: 100000, max: 10000000 },
-    high: { pct: 0.01, min: 50000, max: 7000000 },
-    medium: { pct: 0.005, min: 10000, max: 1000000 },
-    low: { pct: 0.001, min: 5000, max: 100000 },
-  },
-  'DORA': {
-    // Art. 50-51: sanzioni proporzionate, fino a 1% fatturato medio giornaliero per max 6 mesi
-    critical: { pct: 0.01, min: 50000, max: 5000000 },
-    high: { pct: 0.005, min: 25000, max: 2000000 },
-    medium: { pct: 0.002, min: 10000, max: 500000 },
-    low: { pct: 0.0005, min: 5000, max: 100000 },
-  },
-  'AI Act': {
-    // Art. 99: pratiche vietate fino a 35M EUR o 7% fatturato; alto rischio fino a 15M o 3%
-    critical: { pct: 0.07, min: 200000, max: 35000000 },
-    high: { pct: 0.03, min: 100000, max: 15000000 },
-    medium: { pct: 0.01, min: 25000, max: 7500000 },
-    low: { pct: 0.002, min: 5000, max: 500000 },
-  },
-  'CRA': {
-    // Art. 64: fino a 15M EUR o 2.5% fatturato per requisiti essenziali
-    critical: { pct: 0.025, min: 100000, max: 15000000 },
-    high: { pct: 0.01, min: 50000, max: 5000000 },
-    medium: { pct: 0.005, min: 10000, max: 1000000 },
-    low: { pct: 0.001, min: 5000, max: 200000 },
-  },
-  'D.Lgs 81/08': {
-    // Sanzioni penali e amministrative: ammende da €2.500 a €13.000, arresto 3-6 mesi
-    critical: { pct: 0, min: 5000, max: 50000 },
-    high: { pct: 0, min: 2500, max: 13000 },
-    medium: { pct: 0, min: 1000, max: 6600 },
-    low: { pct: 0, min: 500, max: 3300 },
-  },
-  'Data Act': {
-    // Sanzioni proporzionate definite dagli Stati membri
-    critical: { pct: 0.01, min: 50000, max: 5000000 },
-    high: { pct: 0.005, min: 20000, max: 2000000 },
-    medium: { pct: 0.002, min: 5000, max: 500000 },
-    low: { pct: 0.0005, min: 1000, max: 100000 },
-  },
-  'ISO 27001': {
-    // ISO non ha sanzioni dirette, ma perdita certificazione ha impatto commerciale
-    critical: { pct: 0.005, min: 10000, max: 500000 },
-    high: { pct: 0.002, min: 5000, max: 200000 },
-    medium: { pct: 0.001, min: 2000, max: 50000 },
-    low: { pct: 0.0005, min: 1000, max: 10000 },
-  },
-};
+const CHECKS_VERSION = 'gap-analysis-v19-evidence-checks';
+const SEVERITY_RANK: Record<string, number> = { critical: 3, high: 2, medium: 1, low: 0 };
+const RISK_SCORE_MAP: Record<string, number> = { high: 74, medium: 52, low: 28 };
 
-// Fallback generico per normative non elencate
-const FINE_CONFIG_DEFAULT: Record<string, { pct: number; min: number; max: number }> = {
-  critical: { pct: 0.012, min: 50000, max: 500000 },
-  high: { pct: 0.006, min: 20000, max: 200000 },
-  medium: { pct: 0.002, min: 5000, max: 50000 },
-  low: { pct: 0.0005, min: 1000, max: 10000 },
-};
-
-// Calcola la sanzione realistica considerando fattori attenuanti
-// Restituisce: { theoretical_max, realistic_estimate }
-function calculateRealisticFine(
-  regulation: string,
-  riskLevel: string,
-  articleReference: string,
-  annualRevenue: number,
-  isFirstViolation: boolean = true,
-  hasRemediationPlan: boolean = true
-): { theoretical_max: number; realistic_estimate: number; tier_used: string } {
-
-  // GDPR: usa la mappatura articolo → fascia
-  if (regulation === 'GDPR') {
-    const tier = getGdprFineTier(articleReference);
-    const config = tier === 'tier_5'
-      ? { critical: 0.04, high: 0.02, medium: 0.01, low: 0.005, max_eur: 20000000 }
-      : { critical: 0.02, high: 0.01, medium: 0.005, low: 0.002, max_eur: 10000000 };
-
-    const pct = config[riskLevel as keyof typeof config] as number || config.medium;
-    const theoretical_max = Math.min(annualRevenue * pct, config.max_eur);
-
-    // Fattori di attenuazione realistici basati su prassi del Garante:
-    // - Prima violazione: -50% (riduzione tipica)
-    // - Piano remediation in corso: -30% (cooperazione)
-    // - PMI con fatturato < 50M: applicazione del minimo della forchetta
-    let realistic = theoretical_max;
-
-    if (isFirstViolation) realistic *= 0.50;
-    if (hasRemediationPlan) realistic *= 0.70;
-
-    // Per PMI (fatturato < 50M EUR) la sanzione media è tipicamente
-    // tra il 5-15% del massimo teorico, non al massimo
-    if (annualRevenue < 50000000) {
-      realistic = Math.max(realistic * 0.30, riskLevel === 'critical' ? 50000 : 10000);
-    }
-
-    return {
-      theoretical_max: Math.round(theoretical_max),
-      realistic_estimate: Math.round(realistic),
-      tier_used: tier === 'tier_5' ? 'Art. 83(5) GDPR (max 4%)' : 'Art. 83(4) GDPR (max 2%)'
-    };
-  }
-
-  // NIS2 / D.Lgs. 138/2024: distinzione soggetti essenziali (2%) / importanti (1.4%)
-  if (regulation === 'NIS2' || regulation === 'D.Lgs. 138/2024') {
-    const cfg = riskLevel === 'critical'
-      ? { pct: 0.02, max: 10000000 }
-      : riskLevel === 'high'
-      ? { pct: 0.014, max: 7000000 }
-      : { pct: 0.005, max: 1000000 };
-
-    const theoretical_max = Math.min(annualRevenue * cfg.pct, cfg.max);
-    let realistic = theoretical_max;
-    if (isFirstViolation) realistic *= 0.50;
-    if (hasRemediationPlan) realistic *= 0.70;
-    if (annualRevenue < 50000000) realistic = Math.max(realistic * 0.30, 25000);
-
-    return {
-      theoretical_max: Math.round(theoretical_max),
-      realistic_estimate: Math.round(realistic),
-      tier_used: 'Art. 34 NIS2 / Art. 38 D.Lgs. 138/2024'
-    };
-  }
-
-  // AI Act: pratiche vietate fino a 7%, alto rischio fino a 3%
-  if (regulation === 'AI Act') {
-    const cfg = riskLevel === 'critical'
-      ? { pct: 0.07, max: 35000000 }
-      : { pct: 0.03, max: 15000000 };
-    const theoretical_max = Math.min(annualRevenue * cfg.pct, cfg.max);
-    let realistic = theoretical_max;
-    if (isFirstViolation) realistic *= 0.40;
-    if (hasRemediationPlan) realistic *= 0.65;
-    if (annualRevenue < 50000000) realistic = Math.max(realistic * 0.25, 50000);
-
-    return {
-      theoretical_max: Math.round(theoretical_max),
-      realistic_estimate: Math.round(realistic),
-      tier_used: 'Art. 99 AI Act'
-    };
-  }
-
-  // Per altre normative usa il calcolo standard con riduzione realistica
-  const regFineConfig = FINE_CONFIG_BY_REGULATION[regulation] || FINE_CONFIG_DEFAULT;
-  const cfg = regFineConfig[riskLevel] || FINE_CONFIG_DEFAULT[riskLevel] || FINE_CONFIG_DEFAULT.medium;
-  const theoretical_max = Math.max(cfg.min, Math.min(cfg.max, annualRevenue * cfg.pct));
-
-  let realistic = theoretical_max;
-  if (isFirstViolation) realistic *= 0.50;
-  if (hasRemediationPlan) realistic *= 0.70;
-  if (annualRevenue < 50000000) realistic = Math.max(realistic * 0.35, cfg.min);
-
-  return {
-    theoretical_max: Math.round(theoretical_max),
-    realistic_estimate: Math.round(realistic),
-    tier_used: regulation
-  };
+function riskProfileFor(severity: string, status: CheckStatus): RiskProfile | null {
+  if (status !== 'missing' && status !== 'partial') return null;
+  const base = SEVERITY_RANK[severity] ?? 1;
+  const rank = status === 'partial' ? Math.max(0, base - 1) : base;
+  return rank >= 2 ? 'high' : rank === 1 ? 'medium' : 'low';
 }
 
 const PRIORITY_MATRIX: Record<string, Record<string, number>> = {
-  critical: { very_high: 1, high: 1, medium: 1, low: 2 },
-  high: { very_high: 1, high: 2, medium: 2, low: 3 },
+  high: { very_high: 1, high: 1, medium: 2, low: 2 },
   medium: { very_high: 2, high: 2, medium: 3, low: 3 },
   low: { very_high: 3, high: 3, medium: 4, low: 4 },
 };
-const HOURLY_RATE_EUR = 85;
+
+// Cosa deve risultare dalla documentazione per considerare soddisfatto il requisito.
+// Guida l'auditor AI: elementi obbligatori del documento atteso.
+const EVIDENCE_EXPECTED_IT: Record<string, string> = {
+  gdpr_art5_principles: 'Una policy o regolamento interno che enunci i principi applicati (liceità, correttezza, trasparenza, limitazione della finalità, minimizzazione, esattezza, limitazione della conservazione, integrità) e come vengono attuati; termini di conservazione definiti.',
+  gdpr_art6_lawfulness: 'Per ciascuna finalità di trattamento la base giuridica indicata (registro, informative o mappatura dedicata); per l\'interesse legittimo, un test di bilanciamento.',
+  gdpr_art13_14_information: 'Informative complete: identità e contatti del titolare e del DPO, finalità e basi giuridiche, destinatari, trasferimenti extra UE, periodo di conservazione, diritti, reclamo al Garante, obbligatorietà del conferimento; una per ogni categoria di interessati (dipendenti, clienti, fornitori, candidati, utenti del sito).',
+  gdpr_art12_15_22_data_subject_rights: 'Una procedura scritta per ricevere e gestire le richieste degli interessati: canali, verifica dell\'identità, termine di un mese, registro delle richieste, responsabili, moduli.',
+  gdpr_art25_privacy_by_design: 'Evidenza che la protezione dei dati è considerata nella progettazione di nuovi trattamenti o sistemi: checklist privacy by design, impostazioni predefinite restrittive, valutazioni preliminari, procedure di change management con verifica privacy.',
+  gdpr_art28_processor: 'Contratti o nomine dei responsabili del trattamento con i contenuti dell\'art. 28, par. 3 (istruzioni, riservatezza, misure di sicurezza, sub-responsabili, assistenza, cancellazione o restituzione, audit); elenco dei fornitori nominati; verifica dei fornitori.',
+  gdpr_art30_records: 'Registro delle attività di trattamento con, per ogni trattamento: finalità, categorie di interessati e di dati, destinatari, eventuali trasferimenti extra UE, termini di conservazione, descrizione delle misure di sicurezza; se l\'organizzazione agisce anche come responsabile, il registro del responsabile.',
+  gdpr_art32_security: 'Descrizione delle misure tecniche e organizzative: controllo degli accessi, autenticazione, cifratura, backup e ripristino, gestione delle vulnerabilità, log, disciplinare per l\'uso degli strumenti, test periodici; una valutazione dei rischi che le giustifica.',
+  gdpr_art33_34_breach: 'Procedura di gestione delle violazioni: rilevazione, valutazione del rischio, notifica al Garante entro 72 ore, comunicazione agli interessati, registro delle violazioni, ruoli e contatti.',
+  gdpr_art35_dpia: 'Valutazioni d\'impatto svolte per i trattamenti ad alto rischio oppure una valutazione documentata di non necessità della DPIA con i criteri applicati.',
+  gdpr_art37_dpo: 'Atto di designazione del DPO con compiti e contatti, comunicazione al Garante, oppure valutazione documentata che spiega perché la designazione non è obbligatoria.',
+  gdpr_art7_consent: 'Moduli o flussi di raccolta del consenso distinti per finalità, modalità di registrazione della prova e di revoca.',
+  gdpr_art9_special_categories: 'Individuazione dei trattamenti di categorie particolari, condizione dell\'art. 9, par. 2 applicata e garanzie specifiche adottate.',
+  gdpr_art22_automated_decisions: 'Dichiarazione sull\'esistenza o meno di decisioni unicamente automatizzate o profilazione; se presenti, logica, garanzie e intervento umano.',
+  gdpr_art24_accountability: 'Regolamento o modello organizzativo privacy con ruoli e responsabilità, politiche di protezione dei dati e riesame periodico documentato.',
+  gdpr_art26_joint_controllers: 'Accordi di contitolarità con ripartizione delle responsabilità oppure dichiarazione motivata di assenza di contitolarità.',
+  gdpr_art29_staff_instructions: 'Lettere di autorizzazione o istruzioni operative per il personale, elenco degli autorizzati, evidenza di formazione (programma, date, partecipanti).',
+  gdpr_art38_39_dpo_position: 'Relazioni periodiche del DPO, evidenza del suo coinvolgimento, comunicazione dei contatti al Garante e pubblicazione nelle informative.',
+  gdpr_art44_49_transfers: 'Elenco dei trasferimenti extra UE (fornitori, cloud) con lo strumento di garanzia adottato per ciascuno, oppure dichiarazione che non avvengono trasferimenti.',
+};
+
+function evidenceExpectedFor(req: RegulatoryRequirement): string {
+  return EVIDENCE_EXPECTED_IT[req.id] || req.description_it;
+}
+
+// Normalizzazione per la verifica delle citazioni
+function normalizeQuote(text: string): string {
+  return (text || '')
+    .toLowerCase()
+    .replace(/[‘’“”'"«»]/g, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Una citazione è verificata se compare nei documenti (intera, oppure una finestra di 6 parole consecutive)
+function quoteIsVerified(quote: string, corpusNormalized: string): boolean {
+  const q = normalizeQuote(quote);
+  if (q.length < 12) return false;
+  if (corpusNormalized.includes(q)) return true;
+  const words = q.split(' ').filter(Boolean);
+  if (words.length < 6) return false;
+  for (let i = 0; i + 6 <= words.length; i++) {
+    if (corpusNormalized.includes(words.slice(i, i + 6).join(' '))) return true;
+  }
+  return false;
+}
+
+// Stima se un testo è leggibile (documenti PDF/DOC non estratti correttamente producono rumore binario)
+function readableRatio(text: string): number {
+  if (!text) return 0;
+  const sample = text.substring(0, 4000);
+  const words = sample.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return 0;
+  const good = words.filter(w => /^[\p{L}][\p{L}\p{N}'’.,;:()-]{1,30}$/u.test(w)).length;
+  return good / words.length;
+}
+
+function extractJsonObjectFromText(text: string): any | null {
+  if (!text) return null;
+  const cleaned = text.replace(/```json|```/gi, '').trim();
+  try { return JSON.parse(cleaned); } catch { /* continue */ }
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  if (start >= 0 && end > start) {
+    try { return JSON.parse(cleaned.substring(start, end + 1)); } catch { return null; }
+  }
+  return null;
+}
+
+interface EvidenceSection { text: string; norm: string; docName: string; embedding: number[] | null }
+
+// Seleziona gli estratti più pertinenti per un requisito: similarità semantica + presenza di parole chiave
+function selectEvidenceForRequirement(
+  req: RegulatoryRequirement,
+  reqEmbedding: number[] | null,
+  sections: EvidenceSection[],
+  maxChars: number,
+): Array<{ docName: string; text: string; score: number }> {
+  const normKeywords = Array.from(new Set(req.coverage_keywords.map(k => normalizeForMatch(k)).filter(k => k.length >= 3)));
+  const scored = sections.map((s) => {
+    const kwHits = normKeywords.filter(k => s.norm.includes(k)).length;
+    const sim = reqEmbedding && s.embedding ? cosineSimilarity(reqEmbedding, s.embedding) : 0;
+    return { docName: s.docName, text: s.text, score: sim + Math.min(0.3, kwHits * 0.08), sim, kwHits };
+  });
+  scored.sort((a, b) => b.score - a.score);
+  const picked: Array<{ docName: string; text: string; score: number }> = [];
+  let used = 0;
+  for (const s of scored) {
+    if (picked.length >= 10) break;
+    if (s.sim < 0.25 && s.kwHits === 0) continue;
+    if (used + s.text.length > maxChars) continue;
+    picked.push({ docName: s.docName, text: s.text, score: s.score });
+    used += s.text.length;
+  }
+  return picked;
+}
+
+// Valutazione documentale di un gruppo di requisiti tramite LLM (temperatura 0, JSON).
+async function assessRequirementBatchWithLLM(
+  apiKey: string,
+  batch: Array<{ req: RegulatoryRequirement; evidence: Array<{ docName: string; text: string }> }>,
+  language: string,
+  profile: any,
+  documentNames: string[],
+): Promise<Map<string, any>> {
+  const isIt = language === 'it';
+  const systemPrompt = `Sei un auditor di protezione dei dati e conformità normativa. Valuti se la documentazione di un'organizzazione soddisfa requisiti normativi specifici basandoti ESCLUSIVAMENTE sugli estratti forniti.
+Settore dell'organizzazione: ${profile?.sector || 'non indicato'}. Giurisdizione: ${profile?.jurisdiction || 'IT'}.
+
+Rispondi SOLO con un oggetto JSON valido con questa forma:
+{"checks":[{"requirement_id":"...","status":"covered|partial|missing|not_applicable","assessment":"...","evidence":[{"document":"nome del file","quote":"citazione testuale"}],"missing_elements":["..."],"recommended_actions":["..."],"confidence":0.0}]}
+
+Criteri per status:
+- "covered": gli estratti dimostrano che il requisito è soddisfatto nella sostanza: esiste il documento atteso e contiene gli elementi obbligatori indicati.
+- "partial": esiste documentazione pertinente ma mancano elementi obbligatori, oppure è generica, o copre solo una parte del requisito. Elenca in missing_elements cosa manca, in modo specifico.
+- "missing": nessun estratto pertinente al requisito.
+- "not_applicable": SOLO per requisiti marcati come condizionali e SOLO se gli estratti dichiarano esplicitamente che la condizione non ricorre (es. "non si effettuano trasferimenti extra UE"). L'assenza di informazioni NON rende un requisito non applicabile: in quel caso usa "missing".
+
+Regole sulle prove:
+- Ogni citazione in evidence deve essere copiata parola per parola da un estratto (massimo 200 caratteri) e attribuita al file corretto.
+- Il nome di un file non è una prova del suo contenuto. Testo illeggibile, codice binario o metadati di file non sono evidenze.
+- Uno status "covered" richiede almeno una citazione pertinente.
+
+Regole sul testo:
+- "assessment": 2 o 3 frasi in ${isIt ? 'italiano' : 'inglese'}, in terza persona, che dicono cosa risulta documentato (citando il nome del documento) e cosa manca. Niente frasi generiche, niente riferimenti ad articoli diversi da quello del requisito.
+- "recommended_actions": da 1 a 3 azioni concrete e specifiche per colmare esattamente ciò che manca (es. "Integrare il registro con i termini di conservazione per ciascun trattamento"). Nessuna stima di ore o costi. Se lo status è "covered", al massimo un'azione di mantenimento o nessuna.
+- "confidence": da 0 a 1, quanto sei sicuro del giudizio dati gli estratti.
+Non inventare contenuti assenti dagli estratti. Restituisci un elemento per ogni requisito ricevuto, nello stesso ordine.`;
+
+  const userParts = batch.map(({ req, evidence }, idx) => {
+    const evidenceText = evidence.length > 0
+      ? evidence.map((e, i) => `[Estratto ${i + 1} | file: ${e.docName}]\n${e.text}`).join('\n\n')
+      : '(nessun estratto pertinente trovato nei documenti caricati)';
+    return `### Requisito ${idx + 1}
+requirement_id: ${req.id}
+Riferimento: ${req.reference}
+Obbligo: ${req.description_it}
+Cosa deve risultare dalla documentazione: ${evidenceExpectedFor(req)}
+${req.conditional ? `Requisito CONDIZIONALE. ${req.applicability_note_it || ''}` : 'Requisito applicabile a tutte le organizzazioni.'}
+
+Estratti dai documenti dell'organizzazione:
+${evidenceText}`;
+  });
+
+  const userMessage = `Documenti caricati dall'organizzazione (${documentNames.length}): ${documentNames.join(' | ')}
+
+${userParts.join('\n\n==========\n\n')}`;
+
+  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'google/gemini-3-pro-preview',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage },
+      ],
+      temperature: 0,
+      max_tokens: 8000,
+      reasoning_effort: 'low',
+      response_format: { type: 'json_object' },
+    }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text().catch(() => '');
+    throw new Error(`LLM assessment API error ${response.status}: ${errText.substring(0, 300)}`);
+  }
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content || '';
+  const parsed = extractJsonObjectFromText(typeof content === 'string' ? content : JSON.stringify(content));
+  const list: any[] = Array.isArray(parsed?.checks) ? parsed.checks : Array.isArray(parsed) ? parsed : [];
+  const map = new Map<string, any>();
+  for (const item of list) {
+    if (item && typeof item.requirement_id === 'string') map.set(item.requirement_id, item);
+  }
+  // Fallback positional matching when the model omits ids
+  if (map.size === 0 && list.length === batch.length) {
+    list.forEach((item, i) => map.set(batch[i].req.id, item));
+  }
+  return map;
+}
+
+async function runWithConcurrency<T>(tasks: Array<() => Promise<T>>, limit: number): Promise<T[]> {
+  const results: T[] = new Array(tasks.length);
+  let next = 0;
+  async function worker() {
+    while (next < tasks.length) {
+      const idx = next++;
+      results[idx] = await tasks[idx]();
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, () => worker()));
+  return results;
+}
 
 // ============================================================
 // MAIN HANDLER
@@ -2066,266 +2265,244 @@ denoServe(protect(async (req) => {
 
     console.log(`Applicable requirements: ${applicableRequirements.length} for regulations: ${normalizedRegulations.join(', ')}`);
 
-    let identifiedGaps: any[];
+    // ============================================================
+    // REQUIREMENT CHECKS
+    // Ogni requisito applicabile riceve un giudizio documentale:
+    // covered / partial / missing / to_verify / not_applicable.
+    // Il giudizio è prodotto da un auditor AI che legge SOLO gli estratti
+    // dei documenti caricati (con citazioni verificate a posteriori);
+    // in caso di indisponibilità dell'AI si applica la regola a parole chiave.
+    // ============================================================
+    const isIt = normalizedLanguage === 'it';
+    const readableDocuments = normalizedDocuments.filter(d => readableRatio(d.content) >= 0.55);
+    const unreadableDocuments = normalizedDocuments.filter(d => readableRatio(d.content) < 0.55).map(d => d.name);
+    if (unreadableDocuments.length > 0) {
+      console.warn(`⚠️ ${unreadableDocuments.length} documents look unreadable (binary noise) and are excluded from evidence: ${unreadableDocuments.join(', ')}`);
+    }
 
-    if (cachedResult?.result_payload) {
-      console.log('✅ CACHE HIT - returning deterministic cached result');
-      identifiedGaps = cachedResult.result_payload.gaps || [];
+    let checks: RequirementCheck[];
+    const cachedChecks = cachedResult?.result_payload?.version === CHECKS_VERSION && Array.isArray(cachedResult?.result_payload?.checks)
+      ? cachedResult.result_payload.checks as RequirementCheck[]
+      : null;
+
+    if (cachedChecks) {
+      console.log('✅ CACHE HIT - returning cached requirement checks');
+      checks = cachedChecks;
     } else {
-      console.log('❌ CACHE MISS - computing rule-based gap analysis...');
+      console.log('❌ CACHE MISS - running evidence-based requirement checks...');
 
-      // 2) Build user document text corpus (canonicalized, lowercased)
-      const userCorpus = normalizedDocuments.map(d => 
-        `${d.name} ${d.content}`.toLowerCase()
-      ).join(' \n ');
+      // 1) Corpus dei documenti leggibili (per parole chiave e verifica citazioni)
+      const userCorpus = readableDocuments.map(d => `${d.name} ${d.content}`.toLowerCase()).join(' \n ');
+      const corpusNormalized = normalizeQuote(readableDocuments.map(d => d.content).join(' \n '));
 
-      // 3) Validate each requirement against RAG chunks
+      // 2) Il requisito deve esistere nella knowledge base normativa della sua normativa
       const ragValidationCache = await buildRagValidationCache(supabase, normalizedRegulations);
       console.log(`RAG validation cache: ${Array.from(ragValidationCache.values()).reduce((s, set) => s + set.size, 0)} entries across ${ragValidationCache.size} regulations`);
-
-      // 3.5) Pre-compute GRANULAR user document embeddings for semantic matching
-      const geminiKey = Deno.env.get('GEMINI_API_KEY');
-      let userDocEmbeddings: number[][] | null = null;
-      if (geminiKey) {
-        try {
-          // Check if we have cached embeddings for this assessment
-          const assessmentId = assessment?.id;
-          let cachedEmbeddings: any[] | null = null;
-          if (assessmentId) {
-            const { data: cached } = await supabase
-              .from('user_document_embeddings')
-              .select('section_text, embedding')
-              .eq('assessment_id', assessmentId);
-            if (cached && cached.length > 0) {
-              console.log(`📐 Found ${cached.length} cached granular embeddings for this assessment`);
-              // Parse stored embeddings (stored as vector string)
-              userDocEmbeddings = cached.map((c: any) => {
-                if (Array.isArray(c.embedding)) return c.embedding;
-                // Parse pgvector format "[0.1,0.2,...]"
-                try { return JSON.parse(c.embedding); } catch { return null; }
-              }).filter(Boolean);
-              if (userDocEmbeddings && userDocEmbeddings.length > 0) {
-                cachedEmbeddings = cached;
-              } else {
-                userDocEmbeddings = null;
-              }
-            }
-          }
-
-          // Generate fresh granular embeddings if no cache
-          if (!cachedEmbeddings) {
-            // Split documents into ~500 char sections for granular matching
-            const sections: Array<{ text: string; docName: string }> = [];
-            for (const doc of normalizedDocuments) {
-              const docSections = splitIntoSections(`${doc.name}: ${doc.content}`, 500);
-              for (const s of docSections) {
-                if (s.trim().length >= 50) {
-                  sections.push({ text: s, docName: doc.name });
-                }
-              }
-            }
-            console.log(`📐 Split ${normalizedDocuments.length} documents into ${sections.length} granular sections`);
-
-            const sectionTexts = sections.map(s => s.text);
-            userDocEmbeddings = await generateBatchEmbeddingsForGap(geminiKey, sectionTexts);
-            console.log(`📐 Generated ${userDocEmbeddings.length} granular embeddings for semantic matching`);
-
-            // Persist to database for future runs
-            if (assessmentId && userDocEmbeddings.length > 0) {
-              // Clean old embeddings
-              await supabase.from('user_document_embeddings')
-                .delete().eq('assessment_id', assessmentId);
-
-              // Insert in batches of 20
-              const embedBatch = sections.map((s, idx) => ({
-                user_id: user.id,
-                assessment_id: assessmentId,
-                document_name: s.docName,
-                section_text: s.text,
-                section_index: idx,
-                embedding: JSON.stringify(userDocEmbeddings![idx]),
-              }));
-              for (let b = 0; b < embedBatch.length; b += 20) {
-                await supabase.from('user_document_embeddings')
-                  .insert(embedBatch.slice(b, b + 20));
-              }
-              console.log(`💾 Saved ${embedBatch.length} granular embeddings to database`);
-            }
-          }
-        } catch (e) {
-          console.error('Failed to generate user document embeddings, semantic matching disabled:', e);
-          userDocEmbeddings = null;
-        }
-      }
-
-      // 4) For each requirement: check coverage in user docs, validate against RAG
-      identifiedGaps = [];
-      // Collect ambiguous requirements for batch embedding
-      const ambiguousRequirements: Array<{ req: RegulatoryRequirement; coveredKeywords: string[]; coverageRatio: number; uniqueKeywordCount: number }> = [];
-
-      for (const req of applicableRequirements) {
-        // RAG validation: requirement must exist in the knowledge base FOR ITS OWN REGULATION
-        const regCacheKey = req.regulation.toLowerCase();
-        const regCache = ragValidationCache.get(regCacheKey);
-        const ragValid = regCache && req.rag_validation_keywords.some(kw => regCache.has(kw.toLowerCase()));
-        if (!ragValid) {
-          console.log(`Skipping ${req.id}: not found in RAG knowledge base for regulation ${req.regulation}`);
-          continue;
-        }
-
-        // Coverage check: deterministic semantic-like matching with language-safe normalization
-        const coveredKeywords = getCoveredKeywords(userCorpus, req.coverage_keywords);
-        const uniqueKeywordCount = Math.max(1, getUniqueKeywordCount(req.coverage_keywords));
-        const coverageRatio = coveredKeywords.length / uniqueKeywordCount;
-        // Per-requirement thresholds — PERMISSIVE to match original ~80% behavior
-        // A requirement is "covered" if user docs mention ANY relevant keyword
-        const threshold = req.coverage_threshold || 0.10;
-        const minMatches = req.min_keyword_matches || 1;
-        const isCovered = coveredKeywords.length >= minMatches && coverageRatio >= threshold;
-
-        if (isCovered) {
-          console.log(`✅ Requirement ${req.id} is COVERED (${Math.round(coverageRatio * 100)}%, matches=${coveredKeywords.length}/${uniqueKeywordCount}, keywords: ${coveredKeywords.join(', ')})`);
-          continue;
-        }
-
-        // AMBIGUOUS ZONE: some keywords found but not enough — try semantic matching
-        // Only defer to semantic if we have embeddings; otherwise treat partial coverage as COVERED
-        if (coverageRatio > 0 && coverageRatio < threshold && userDocEmbeddings && geminiKey) {
-          ambiguousRequirements.push({ req, coveredKeywords, coverageRatio, uniqueKeywordCount });
-          console.log(`🔍 Requirement ${req.id} is AMBIGUOUS (coverage=${Math.round(coverageRatio * 100)}%), deferring to semantic matching`);
-          continue;
-        }
-
-        // If we have ANY keyword match but no embeddings, treat as COVERED (benefit of the doubt)
-        if (coveredKeywords.length >= 1 && coverageRatio >= 0.10) {
-          console.log(`✅ Requirement ${req.id} PARTIALLY COVERED — benefit of the doubt (${Math.round(coverageRatio * 100)}%, matches=${coveredKeywords.length}, no semantic available)`);
-          continue;
-        }
-
-        console.log(`❌ Gap found: ${req.id} (coverage=${Math.round(coverageRatio * 100)}%, matches=${coveredKeywords.length}/${uniqueKeywordCount}, keywords: ${coveredKeywords.join(', ') || 'none'})`);
-        // Gap identified — user documents don't sufficiently cover this requirement
-        const isIt = normalizedLanguage === 'it';
-        identifiedGaps.push({
-          requirement_reference: req.reference,
-          requirement_description: isIt ? req.description_it : req.description_en,
-          current_state: coverageRatio > 0
-            ? (isIt
-              ? `Documentazione parziale trovata (${Math.round(coverageRatio * 100)}% di copertura). Keywords trovate: ${coveredKeywords.join(', ')}.`
-              : `Partial documentation found (${Math.round(coverageRatio * 100)}% coverage). Keywords found: ${coveredKeywords.join(', ')}.`)
-            : (isIt
-              ? 'Nessuna documentazione pertinente individuata nei documenti caricati.'
-              : 'No relevant documentation found in uploaded documents.'),
-          gap_description: isIt ? req.gap_description_it : req.gap_description_en,
-          risk_level: req.risk_level,
-          remediation_effort: req.remediation_effort,
-          recommended_actions: [{
-            action: isIt ? req.recommended_action_it : req.recommended_action_en,
-            estimated_hours: req.action_hours,
-            estimated_cost_eur: req.action_cost_eur,
-          }],
-          coverage_ratio: coverageRatio,
-          _requirement_id: req.id,
-          _detection_method: 'keyword',
-        });
-      }
-
-      // 4.5) Resolve ambiguous requirements via semantic embedding matching
-      if (ambiguousRequirements.length > 0 && userDocEmbeddings && geminiKey) {
-        console.log(`📐 Resolving ${ambiguousRequirements.length} ambiguous requirements via semantic similarity...`);
-        try {
-          // Generate embeddings for all ambiguous requirement descriptions in one batch
-          const reqTexts = ambiguousRequirements.map(ar =>
-            `${ar.req.reference}: ${ar.req.description_it} ${ar.req.description_en} ${ar.req.coverage_keywords.join(', ')}`.substring(0, 4000)
-          );
-          const reqEmbeddings = await generateBatchEmbeddingsForGap(geminiKey, reqTexts);
-
-          for (let i = 0; i < ambiguousRequirements.length; i++) {
-            const { req, coveredKeywords, coverageRatio, uniqueKeywordCount } = ambiguousRequirements[i];
-            const reqEmbedding = reqEmbeddings[i];
-
-            // Compute max cosine similarity against all user document embeddings
-            let maxSimilarity = 0;
-            for (const docEmb of userDocEmbeddings) {
-              const sim = cosineSimilarity(reqEmbedding, docEmb);
-              if (sim > maxSimilarity) maxSimilarity = sim;
-            }
-
-            if (maxSimilarity > 0.65) {
-              // Semantic match found → requirement is covered
-              console.log(`✅ Requirement ${req.id} SEMANTICALLY COVERED (similarity=${maxSimilarity.toFixed(3)}, keyword_coverage=${Math.round(coverageRatio * 100)}%)`);
-              continue;
-            } else if (maxSimilarity < 0.30) {
-              // Very low similarity AND low keyword coverage → confirmed gap
-              console.log(`❌ Requirement ${req.id} CONFIRMED GAP (similarity=${maxSimilarity.toFixed(3)}, keyword_coverage=${Math.round(coverageRatio * 100)}%)`);
-            } else {
-              // Middle zone (0.30-0.65): user has SOME coverage → benefit of the doubt = COVERED
-              console.log(`✅ Requirement ${req.id} PARTIALLY COVERED — benefit of the doubt (similarity=${maxSimilarity.toFixed(3)}, keyword_coverage=${Math.round(coverageRatio * 100)}%)`);
-              continue;
-            }
-
-            const isIt = normalizedLanguage === 'it';
-            identifiedGaps.push({
-              requirement_reference: req.reference,
-              requirement_description: isIt ? req.description_it : req.description_en,
-              current_state: isIt
-                ? `Documentazione parziale trovata (${Math.round(coverageRatio * 100)}% keyword, ${Math.round(maxSimilarity * 100)}% similarità semantica). Keywords trovate: ${coveredKeywords.join(', ')}.`
-                : `Partial documentation found (${Math.round(coverageRatio * 100)}% keyword, ${Math.round(maxSimilarity * 100)}% semantic similarity). Keywords found: ${coveredKeywords.join(', ')}.`,
-              gap_description: isIt ? req.gap_description_it : req.gap_description_en,
-              risk_level: req.risk_level,
-              remediation_effort: req.remediation_effort,
-              recommended_actions: [{
-                action: isIt ? req.recommended_action_it : req.recommended_action_en,
-                estimated_hours: req.action_hours,
-                estimated_cost_eur: req.action_cost_eur,
-              }],
-              coverage_ratio: coverageRatio,
-              semantic_similarity: maxSimilarity,
-              _requirement_id: req.id,
-              _detection_method: 'semantic',
-            });
-          }
-          console.log(`📐 Semantic resolution complete: ${identifiedGaps.length} total gaps after disambiguation`);
-        } catch (e) {
-          console.error('Semantic matching failed, falling back to keyword-only for ambiguous requirements:', e);
-          // Fallback: treat all ambiguous as gaps
-          for (const { req, coveredKeywords, coverageRatio } of ambiguousRequirements) {
-            const isIt = normalizedLanguage === 'it';
-            identifiedGaps.push({
-              requirement_reference: req.reference,
-              requirement_description: isIt ? req.description_it : req.description_en,
-              current_state: coverageRatio > 0
-                ? (isIt
-                  ? `Documentazione parziale trovata (${Math.round(coverageRatio * 100)}% di copertura). Keywords trovate: ${coveredKeywords.join(', ')}.`
-                  : `Partial documentation found (${Math.round(coverageRatio * 100)}% coverage). Keywords found: ${coveredKeywords.join(', ')}.`)
-                : (isIt
-                  ? 'Nessuna documentazione pertinente individuata nei documenti caricati.'
-                  : 'No relevant documentation found in uploaded documents.'),
-              gap_description: isIt ? req.gap_description_it : req.gap_description_en,
-              risk_level: req.risk_level,
-              remediation_effort: req.remediation_effort,
-              recommended_actions: [{
-                action: isIt ? req.recommended_action_it : req.recommended_action_en,
-                estimated_hours: req.action_hours,
-                estimated_cost_eur: req.action_cost_eur,
-              }],
-              coverage_ratio: coverageRatio,
-              _requirement_id: req.id,
-              _detection_method: 'keyword',
-            });
-          }
-        }
-      }
-
-      console.log(`Rule-based analysis complete: ${identifiedGaps.length} candidate gaps identified`);
-
-      // Sort deterministically BEFORE caching
-      identifiedGaps.sort((a, b) => {
-        const aKey = `${a.requirement_reference}|${a.gap_description}`.toLowerCase();
-        const bKey = `${b.requirement_reference}|${b.gap_description}`.toLowerCase();
-        return aKey.localeCompare(bKey);
+      const validatedRequirements = applicableRequirements.filter(req => {
+        const regCache = ragValidationCache.get(req.regulation.toLowerCase());
+        const ok = regCache && req.rag_validation_keywords.some(kw => regCache.has(kw.toLowerCase()));
+        if (!ok) console.log(`Skipping ${req.id}: not found in RAG knowledge base for regulation ${req.regulation}`);
+        return ok;
       });
 
-      // Save DETERMINISTIC rule-based gaps to cache BEFORE any LLM enrichment
+      // 3) Sezioni granulari dei documenti + embedding (cache su user_document_embeddings)
+      const geminiKey = Deno.env.get('GEMINI_API_KEY');
+      const sections: EvidenceSection[] = [];
+      for (const doc of readableDocuments) {
+        for (const s of splitIntoSections(`${doc.name}: ${doc.content}`, 600)) {
+          if (s.trim().length >= 50) sections.push({ text: s, norm: normalizeForMatch(s), docName: doc.name, embedding: null });
+        }
+      }
+      console.log(`📐 ${readableDocuments.length} readable documents split into ${sections.length} sections`);
+
+      if (geminiKey && sections.length > 0) {
+        try {
+          const { data: cached } = await supabase
+            .from('user_document_embeddings')
+            .select('section_text, embedding, section_index')
+            .eq('assessment_id', assessmentId)
+            .order('section_index', { ascending: true });
+          const cachedByText = new Map<string, number[]>();
+          for (const row of cached || []) {
+            let emb: any = row.embedding;
+            if (typeof emb === 'string') { try { emb = JSON.parse(emb); } catch { emb = null; } }
+            if (Array.isArray(emb) && emb.length === GAP_EMBEDDING_DIMENSIONS) cachedByText.set(row.section_text, emb);
+          }
+          const missing = sections.filter(s => !cachedByText.has(s.text));
+          if (missing.length > 0) {
+            console.log(`📐 Generating ${missing.length} section embeddings (${sections.length - missing.length} cached)`);
+            const fresh = await generateBatchEmbeddingsForGap(geminiKey, missing.map(s => s.text));
+            missing.forEach((s, i) => { s.embedding = fresh[i] || null; });
+            // Persist for future runs of the same assessment
+            await supabase.from('user_document_embeddings').delete().eq('assessment_id', assessmentId);
+            const rows = sections.map((s, idx) => ({
+              user_id: user.id,
+              assessment_id: assessmentId,
+              document_name: s.docName,
+              section_text: s.text,
+              section_index: idx,
+              embedding: JSON.stringify(s.embedding || cachedByText.get(s.text) || []),
+            })).filter(r => r.embedding.length > 2);
+            for (let b = 0; b < rows.length; b += 20) {
+              await supabase.from('user_document_embeddings').insert(rows.slice(b, b + 20));
+            }
+          }
+          for (const s of sections) if (!s.embedding) s.embedding = cachedByText.get(s.text) || null;
+          console.log(`📐 Section embeddings ready: ${sections.filter(s => s.embedding).length}/${sections.length}`);
+        } catch (e) {
+          console.error('Section embeddings unavailable, evidence selection will use keywords only:', e);
+        }
+      }
+
+      // 4) Embedding dei requisiti (per selezionare gli estratti pertinenti)
+      let reqEmbeddings: Array<number[] | null> = validatedRequirements.map(() => null);
+      if (geminiKey && sections.some(s => s.embedding)) {
+        try {
+          const reqTexts = validatedRequirements.map(r => `${r.reference}. ${r.description_it} ${evidenceExpectedFor(r)}`.substring(0, 4000));
+          reqEmbeddings = await generateBatchEmbeddingsForGap(geminiKey, reqTexts);
+        } catch (e) {
+          console.error('Requirement embeddings failed:', e);
+        }
+      }
+
+      // 5) Analisi a parole chiave (sempre disponibile: serve come fallback e come segnale)
+      const keywordInfo = new Map<string, { covered: string[]; ratio: number }>();
+      for (const req of validatedRequirements) {
+        const covered = getCoveredKeywords(userCorpus, req.coverage_keywords);
+        const unique = Math.max(1, getUniqueKeywordCount(req.coverage_keywords));
+        keywordInfo.set(req.id, { covered, ratio: covered.length / unique });
+      }
+
+      // 6) Valutazione documentale AI a lotti
+      const aiKey = getAIKey();
+      const llmResults = new Map<string, any>();
+      if (aiKey && validatedRequirements.length > 0) {
+        const batches: Array<Array<{ req: RegulatoryRequirement; evidence: Array<{ docName: string; text: string }> }>> = [];
+        const BATCH_SIZE = 5;
+        for (let i = 0; i < validatedRequirements.length; i += BATCH_SIZE) {
+          const slice = validatedRequirements.slice(i, i + BATCH_SIZE);
+          batches.push(slice.map((req) => {
+            const idx = validatedRequirements.indexOf(req);
+            const evidence = selectEvidenceForRequirement(req, reqEmbeddings[idx], sections, 6000)
+              .map(e => ({ docName: e.docName, text: e.text }));
+            return { req, evidence };
+          }));
+        }
+        const documentNames = readableDocuments.map(d => d.name);
+        const results = await runWithConcurrency(batches.map((batch) => async () => {
+          for (let attempt = 1; attempt <= 2; attempt++) {
+            try {
+              const map = await assessRequirementBatchWithLLM(aiKey, batch, normalizedLanguage, profile, documentNames);
+              if (map.size > 0) return map;
+              console.warn(`LLM batch returned no checks (attempt ${attempt})`);
+            } catch (e) {
+              console.error(`LLM batch failed (attempt ${attempt}):`, e instanceof Error ? e.message : e);
+            }
+          }
+          return new Map<string, any>();
+        }), 3);
+        for (const map of results) for (const [k, v] of map) llmResults.set(k, v);
+        console.log(`🤖 LLM assessed ${llmResults.size}/${validatedRequirements.length} requirements`);
+      } else if (!aiKey) {
+        console.log('⚠️ AI key not available, using keyword rules only');
+      }
+
+      // 7) Consolidamento dei giudizi
+      const allowedStatuses = new Set(['covered', 'partial', 'missing', 'not_applicable']);
+      checks = validatedRequirements.map((req) => {
+        const kw = keywordInfo.get(req.id) || { covered: [], ratio: 0 };
+        const llm = llmResults.get(req.id);
+        const base = {
+          requirement_id: req.id,
+          regulation: req.regulation,
+          reference: req.reference,
+          description: isIt ? req.description_it : req.description_en,
+          severity: req.risk_level,
+          remediation_effort: req.remediation_effort,
+          conditional: !!req.conditional,
+          keyword_coverage: Math.round(kw.ratio * 100) / 100,
+        };
+
+        if (llm && allowedStatuses.has(String(llm.status))) {
+          let status = String(llm.status) as CheckStatus;
+          const rawEvidence: any[] = Array.isArray(llm.evidence) ? llm.evidence : [];
+          const evidence = rawEvidence
+            .filter(e => e && typeof e.quote === 'string')
+            .map(e => ({ document: String(e.document || '').substring(0, 200), quote: String(e.quote).substring(0, 300) }))
+            .filter(e => quoteIsVerified(e.quote, corpusNormalized))
+            .slice(0, 5);
+          const missingElements: string[] = (Array.isArray(llm.missing_elements) ? llm.missing_elements : [])
+            .filter((m: any) => typeof m === 'string' && m.trim()).map((m: string) => m.trim().substring(0, 300)).slice(0, 8);
+          let actions: string[] = (Array.isArray(llm.recommended_actions) ? llm.recommended_actions : [])
+            .filter((a: any) => typeof a === 'string' && a.trim()).map((a: string) => a.trim().substring(0, 500)).slice(0, 3);
+          let assessment = typeof llm.assessment === 'string' ? llm.assessment.trim().substring(0, 1200) : '';
+
+          // Grounding: "covered" senza citazioni verificate diventa "partial"
+          if (status === 'covered' && evidence.length === 0) {
+            status = 'partial';
+            missingElements.unshift(isIt
+              ? 'Le evidenze indicate non sono state ritrovate testualmente nei documenti: verificare che il contenuto sia effettivamente presente.'
+              : 'The cited evidence could not be found verbatim in the documents: verify that the content is actually present.');
+          }
+          // not_applicable ammesso solo per requisiti condizionali
+          if (status === 'not_applicable' && !req.conditional) status = 'missing';
+          // Requisito condizionale senza alcuna evidenza: non è un gap certo, va verificato
+          if (req.conditional && status === 'missing' && evidence.length === 0) status = 'to_verify';
+
+          if (actions.length === 0 && (status === 'missing' || status === 'partial')) {
+            actions = [isIt ? req.recommended_action_it : req.recommended_action_en];
+          }
+          if (!assessment) {
+            assessment = status === 'missing'
+              ? (isIt ? 'Nessuna documentazione pertinente individuata nei documenti caricati.' : 'No relevant documentation found in the uploaded documents.')
+              : status === 'to_verify'
+              ? (isIt ? 'Dalla documentazione non risulta se il requisito si applica all\'organizzazione.' : 'The documentation does not show whether the requirement applies to the organisation.')
+              : '';
+          }
+
+          return {
+            ...base,
+            status,
+            risk_level: riskProfileFor(req.risk_level, status),
+            assessment,
+            evidence,
+            missing_elements: missingElements,
+            recommended_actions: actions,
+            confidence: typeof llm.confidence === 'number' ? Math.max(0, Math.min(1, llm.confidence)) : null,
+            method: 'llm_evidence' as const,
+          };
+        }
+
+        // Fallback deterministico a parole chiave
+        const threshold = req.coverage_threshold || 0.10;
+        const minMatches = req.min_keyword_matches || 1;
+        const covered = kw.covered.length >= minMatches && kw.ratio >= threshold;
+        let status: CheckStatus = covered ? 'covered' : 'missing';
+        if (!covered && req.conditional && kw.covered.length === 0) status = 'to_verify';
+        return {
+          ...base,
+          status,
+          risk_level: riskProfileFor(req.risk_level, status),
+          assessment: covered
+            ? (isIt
+              ? `Nei documenti caricati compaiono riferimenti al tema (${kw.covered.slice(0, 5).join(', ')}). Verifica basata su parole chiave: controllare che il contenuto sia completo.`
+              : `The uploaded documents refer to the topic (${kw.covered.slice(0, 5).join(', ')}). Keyword-based check: verify that the content is complete.`)
+            : kw.covered.length > 0
+            ? (isIt
+              ? `Documentazione parziale: compaiono solo alcuni riferimenti (${kw.covered.join(', ')}).`
+              : `Partial documentation: only some references appear (${kw.covered.join(', ')}).`)
+            : (isIt ? 'Nessuna documentazione pertinente individuata nei documenti caricati.' : 'No relevant documentation found in the uploaded documents.'),
+          evidence: [],
+          missing_elements: covered ? [] : [isIt ? req.gap_description_it : req.gap_description_en],
+          recommended_actions: covered ? [] : [isIt ? req.recommended_action_it : req.recommended_action_en],
+          confidence: null,
+          method: 'keyword' as const,
+        };
+      });
+
+      // Ordine deterministico
+      checks.sort((a, b) => `${a.regulation}|${a.reference}`.localeCompare(`${b.regulation}|${b.reference}`));
+
       await supabase.from('gap_analysis_cache').upsert({
         user_id: user.id,
         cache_key: cacheFingerprint,
@@ -2333,76 +2510,20 @@ denoServe(protect(async (req) => {
         regulations: normalizedRegulations,
         language: normalizedLanguage,
         documents_count: normalizedDocuments.length,
-        result_payload: { gaps: identifiedGaps },
+        result_payload: { version: CHECKS_VERSION, checks, unreadable_documents: unreadableDocuments },
       }, { onConflict: 'user_id,cache_key' });
-      console.log(`✅ Deterministic rule-based gaps cached (${identifiedGaps.length} gaps)`);
+      console.log(`✅ Requirement checks cached (${checks.length} requirements)`);
     }
 
-    // ============================================================
-    // LLM ENRICHMENT LAYER (applied on BOTH cache hit and cache miss)
-    // The LLM can ONLY enrich descriptions and actions.
-    // It can NEVER remove or add gaps — determinism is guaranteed.
-    // ============================================================
-    const lovableApiKey = getAIKey();
-    if (lovableApiKey && identifiedGaps.length > 0) {
-      console.log('🔍 Starting LLM enrichment layer (enrich only, no add/remove)...');
+    const gapChecks = checks.filter(c => c.status === 'missing' || c.status === 'partial');
+    const coveredCount = checks.filter(c => c.status === 'covered').length;
+    const partialCount = checks.filter(c => c.status === 'partial').length;
+    const missingCount = checks.filter(c => c.status === 'missing').length;
+    const toVerifyCount = checks.filter(c => c.status === 'to_verify').length;
+    const notApplicableCount = checks.filter(c => c.status === 'not_applicable').length;
+    console.log(`Checks: ${coveredCount} covered, ${partialCount} partial, ${missingCount} missing, ${toVerifyCount} to verify, ${notApplicableCount} not applicable`);
 
-      try {
-        const ragChunkObjects = await getRelevantRagChunkObjects(supabase, normalizedRegulations, 30);
-        const ragContext = ragChunkObjects.map((c: any) => c.content).join('\n---\n');
-        const userDocSummary = normalizedDocuments.map(d => 
-          `[${d.name}]: ${d.content.substring(0, 2000)}`
-        ).join('\n---\n');
-
-        const validationResult = await validateGapsWithLLM(
-          lovableApiKey, identifiedGaps, ragContext, userDocSummary, 
-          normalizedRegulations, normalizedLanguage, profile
-        );
-
-        if (validationResult) {
-          // LLM can ONLY enrich, NEVER remove gaps
-          identifiedGaps = identifiedGaps.map((original: any) => {
-            const vg = validationResult.find((v: any) => v.requirement_id === original._requirement_id);
-            if (!vg) return original; // LLM didn't process this gap, keep as-is
-
-            // Correct reference ONLY if same regulation + article exists in RAG
-            let finalReference = original.requirement_reference;
-            if (vg.corrected_reference) {
-              const originalReg = inferRegulationFromRef(original.requirement_reference);
-              const correctedReg = inferRegulationFromRef(vg.corrected_reference);
-              if (originalReg && correctedReg && originalReg.toLowerCase() === correctedReg.toLowerCase()) {
-                finalReference = vg.corrected_reference;
-              }
-            }
-
-            return {
-              ...original,
-              requirement_reference: finalReference,
-              // Keep ALL text fields from the deterministic catalog — LLM text changes between runs
-              gap_description: original.gap_description,
-              current_state: original.current_state,
-              recommended_actions: original.recommended_actions,
-            };
-          });
-          console.log(`✅ LLM enriched ${identifiedGaps.length} gaps (no gaps removed or added)`);
-        }
-      } catch (e) {
-        console.error('LLM enrichment failed, keeping rule-based results:', e);
-      }
-
-      // LLM gap discovery is DISABLED for determinism.
-      // Gaps must be found ONLY by the REQUIREMENTS_CATALOG + semantic matching.
-      // To detect new gap types, expand the REQUIREMENTS_CATALOG.
-      console.log('ℹ️ LLM gap discovery disabled for deterministic results. Expand REQUIREMENTS_CATALOG to add new gap detection.');
-    } else if (!lovableApiKey) {
-      console.log('⚠️ LOVABLE_API_KEY not available, skipping LLM enrichment layer');
-    }
-
-
-
-
-    // --- Resolve source chunks for traceability ---
-    // Fetch RAG chunks if not already fetched (cache miss path might not have them)
+    // --- Fonte normativa per tracciabilità ---
     let sourceChunks: Array<{ id: string; content: string; document_id: string }> = [];
     try {
       sourceChunks = await getRelevantRagChunkObjects(supabase, normalizedRegulations, 100);
@@ -2413,71 +2534,52 @@ denoServe(protect(async (req) => {
     function findSourceChunk(requirementRef: string): { chunk_id: string | null; excerpt: string | null } {
       if (!requirementRef || sourceChunks.length === 0) return { chunk_id: null, excerpt: null };
       const refLower = requirementRef.toLowerCase();
-      // Extract article number(s)
-      const artMatch = refLower.match(/(?:articolo|art\.?|article)\s+(\d+)/i);
+      const artMatch = refLower.match(/(?:articolo|articoli|art\.?|article)\s+(\d+)/i);
       if (artMatch) {
         const artNum = artMatch[1];
         const patterns = [`articolo ${artNum}`, `art. ${artNum}`, `art ${artNum}`, `article ${artNum}`];
         for (const chunk of sourceChunks) {
           const contentLower = (chunk.content || '').toLowerCase();
           if (patterns.some(p => contentLower.includes(p))) {
-            return {
-              chunk_id: chunk.id,
-              excerpt: chunk.content.substring(0, 300),
-            };
+            return { chunk_id: chunk.id, excerpt: chunk.content.substring(0, 300) };
           }
-        }
-      }
-      // Fallback: keyword match on reference
-      for (const chunk of sourceChunks) {
-        const contentLower = (chunk.content || '').toLowerCase();
-        if (contentLower.includes(refLower.substring(0, 30))) {
-          return { chunk_id: chunk.id, excerpt: chunk.content.substring(0, 300) };
         }
       }
       return { chunk_id: null, excerpt: null };
     }
 
-    // --- Deterministic scoring and DB persistence ---
-    const annualRevenue = Math.max(0, Number(assessment?.annual_revenue_eur || 5000000));
-
-    const gapsToInsert = identifiedGaps.map((gap: any) => {
-      const rl = (gap.risk_level || 'medium').toLowerCase();
-      const re = (gap.remediation_effort || 'medium').toLowerCase();
-      const gapRegulation = gap.requirement_reference?.match(/GDPR|NIS2|D\.Lgs\.?\s*138\/2024|DORA|AI Act|CRA|D\.Lgs\.?\s*81\/08|Data Act|ISO 27001|Legge\s*124/i)?.[0] || '';
-
-      // Calcolo sanzioni: massimo teorico + stima realistica
-      const fineCalc = calculateRealisticFine(
-        gapRegulation,
-        rl,
-        gap.requirement_reference || '',
-        annualRevenue,
-        true,  // assumiamo prima violazione (assessment iniziale)
-        true   // assumiamo che il piano di remediation sia attivato (è ciò che la gap analysis produce)
-      );
-
-      const sourceInfo = findSourceChunk(gap.requirement_reference);
+    // --- Persistenza gap ---
+    const gapsToInsert = gapChecks.map((c) => {
+      const rl = c.risk_level || 'medium';
+      const re = (c.remediation_effort || 'medium').toLowerCase();
+      const sourceInfo = findSourceChunk(c.reference);
+      const gapDescription = c.missing_elements.length > 0
+        ? (isIt ? `Elementi mancanti: ${c.missing_elements.join('; ')}` : `Missing elements: ${c.missing_elements.join('; ')}`)
+        : (isIt ? 'Nessuna documentazione pertinente individuata nei documenti caricati.' : 'No relevant documentation found in the uploaded documents.');
       return {
         assessment_id: assessmentId,
-        requirement_reference: gap.requirement_reference,
-        requirement_description: gap.requirement_description,
-        current_state: gap.current_state || null,
-        gap_description: gap.gap_description,
+        requirement_reference: c.reference,
+        requirement_description: c.description,
+        current_state: c.assessment || null,
+        gap_description: gapDescription,
         risk_level: rl,
         risk_score: RISK_SCORE_MAP[rl] ?? 52,
-        potential_fine_eur: fineCalc.realistic_estimate,
-        potential_fine_max_eur: fineCalc.theoretical_max,
-        fine_tier_basis: fineCalc.tier_used,
+        potential_fine_eur: null,
+        potential_fine_max_eur: null,
+        fine_tier_basis: null,
         priority: PRIORITY_MATRIX[rl]?.[re] || 2,
         remediation_effort: re,
-        recommended_actions: gap.recommended_actions || [],
+        recommended_actions: c.recommended_actions.map(a => ({ action: a })),
         source_chunk_id: sourceInfo.chunk_id,
         article_text_excerpt: sourceInfo.excerpt,
-        detection_method: gap._detection_method || 'keyword',
+        detection_method: c.method,
+        semantic_similarity: null,
+        evidence: c.evidence,
+        coverage_status: c.status,
+        severity: c.severity,
       };
     });
 
-    // Idempotent persistence
     await supabase.from('action_plans').delete().eq('assessment_id', assessmentId);
     await supabase.from('identified_gaps').delete().eq('assessment_id', assessmentId);
 
@@ -2489,105 +2591,79 @@ denoServe(protect(async (req) => {
       insertedGaps = data || [];
     }
 
-    // Deterministic overall scores
-    const cc = gapsToInsert.filter((g: any) => g.risk_level === 'critical').length;
-    const hc = gapsToInsert.filter((g: any) => g.risk_level === 'high').length;
-    const mc = gapsToInsert.filter((g: any) => g.risk_level === 'medium').length;
-    const lc = gapsToInsert.filter((g: any) => g.risk_level === 'low').length;
-    const applicableCount = Math.max(1, applicableRequirements.length);
-
-    // RISK SCORE: weighted by severity (critical gaps weigh more in risk)
-    const weightedRisk = (cc * 1.0) + (hc * 0.7) + (mc * 0.4) + (lc * 0.2);
-    const overallRisk = gapsToInsert.length === 0 ? 0 : Math.max(1, Math.min(95, Math.round((weightedRisk / applicableCount) * 100)));
-
-    // COMPLIANCE SCORE: based on % of requirements COVERED (not weighted by severity)
-    // This is deterministic: same number of gaps = same score, always
-    const coveredCount = applicableCount - gapsToInsert.length;
-    const overallCompliance = gapsToInsert.length === 0 ? 100 : Math.max(5, Math.min(99, Math.round((coveredCount / applicableCount) * 100)));
+    // --- Punteggi complessivi ---
+    const applicableCount = coveredCount + partialCount + missingCount;
+    const overallCompliance = applicableCount === 0
+      ? 100
+      : Math.max(0, Math.min(100, Math.round(((coveredCount + 0.5 * partialCount) / applicableCount) * 100)));
+    const highCount = gapsToInsert.filter(g => g.risk_level === 'high').length;
+    const mediumCount = gapsToInsert.filter(g => g.risk_level === 'medium').length;
+    const lowCount = gapsToInsert.filter(g => g.risk_level === 'low').length;
+    const overallRisk = highCount > 0
+      ? Math.min(95, 70 + highCount * 5)
+      : mediumCount > 0
+      ? Math.min(65, 40 + mediumCount * 4)
+      : lowCount > 0
+      ? Math.min(35, 15 + lowCount * 3)
+      : 0;
 
     await supabase.from('compliance_assessments').update({
       overall_risk_score: overallRisk,
       overall_compliance_percentage: overallCompliance,
+      requirement_checks: {
+        version: CHECKS_VERSION,
+        generated_at: new Date().toISOString(),
+        unreadable_documents: unreadableDocuments,
+        documents_analyzed: readableDocuments.map(d => d.name),
+        counts: { covered: coveredCount, partial: partialCount, missing: missingCount, to_verify: toVerifyCount, not_applicable: notApplicableCount },
+        checks,
+      },
       status: 'completed',
       completed_at: new Date().toISOString(),
     }).eq('id', assessmentId);
 
-    // Generate action plans
+    // --- Piano d'azione: un'azione per riga, senza stime economiche ---
     const actionPlans = insertedGaps
       .filter((g: any) => g.priority <= 3)
       .flatMap((gap: any) => {
-        const actions = gap.recommended_actions || [];
-        return actions.slice(0, 3).map((action: any, i: number) => {
-          // Use hours from the catalog action (deterministic), with fallback based on remediation_effort
-          let actionHours = action.estimated_hours || 0;
-          if (!actionHours || actionHours <= 0) {
-            // Fallback: derive from remediation_effort
-            const effortHours: Record<string, number> = {
-              'very_high': 120, 'high': 60, 'medium': 30, 'low': 16, 'very_low': 8
-            };
-            actionHours = effortHours[gap.remediation_effort] || 30;
-          }
-          const actionCost = action.estimated_cost_eur || (actionHours * HOURLY_RATE_EUR);
-          return {
-            assessment_id: assessmentId,
-            gap_id: gap.id,
-            title: gap.requirement_reference || '',
-            description: action.action || gap.gap_description,
-            priority: gap.priority,
-            estimated_cost_eur: actionCost,
-            estimated_hours: actionHours,
-            status: 'pending',
-          };
-        });
+        const actions = Array.isArray(gap.recommended_actions) ? gap.recommended_actions : [];
+        return actions.slice(0, 3).map((action: any) => ({
+          assessment_id: assessmentId,
+          gap_id: gap.id,
+          title: gap.requirement_reference || '',
+          description: action?.action || gap.gap_description,
+          priority: gap.priority,
+          estimated_cost_eur: null,
+          estimated_hours: null,
+          status: 'pending',
+        }));
       });
-
     if (actionPlans.length > 0) {
       await supabase.from('action_plans').insert(actionPlans);
     }
 
-    console.log(`Gap analysis completed: ${insertedGaps.length} gaps, risk=${overallRisk}, compliance=${overallCompliance}%`);
-
-    // Coverage scope metadata
-    const TOTAL_REQUIREMENTS_ESTIMATE: Record<string, number> = {
-      'GDPR': 30,
-      'NIS2': 25,
-      'DORA': 24,
-      'AI Act': 31,
-      'CRA': 18,
-      'Data Act': 27,
-      'ISO 27001': 18,
-      'D.Lgs 81/08': 35,
-      'Legge Protezione Dati Albania': 15,
-    };
-
-    const totalEstimated = normalizedRegulations.reduce((sum, reg) => {
-      const key = Object.keys(TOTAL_REQUIREMENTS_ESTIMATE).find(k => k.toLowerCase() === reg.toLowerCase());
-      return sum + (key ? TOTAL_REQUIREMENTS_ESTIMATE[key] : 15);
-    }, 0);
-
-    const coverageScope = {
-      requirements_analyzed: applicableRequirements.length,
-      total_estimated_requirements: totalEstimated,
-      coverage_percentage: Math.round((applicableRequirements.length / Math.max(1, totalEstimated)) * 100),
-      analysis_depth: applicableRequirements.length >= totalEstimated * 0.7 ? 'comprehensive' : applicableRequirements.length >= totalEstimated * 0.4 ? 'standard' : 'basic',
-      disclaimer: applicableRequirements.length < totalEstimated 
-        ? `Analisi basata su ${applicableRequirements.length} requisiti chiave su ${totalEstimated} totali stimati. Per una valutazione esaustiva, si consiglia un audit completo con un consulente certificato.`
-        : `Analisi completa su ${applicableRequirements.length} requisiti.`,
-      regulations_breakdown: normalizedRegulations.map(reg => {
-        const key = Object.keys(TOTAL_REQUIREMENTS_ESTIMATE).find(k => k.toLowerCase() === reg.toLowerCase());
-        const total = key ? TOTAL_REQUIREMENTS_ESTIMATE[key] : 15;
-        const analyzed = applicableRequirements.filter(r => r.regulation.toLowerCase() === reg.toLowerCase()).length;
-        return { regulation: reg, analyzed, total_estimated: total, depth: analyzed >= total * 0.7 ? 'comprehensive' : analyzed >= total * 0.4 ? 'standard' : 'basic' };
-      }),
-    };
+    console.log(`Gap analysis completed: ${insertedGaps.length} gaps (${highCount} high, ${mediumCount} medium, ${lowCount} low), risk=${overallRisk}, compliance=${overallCompliance}%`);
 
     return new Response(JSON.stringify({
       success: true,
       gaps: insertedGaps,
+      checks,
+      unreadable_documents: unreadableDocuments,
       overall_risk_score: overallRisk,
       overall_compliance_percentage: overallCompliance,
-      coverage_scope: coverageScope,
-      method: 'rule_based_with_llm_validation',
+      coverage_scope: {
+        requirements_analyzed: checks.length,
+        covered: coveredCount,
+        partial: partialCount,
+        missing: missingCount,
+        to_verify: toVerifyCount,
+        not_applicable: notApplicableCount,
+        regulations_breakdown: normalizedRegulations.map(reg => ({
+          regulation: reg,
+          analyzed: checks.filter(c => c.regulation.toLowerCase() === reg.toLowerCase()).length,
+        })),
+      },
+      method: 'evidence_checks_with_keyword_fallback',
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {
@@ -2834,13 +2910,8 @@ async function buildRagValidationCache(supabase: any, regulations: string[]): Pr
 }
 
 // ============================================================
-// LLM VALIDATION HELPERS
+// REGULATORY SOURCE CHUNKS (traceability)
 // ============================================================
-
-async function getRelevantRagChunks(supabase: any, regulations: string[], limit: number): Promise<string> {
-  const chunks = await getRelevantRagChunkObjects(supabase, regulations, limit);
-  return chunks.map((c: any) => c.content).join('\n---\n');
-}
 
 async function getRelevantRagChunkObjects(supabase: any, regulations: string[], limit: number): Promise<Array<{ id: string; content: string; document_id: string }>> {
   const regulationDocPatterns: Record<string, string[]> = {
@@ -2874,225 +2945,6 @@ async function getRelevantRagChunkObjects(supabase: any, regulations: string[], 
     }
   }
   return allChunks.slice(0, limit);
-}
-
-async function validateGapsWithLLM(
-  apiKey: string,
-  gaps: any[],
-  ragContext: string,
-  userDocSummary: string,
-  regulations: string[],
-  language: string,
-  profile: any
-): Promise<any[] | null> {
-  const isIt = language === 'it';
-  
-  const systemPrompt = isIt
-    ? `Sei un auditor compliance EU esperto. Il tuo compito è ARRICCHIRE gap di compliance già identificati e confermati da un sistema rule-based.
-NON devi giudicare se i gap sono validi o invalidi — sono già stati confermati dal sistema deterministico. Devi solo:
-1. Verificare e correggere il riferimento normativo se contiene errori di numerazione
-2. Arricchire la descrizione del gap con dettagli specifici dal testo normativo
-3. Generare 2-3 azioni raccomandate CONCRETE per settore ${profile?.sector || 'Technology'} e giurisdizione ${profile?.jurisdiction || 'EU'}
-4. Valutare lo stato attuale dell'organizzazione basandoti sui documenti forniti
-
-NON rimuovere gap. Tutti i gap sono validi per definizione — il sistema rule-based li ha già confermati.`
-    : `You are an expert EU compliance auditor. Your task is to ENRICH compliance gaps already identified and confirmed by a rule-based system.
-You must NOT judge whether gaps are valid or invalid — they have already been confirmed by the deterministic system. You must only:
-1. Verify and correct the regulatory reference if it contains numbering errors
-2. Enrich the gap description with specific details from the regulatory text
-3. Generate 2-3 CONCRETE recommended actions for sector ${profile?.sector || 'Technology'} and jurisdiction ${profile?.jurisdiction || 'EU'}
-4. Assess the current state of the organization based on the provided documents
-
-Do NOT remove gaps. All gaps are valid by definition — the rule-based system has already confirmed them.`;
-
-  const gapsSummary = gaps.map(g => ({
-    requirement_id: g._requirement_id,
-    reference: g.requirement_reference,
-    gap_description: g.gap_description,
-    current_state: g.current_state,
-    risk_level: g.risk_level,
-    keyword_coverage_percent: Math.round((g.coverage_ratio || 0) * 100),
-  }));
-
-  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'google/gemini-3-pro-preview',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: `TESTO NORMATIVO (RAG):\n${ragContext.substring(0, 30000)}\n\nDOCUMENTI UTENTE:\n${userDocSummary.substring(0, 15000)}\n\nGAP DA VALIDARE:\n${JSON.stringify(gapsSummary, null, 2)}` },
-      ],
-      tools: [{
-        type: 'function',
-        function: {
-          name: 'validate_gaps',
-          description: 'Validate and enrich compliance gaps',
-          parameters: {
-            type: 'object',
-            properties: {
-              validated_gaps: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    requirement_id: { type: 'string', description: 'Original requirement ID' },
-                    corrected_reference: { type: 'string', description: 'Corrected article reference if needed, null if correct' },
-                    enriched_gap_description: { type: 'string', description: 'Enriched gap description with specific regulatory details' },
-                    enriched_current_state: { type: 'string', description: 'More specific assessment of current state based on user documents' },
-                    contextual_actions: {
-                      type: 'array',
-                      items: {
-                        type: 'object',
-                        properties: {
-                          action: { type: 'string', description: 'Concrete, specific recommended action' },
-                          estimated_hours: { type: 'number', description: 'Estimated hours to complete' },
-                        },
-                        required: ['action', 'estimated_hours'],
-                      },
-                    },
-                    validation_note: { type: 'string', description: 'Why this gap was validated or rejected' },
-                  },
-                  required: ['requirement_id'],
-                },
-              },
-            },
-            required: ['validated_gaps'],
-          },
-        },
-      }],
-      tool_choice: { type: 'function', function: { name: 'validate_gaps' } },
-      temperature: 0,
-    }),
-  });
-
-  if (!response.ok) {
-    console.error('LLM validation API error:', response.status);
-    return null;
-  }
-
-  const data = await response.json();
-  const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-  if (!toolCall) return null;
-
-  try {
-    const parsed = JSON.parse(toolCall.function.arguments);
-    return parsed.validated_gaps || null;
-  } catch {
-    return null;
-  }
-}
-
-async function discoverMissedGapsWithLLM(
-  apiKey: string,
-  ragContext: string,
-  userDocSummary: string,
-  regulations: string[],
-  language: string,
-  profile: any,
-  alreadyIdentifiedIds: string[]
-): Promise<any[] | null> {
-  const isIt = language === 'it';
-
-  const systemPrompt = isIt
-    ? `Sei un auditor compliance EU esperto. Il tuo compito è trovare SOLO gap che un sistema a keyword NON PUÒ rilevare.
-Normative: ${regulations.join(', ')}. Settore: ${profile?.sector || 'Technology'}, giurisdizione: ${profile?.jurisdiction || 'EU'}.
-
-REGOLE CRITICHE:
-- Gli articoli seguenti sono GIÀ STATI ANALIZZATI dal sistema (sia coperti che identificati come gap). NON devi riproporre gap per questi articoli: ${alreadyIdentifiedIds.join(', ')}
-- Cerca SOLO gap per articoli DIVERSI da quelli già analizzati
-- Cita SOLO articoli che ESISTONO nel testo normativo fornito
-- Un gap è valido SOLO se i documenti dell'utente NON contengono NESSUNA menzione del tema
-- Se i documenti dell'utente coprono anche parzialmente un tema, NON è un gap
-- Massimo 3 gap aggiuntivi, solo se assolutamente certi
-- Se non trovi gap genuinamente mancanti, restituisci un array VUOTO`
-    : `You are an expert EU compliance auditor. Find ONLY gaps that a keyword system CANNOT detect.
-Regulations: ${regulations.join(', ')}. Sector: ${profile?.sector || 'Technology'}, jurisdiction: ${profile?.jurisdiction || 'EU'}.
-
-CRITICAL RULES:
-- These articles have ALREADY BEEN ANALYZED (both covered and identified as gaps). Do NOT re-propose gaps for them: ${alreadyIdentifiedIds.join(', ')}
-- Search ONLY for gaps in articles DIFFERENT from those already analyzed
-- Cite ONLY articles that EXIST in the provided regulatory text
-- A gap is valid ONLY if user documents contain NO mention of the topic at all
-- If user documents even partially cover a topic, it is NOT a gap
-- Maximum 3 additional gaps, only if absolutely certain
-- If no genuinely missed gaps are found, return an EMPTY array`;
-
-  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'google/gemini-3-pro-preview',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: `TESTO NORMATIVO (RAG):\n${ragContext.substring(0, 30000)}\n\nDOCUMENTI UTENTE:\n${userDocSummary.substring(0, 15000)}\n\nARTICOLI GIÀ ANALIZZATI (NON duplicare, NON riproporre):\n${alreadyIdentifiedIds.join(', ')}` },
-      ],
-      tools: [{
-        type: 'function',
-        function: {
-          name: 'report_missed_gaps',
-          description: 'Report compliance gaps missed by keyword matching',
-          parameters: {
-            type: 'object',
-            properties: {
-              discovered_gaps: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    reference: { type: 'string', description: 'Exact article reference (e.g. "Articolo 15 GDPR")' },
-                    requirement_description: { type: 'string', description: 'What the regulation requires' },
-                    gap_description: { type: 'string', description: 'What is missing in the user documents' },
-                    current_state: { type: 'string', description: 'Assessment of current state from user docs' },
-                    risk_level: { type: 'string', enum: ['critical', 'high', 'medium', 'low'] },
-                    remediation_effort: { type: 'string', enum: ['very_high', 'high', 'medium', 'low'] },
-                    recommended_actions: {
-                      type: 'array',
-                      items: {
-                        type: 'object',
-                        properties: {
-                          action: { type: 'string' },
-                          estimated_hours: { type: 'number' },
-                        },
-                        required: ['action', 'estimated_hours'],
-                      },
-                    },
-                    justification: { type: 'string', description: 'Why this gap was missed by keywords and why it is real' },
-                  },
-                  required: ['reference', 'requirement_description', 'gap_description', 'risk_level'],
-                },
-              },
-            },
-            required: ['discovered_gaps'],
-          },
-        },
-      }],
-      tool_choice: { type: 'function', function: { name: 'report_missed_gaps' } },
-      temperature: 0,
-    }),
-  });
-
-  if (!response.ok) {
-    console.error('LLM discovery API error:', response.status);
-    return null;
-  }
-
-  const data = await response.json();
-  const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-  if (!toolCall) return null;
-
-  try {
-    const parsed = JSON.parse(toolCall.function.arguments);
-    return parsed.discovered_gaps || null;
-  } catch {
-    return null;
-  }
 }
 
 // ============================================================
