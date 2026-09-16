@@ -1203,7 +1203,10 @@ async function rerankChunks(
             },
           ],
           temperature: 0,
-          max_tokens: 800,
+          // Gemini 3.x spends "thinking" tokens inside max_tokens: keep the budget large and the
+          // reasoning effort low, otherwise the ranking gets cut off after a few indices.
+          max_tokens: 4000,
+          reasoning_effort: "low",
           response_format: { type: "json_object" },
         }),
       },
@@ -1764,7 +1767,8 @@ ${question}`;
           { role: "user", content: userPrompt },
         ],
         temperature: 0,
-        max_tokens: 700,
+        max_tokens: 3000,
+        reasoning_effort: "low",
         response_format: { type: "json_object" },
       }),
       signal: controller.signal,
