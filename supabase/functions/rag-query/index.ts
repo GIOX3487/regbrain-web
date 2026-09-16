@@ -1195,7 +1195,7 @@ async function rerankChunks(
             {
               role: "system",
               content:
-                `You are a document relevance ranker. Given a question and numbered text passages, return ONLY a JSON array of passage indices sorted by relevance to the question. Return the top ${maxResults} most relevant indices. Output ONLY the JSON array, nothing else. Example: [5,2,12,0,8]`,
+                `You are a document relevance ranker for legal texts. Given a question and numbered passages, pick the ${maxResults} passages most useful to answer the question, prefer articles over recitals when both cover the same point, and return them sorted from most to least relevant. Respond with a JSON object only, no explanation, in this exact shape: {"ranking":[5,2,12,0,8]}. The array must contain exactly ${maxResults} distinct integer indices taken from the passage numbers.`,
             },
             {
               role: "user",
@@ -1203,7 +1203,8 @@ async function rerankChunks(
             },
           ],
           temperature: 0,
-          max_tokens: 500,
+          max_tokens: 800,
+          response_format: { type: "json_object" },
         }),
       },
     );
@@ -1214,19 +1215,30 @@ async function rerankChunks(
     }
 
     const data = await response.json();
-    const rankText = data.choices?.[0]?.message?.content || "";
-    if ((rankText.match(/\d+/g) || []).length < 5) {
-      console.warn(`Re-ranking: terse ranker output (finish=${data.choices?.[0]?.finish_reason}): ${rankText.substring(0, 400).replace(/\n/g, " ")}`);
-    }
+    const rankText: string = data.choices?.[0]?.message?.content || "";
 
-    // Parse the JSON array of indices: take the longest array in the output (the model
-    // sometimes writes "[3]" in a preamble before the real list), dedupe, then top up with
-    // the best score-ranked candidates so a terse ranker never starves the answer of context.
-    const arrays = [...rankText.matchAll(/\[[\d,\s]+\]/g)].map((m) => m[0]);
-    if (arrays.length > 0) {
-      const longest = arrays.reduce((a, b) => (b.length > a.length ? b : a));
-      let indices: number[] = [];
-      try { indices = JSON.parse(longest); } catch { indices = []; }
+    // Preferred: JSON object {"ranking":[...]} (JSON mode). Fallback: the longest bare array in
+    // the output. Then dedupe and top up with the best score-ranked candidates so a terse or
+    // truncated ranker never starves the answer of context.
+    let indices: number[] = [];
+    const parsedObj = extractJsonObject(rankText);
+    if (parsedObj) {
+      const arr = Array.isArray(parsedObj.ranking)
+        ? parsedObj.ranking
+        : Object.values(parsedObj).find((v) => Array.isArray(v));
+      if (Array.isArray(arr)) indices = arr.map((v: unknown) => Number(v));
+    }
+    if (indices.length === 0) {
+      const arrays = [...rankText.matchAll(/\[[\d,\s]+\]/g)].map((m) => m[0]);
+      if (arrays.length > 0) {
+        const longest = arrays.reduce((a, b) => (b.length > a.length ? b : a));
+        try { indices = JSON.parse(longest); } catch { indices = []; }
+      }
+    }
+    if (indices.length < 5) {
+      console.warn(`Re-ranking: weak ranker output (${indices.length} indices, finish=${data.choices?.[0]?.finish_reason}): ${rankText.substring(0, 300).replace(/\n/g, " ")}`);
+    }
+    if (indices.length > 0) {
       const seen = new Set<number>();
       const validIndices = indices.filter((i) =>
         Number.isInteger(i) && i >= 0 && i < chunks.length && !seen.has(i) && seen.add(i)
