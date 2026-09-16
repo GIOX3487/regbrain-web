@@ -1921,11 +1921,12 @@ interface RequirementCheck {
   missing_elements: string[];
   recommended_actions: string[];
   confidence: number | null;
+  applicability?: string | null;
   method: 'llm_evidence' | 'keyword' | 'semantic';
   keyword_coverage: number;
 }
 
-const CHECKS_VERSION = 'gap-analysis-v19-evidence-checks';
+const CHECKS_VERSION = 'gap-analysis-v20-evidence-checks';
 const SEVERITY_RANK: Record<string, number> = { critical: 3, high: 2, medium: 1, low: 0 };
 const RISK_SCORE_MAP: Record<string, number> = { high: 74, medium: 52, low: 28 };
 
@@ -1991,6 +1992,26 @@ function quoteIsVerified(quote: string, corpusNormalized: string): boolean {
     if (corpusNormalized.includes(words.slice(i, i + 6).join(' '))) return true;
   }
   return false;
+}
+
+// Frasi che non provano nulla: autodichiarazioni di conformità e impegni per il futuro.
+// Una citazione di questo tipo non può sostenere uno status diverso da "missing".
+const NON_EVIDENCE_PATTERNS: RegExp[] = [
+  /pienamente conform/i,
+  /(e|è|e')\s+conforme\s+(al|alla|ai|alle)\b/i,
+  /sono\s+conformi\s+(al|alla|ai|alle)\b/i,
+  /(adotta|adottiamo|applica|applichiamo)\s+tutte\s+le\s+misure/i,
+  /rispett(a|iamo)\s+tutti\s+gli\s+obblighi/i,
+  /in\s+corso\s+di\s+(redazione|definizione|adozione|implementazione|predisposizione|aggiornamento)/i,
+  /in\s+fase\s+di\s+(redazione|definizione|adozione|implementazione|predisposizione)/i,
+  /sar(a|à|a')\s+(completat|redatt|predispost|adottat|implementat|definit|aggiornat)/i,
+  /verr(a|à|a')\s+(completat|redatt|predispost|adottat|implementat|definit)/i,
+  /(prevediamo|intendiamo|ci\s+impegniamo)\s+(di|a)\b/i,
+  /non\s+ancora\s+(redatt|predispost|adottat|implementat|completat|formalizzat)/i,
+];
+
+function quoteIsSubstantive(quote: string): boolean {
+  return !NON_EVIDENCE_PATTERNS.some(p => p.test(quote));
 }
 
 // Stima se un testo è leggibile (documenti PDF/DOC non estratti correttamente producono rumore binario).
@@ -2063,7 +2084,7 @@ async function assessRequirementBatchWithLLM(
 Settore dell'organizzazione: ${profile?.sector || 'non indicato'}. Giurisdizione: ${profile?.jurisdiction || 'IT'}.
 
 Rispondi SOLO con un oggetto JSON valido con questa forma:
-{"checks":[{"requirement_id":"...","status":"covered|partial|missing|not_applicable","assessment":"...","evidence":[{"document":"nome del file","quote":"citazione testuale"}],"missing_elements":["..."],"recommended_actions":["..."],"confidence":0.0}]}
+{"checks":[{"requirement_id":"...","status":"covered|partial|missing|not_applicable","applicability":"si|no|non_determinabile","assessment":"...","evidence":[{"document":"nome del file","quote":"citazione testuale"}],"missing_elements":["..."],"recommended_actions":["..."],"confidence":0.0}]}
 
 Criteri per status:
 - "covered": gli estratti dimostrano che il requisito è soddisfatto nella sostanza: esiste il documento atteso e contiene gli elementi obbligatori indicati.
@@ -2071,9 +2092,16 @@ Criteri per status:
 - "missing": nessun estratto pertinente al requisito.
 - "not_applicable": SOLO per requisiti marcati come condizionali e SOLO se gli estratti dichiarano esplicitamente che la condizione non ricorre (es. "non si effettuano trasferimenti extra UE"). L'assenza di informazioni NON rende un requisito non applicabile: in quel caso usa "missing".
 
+Campo "applicability": riguarda SOLO se l'obbligo ricade sull'organizzazione, non se è documentato.
+- "si": i requisiti non condizionali hanno sempre "si". Per un requisito condizionale usa "si" solo se un estratto mostra che la condizione di applicabilità ricorre davvero.
+- "no": un estratto dichiara esplicitamente che la condizione non ricorre.
+- "non_determinabile": requisito condizionale e gli estratti non dicono nulla sulla condizione. Non dedurre l'applicabilità dal settore o dalla forma giuridica dell'organizzazione.
+
 Regole sulle prove:
 - Ogni citazione in evidence deve essere copiata parola per parola da un estratto (massimo 200 caratteri) e attribuita al file corretto.
 - Il nome di un file non è una prova del suo contenuto. Testo illeggibile, codice binario o metadati di file non sono evidenze.
+- NON sono prove, e non vanno mai citate in evidence: le dichiarazioni generiche di conformità ("l'azienda è pienamente conforme al GDPR", "adottiamo tutte le misure previste"), i rimandi ad articoli di legge senza descrizione della misura adottata, e gli annunci di attività future o non concluse ("documento in corso di redazione", "sarà completato entro"). Un impegno non è una misura attuata: se l'unica cosa che risulta è un impegno, lo status è "missing" e l'impegno va descritto in "assessment", non in "evidence".
+- Una citazione è pertinente solo se descrive una misura, una procedura o un dato concreto riferibile a questo requisito. Se l'unico estratto disponibile riguarda un altro argomento, non citarlo: lascia evidence vuoto.
 - Uno status "covered" richiede almeno una citazione pertinente.
 
 Regole sul testo:
@@ -2439,7 +2467,9 @@ denoServe(protect(async (req) => {
     const deadline = Date.now() + BUDGET_MS;
 
     if (state.pending.length > 0) {
-      const userCorpus = buildDocumentCorpus(readableDocuments.map(d => `${d.name} ${d.content}`).join(' \n '));
+      // Il nome del file non entra nel corpus: un documento chiamato "Registro dei trattamenti"
+      // non deve produrre corrispondenze di parole chiave che il contenuto non giustifica.
+      const userCorpus = buildDocumentCorpus(readableDocuments.map(d => d.content).join(' \n '));
       const corpusNormalized = normalizeQuote(readableDocuments.map(d => d.content).join(' \n '));
       const geminiKey = Deno.env.get('GEMINI_API_KEY');
       const aiKey = getAIKey();
@@ -2607,21 +2637,40 @@ denoServe(protect(async (req) => {
                 .filter(e => e && typeof e.quote === 'string')
                 .map(e => ({ document: String(e.document || '').substring(0, 200), quote: String(e.quote).substring(0, 300) }))
                 .filter(e => quoteIsVerified(e.quote, corpusNormalized))
+                .filter(e => quoteIsSubstantive(e.quote))
                 .slice(0, 5);
+              const declaredOnly = rawEvidence.length > 0 && evidence.length === 0;
+              const applicability = typeof llm.applicability === 'string' ? llm.applicability.toLowerCase() : '';
               const missingElements: string[] = (Array.isArray(llm.missing_elements) ? llm.missing_elements : [])
                 .filter((m: any) => typeof m === 'string' && m.trim()).map((m: string) => m.trim().substring(0, 300)).slice(0, 8);
               let actions: string[] = (Array.isArray(llm.recommended_actions) ? llm.recommended_actions : [])
                 .filter((a: any) => typeof a === 'string' && a.trim()).map((a: string) => a.trim().substring(0, 500)).slice(0, 3);
               let assessmentText = typeof llm.assessment === 'string' ? llm.assessment.trim().substring(0, 1200) : '';
 
+              // Senza prove testuali valide lo status non può restare "covered".
               if (status === 'covered' && evidence.length === 0) {
                 status = 'partial';
                 missingElements.unshift(isIt
-                  ? 'Le evidenze indicate non sono state ritrovate testualmente nei documenti: verificare che il contenuto sia effettivamente presente.'
-                  : 'The cited evidence could not be found verbatim in the documents: verify that the content is actually present.');
+                  ? (declaredOnly
+                    ? 'Le uniche frasi citate sono dichiarazioni generiche di conformità o impegni non ancora realizzati: manca la documentazione della misura adottata.'
+                    : 'Le evidenze indicate non sono state ritrovate testualmente nei documenti: verificare che il contenuto sia effettivamente presente.')
+                  : (declaredOnly
+                    ? 'The only quoted sentences are generic compliance claims or commitments not yet fulfilled: documentation of the implemented measure is missing.'
+                    : 'The cited evidence could not be found verbatim in the documents: verify that the content is actually present.'));
+              }
+              // Una documentazione "parziale" sostenuta solo da dichiarazioni di intenti è, nei fatti, assente.
+              if (status === 'partial' && evidence.length === 0 && declaredOnly) {
+                status = 'missing';
+                missingElements.unshift(isIt
+                  ? 'Nei documenti risulta solo una dichiarazione di conformità o un impegno per il futuro, non una misura documentata.'
+                  : 'The documents only contain a compliance claim or a future commitment, not a documented measure.');
               }
               if (status === 'not_applicable' && !req.conditional) status = 'missing';
-              if (req.conditional && status === 'missing' && evidence.length === 0) status = 'to_verify';
+              // Un obbligo condizionale diventa un gap solo se risulta che la condizione ricorre davvero:
+              // altrimenti finisce tra i requisiti da verificare, non tra quelli mancanti.
+              if (req.conditional && (status === 'missing' || status === 'partial') && applicability !== 'si') {
+                if (evidence.length === 0 || applicability === 'non_determinabile') status = 'to_verify';
+              }
 
               if (actions.length === 0 && (status === 'missing' || status === 'partial')) {
                 actions = [isIt ? req.recommended_action_it : req.recommended_action_en].filter(Boolean);
@@ -2642,15 +2691,17 @@ denoServe(protect(async (req) => {
                 missing_elements: missingElements,
                 recommended_actions: actions,
                 confidence: typeof llm.confidence === 'number' ? Math.max(0, Math.min(1, llm.confidence)) : null,
+                applicability: applicability || null,
                 method: 'llm_evidence' as const,
               };
             }
 
-            // Fallback deterministico a parole chiave
+            // Fallback deterministico a parole chiave (solo se la valutazione con prove non è disponibile).
+            // Le parole chiave non dimostrano che il contenuto sia completo: non possono produrre un "covered".
             const threshold = req.coverage_threshold || 0.10;
             const minMatches = req.min_keyword_matches || 1;
             const covered = kw.covered.length >= minMatches && kw.ratio >= threshold;
-            let status: CheckStatus = covered ? 'covered' : 'missing';
+            let status: CheckStatus = covered ? 'partial' : 'missing';
             if (!covered && req.conditional && kw.covered.length === 0) status = 'to_verify';
             return {
               ...base,
@@ -2666,8 +2717,8 @@ denoServe(protect(async (req) => {
                   : `Partial documentation: only some references appear (${kw.covered.join(', ')}).`)
                 : (isIt ? 'Nessuna documentazione pertinente individuata nei documenti caricati.' : 'No relevant documentation found in the uploaded documents.'),
               evidence: [],
-              missing_elements: covered ? [] : [isIt ? req.gap_description_it : req.gap_description_en].filter(Boolean),
-              recommended_actions: covered ? [] : [isIt ? req.recommended_action_it : req.recommended_action_en].filter(Boolean),
+              missing_elements: status === 'to_verify' ? [] : [isIt ? req.gap_description_it : req.gap_description_en].filter(Boolean),
+              recommended_actions: status === 'to_verify' ? [] : [isIt ? req.recommended_action_it : req.recommended_action_en].filter(Boolean),
               confidence: null,
               method: 'keyword' as const,
             };
