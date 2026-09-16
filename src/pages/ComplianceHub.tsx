@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { MobileNav } from "@/components/MobileNav";
 import {
@@ -152,15 +151,6 @@ export default function ComplianceHub() {
     }
   };
 
-  const getRiskBadgeColor = (level: string): "default" | "destructive" | "outline" | "secondary" => {
-    const colors: Record<string, "default" | "destructive" | "outline" | "secondary"> = {
-      critical: 'destructive',
-      high: 'destructive',
-      medium: 'default',
-      low: 'secondary'
-    };
-    return colors[level] || 'default';
-  };
 
   const highGaps = gaps.filter(g => riskProfileOf(g.risk_level) === 'high').length;
   const mediumGaps = gaps.filter(g => riskProfileOf(g.risk_level) === 'medium').length;
@@ -208,77 +198,17 @@ export default function ComplianceHub() {
             </Button>
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-2">Compliance hub</h1>
             <p className="text-sm sm:text-base text-muted-foreground">
-              Gap analysis • Risk assessment • Audit documentation • Predictive analytics
+              Le tue gap analysis: documenti confrontati con i requisiti delle normative, con evidenze e profilo di rischio
             </p>
           </div>
           <div className="flex gap-2 flex-wrap w-full lg:w-auto">
-            <Button 
-              variant="outline"
-              onClick={() => navigate('/compliance/documents')}
-              size="sm"
-              className="flex-1 sm:flex-none min-h-[44px]"
-            >
-              <FileText className="mr-2 h-4 w-4" />
-              <span className="hidden sm:inline">Documenti</span>
-              <span className="sm:hidden">Doc</span>
-            </Button>
-            <Button 
-              variant="outline"
-              onClick={() => navigate('/compliance/analysis')}
-              size="sm"
-              className="flex-1 sm:flex-none min-h-[44px]"
-            >
-              <Target className="mr-2 h-4 w-4" />
-              <span className="hidden sm:inline">Analisi</span>
-              <span className="sm:hidden">Analisi</span>
-            </Button>
-            <Button 
-              variant="outline"
-              onClick={() => navigate('/compliance/benchmark')}
-              size="sm"
-              className="flex-1 sm:flex-none min-h-[44px]"
-            >
-              <BarChart3 className="mr-2 h-4 w-4" />
-              <span className="hidden sm:inline">Benchmark</span>
-              <span className="sm:hidden">Bench</span>
-            </Button>
-            <Button 
-              variant="outline"
-              onClick={() => navigate('/compliance/continuous-monitoring')}
-              size="sm"
-              className="flex-1 sm:flex-none min-h-[44px]"
-            >
-              <Activity className="mr-2 h-4 w-4" />
-              <span className="hidden sm:inline">Monitoring</span>
-              <span className="sm:hidden">Monitor</span>
-            </Button>
-            <Button 
-              variant="outline"
-              onClick={() => navigate('/compliance/market-intelligence')}
-              size="sm"
-              className="flex-1 sm:flex-none min-h-[44px]"
-            >
-              <Globe className="mr-2 h-4 w-4" />
-              <span className="hidden sm:inline">Market Intelligence</span>
-              <span className="sm:hidden">M. Intel</span>
-            </Button>
-            <Button 
-              variant="outline"
-              onClick={() => navigate('/compliance/predictive-analytics')}
-              size="sm"
-              className="flex-1 sm:flex-none min-h-[44px]"
-            >
-              <TrendingUp className="mr-2 h-4 w-4" />
-              <span className="hidden sm:inline">Predictive Analytics</span>
-              <span className="sm:hidden">Predittiva</span>
-            </Button>
             <Button 
               onClick={() => navigate('/compliance/new-assessment')}
               size="sm"
               className="w-full sm:w-auto min-h-[44px]"
             >
               <Plus className="mr-2 h-4 w-4" />
-              Nuova analisi
+              Nuova gap analysis
             </Button>
           </div>
         </div>
@@ -395,13 +325,9 @@ export default function ComplianceHub() {
         </div>
 
         {/* Main Content */}
-        <Tabs defaultValue="assessments" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="assessments">Valutazioni</TabsTrigger>
-            <TabsTrigger value="gaps">Gap Identificati</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="assessments" className="space-y-4">
+        <div className="space-y-4">
+          <h2 className="text-lg font-semibold">Valutazioni</h2>
+          <div className="space-y-4">
             {assessments.length === 0 ? (
               <Card>
                 <CardContent className="py-12 text-center">
@@ -496,44 +422,8 @@ export default function ComplianceHub() {
                 </Card>
               ))
             )}
-          </TabsContent>
-
-          <TabsContent value="gaps" className="space-y-4">
-            {gaps.length === 0 ? (
-              <Card>
-                <CardContent className="py-12 text-center">
-                  <CheckCircle2 className="h-12 w-12 mx-auto text-green-500 mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">Nessun gap identificato</h3>
-                  <p className="text-muted-foreground">
-                    Ottimo! Non ci sono gap di conformità aperti
-                  </p>
-                </CardContent>
-              </Card>
-            ) : (
-              gaps.map((gap) => (
-                <Card key={gap.id}>
-                  <CardHeader>
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <div className="flex flex-wrap items-center gap-2 mb-2">
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-xs font-semibold ${RISK_STYLE[riskProfileOf(gap.risk_level)].badge}`}>
-                            <span className={`w-2 h-2 rounded-full ${RISK_STYLE[riskProfileOf(gap.risk_level)].dot}`} />
-                            Rischio {hubProfileLabel[riskProfileOf(gap.risk_level)].toLowerCase()}
-                          </span>
-                          <span className="text-sm text-muted-foreground">
-                            {gap.requirement_reference}
-                          </span>
-                        </div>
-                        <CardTitle className="text-base">{gap.gap_description}</CardTitle>
-                      </div>
-                    </div>
-                  </CardHeader>
-                </Card>
-              ))
-            )}
-          </TabsContent>
-
-        </Tabs>
+          </div>
+        </div>
         </div>
       )}
     </div>

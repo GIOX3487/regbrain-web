@@ -38,6 +38,8 @@ interface RegulatoryRequirement {
   // Requisito condizionale: si applica solo se ricorre una situazione (es. trasferimenti extra UE)
   conditional?: boolean;
   applicability_note_it?: string;
+  // Cosa deve risultare dalla documentazione (catalogo in database)
+  evidence_expected_it?: string;
 }
 
 const REQUIREMENTS_CATALOG: RegulatoryRequirement[] = [
@@ -1964,7 +1966,7 @@ const EVIDENCE_EXPECTED_IT: Record<string, string> = {
 };
 
 function evidenceExpectedFor(req: RegulatoryRequirement): string {
-  return EVIDENCE_EXPECTED_IT[req.id] || req.description_it;
+  return req.evidence_expected_it || EVIDENCE_EXPECTED_IT[req.id] || req.description_it;
 }
 
 // Normalizzazione per la verifica delle citazioni
@@ -2149,6 +2151,80 @@ async function runWithConcurrency<T>(tasks: Array<() => Promise<T>>, limit: numb
 // MAIN HANDLER
 // ============================================================
 
+// Numero di requisiti valutati per invocazione: ogni chiamata resta sotto i limiti di esecuzione,
+// il client richiama la funzione con { continue: true } finché lo stato non è "completed".
+const SLICE_SIZE = 20;
+
+interface AnalysisState {
+  version: string;
+  status: 'in_progress' | 'completed';
+  language: string;
+  regulations: string[];
+  started_at: string;
+  updated_at: string;
+  generated_at?: string;
+  cache_key: string;
+  total: number;
+  pending: string[];
+  checks: RequirementCheck[];
+  unreadable_documents: string[];
+  documents_analyzed: string[];
+  counts?: Record<string, number>;
+}
+
+function mapDbRequirement(dbReq: any): RegulatoryRequirement {
+  return {
+    id: dbReq.requirement_id,
+    regulation: dbReq.regulation,
+    reference: dbReq.reference,
+    description_it: dbReq.description_it,
+    description_en: dbReq.description_en || dbReq.description_it,
+    risk_level: (['critical', 'high', 'medium', 'low'].includes(dbReq.risk_level) ? dbReq.risk_level : 'medium') as any,
+    remediation_effort: (['very_high', 'high', 'medium', 'low'].includes(dbReq.remediation_effort) ? dbReq.remediation_effort : 'medium') as any,
+    coverage_keywords: Array.isArray(dbReq.coverage_keywords) ? dbReq.coverage_keywords : [],
+    rag_validation_keywords: Array.isArray(dbReq.rag_validation_keywords) && dbReq.rag_validation_keywords.length > 0
+      ? dbReq.rag_validation_keywords
+      : (dbReq.article_number ? [`articolo ${dbReq.article_number}`, `art. ${dbReq.article_number}`, `art ${dbReq.article_number}`] : []),
+    gap_description_it: dbReq.gap_description_it || '',
+    gap_description_en: dbReq.gap_description_en || dbReq.gap_description_it || '',
+    recommended_action_it: dbReq.recommended_action_it || '',
+    recommended_action_en: dbReq.recommended_action_en || dbReq.recommended_action_it || '',
+    action_hours: 0,
+    action_cost_eur: 0,
+    coverage_threshold: dbReq.coverage_threshold || 0.10,
+    min_keyword_matches: dbReq.min_keyword_matches || 1,
+    conditional: dbReq.conditional === true,
+    applicability_note_it: dbReq.applicability_note_it || undefined,
+    evidence_expected_it: dbReq.evidence_expected_it || undefined,
+  };
+}
+
+// Catalogo applicabile: per ogni normativa usa il catalogo completo in database se esiste,
+// altrimenti il catalogo integrato.
+async function loadApplicableRequirements(supabase: any, regulations: string[]): Promise<RegulatoryRequirement[]> {
+  const result: RegulatoryRequirement[] = [];
+  let dbRows: any[] = [];
+  try {
+    const { data } = await supabase.from('regulatory_requirements').select('*').eq('active', true);
+    dbRows = data || [];
+  } catch (e) {
+    console.warn('Could not fetch database catalog:', e);
+  }
+  for (const reg of regulations) {
+    const fromDb = dbRows.filter(r => String(r.regulation).toLowerCase() === reg.toLowerCase());
+    if (fromDb.length > 0) {
+      fromDb.sort((a, b) => (a.article_number || 0) - (b.article_number || 0) || String(a.requirement_id).localeCompare(String(b.requirement_id)));
+      result.push(...fromDb.map(mapDbRequirement));
+      console.log(`📚 ${reg}: ${fromDb.length} requirements from database catalog`);
+    } else {
+      const builtIn = REQUIREMENTS_CATALOG.filter(req => req.regulation.toLowerCase() === reg.toLowerCase());
+      result.push(...builtIn);
+      console.log(`📚 ${reg}: ${builtIn.length} requirements from built-in catalog`);
+    }
+  }
+  return result;
+}
+
 denoServe(protect(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -2167,9 +2243,9 @@ denoServe(protect(async (req) => {
     if (userError || !user) throw new Error('Unauthorized');
 
     const body = await req.json();
-    const { assessmentId, userDocuments, regulations, language = 'it' } = body;
+    const { assessmentId } = body;
+    const isContinuation = body.continue === true;
 
-    // --- Input validation ---
     if (!assessmentId || typeof assessmentId !== 'string') {
       return errorResponse(400, 'Invalid or missing assessmentId');
     }
@@ -2177,141 +2253,141 @@ denoServe(protect(async (req) => {
     if (!uuidRegex.test(assessmentId)) {
       return errorResponse(400, 'Invalid assessmentId format');
     }
-    if (!Array.isArray(userDocuments) || userDocuments.length === 0) {
-      return errorResponse(400, 'userDocuments must be a non-empty array');
-    }
-    if (userDocuments.length > 50) {
-      return errorResponse(400, 'Too many documents (max 50)');
-    }
-    if (!Array.isArray(regulations) || regulations.length === 0) {
-      return errorResponse(400, 'regulations must be a non-empty array');
-    }
 
-    console.log('Starting evidence-based gap analysis for assessment:', assessmentId);
-
-    // --- Canonicalize inputs ---
-    const normalizedLanguage = canonicalizeString(language || 'it').toLowerCase() || 'it';
-    const normalizedRegulations = [...new Set(regulations.map((r: string) => canonicalizeString(r)))]
-      .filter(Boolean).sort((a, b) => a.localeCompare(b));
-    const normalizedDocuments = normalizeUserDocuments(userDocuments);
-
-    if (normalizedRegulations.length === 0) return errorResponse(400, 'No valid regulations after normalization');
-    if (normalizedDocuments.length === 0) return errorResponse(400, 'No valid user documents after normalization');
-
-    // --- Assessment context ---
     const { data: assessment } = await supabase
       .from('compliance_assessments')
-      .select('id, annual_revenue_eur')
+      .select('id, annual_revenue_eur, scope_regulations, requirement_checks, status')
       .eq('id', assessmentId).eq('user_id', user.id).maybeSingle();
+    if (!assessment) return errorResponse(404, 'Assessment not found');
 
     const { data: profile } = await supabase
       .from('profiles').select('*').eq('id', user.id).maybeSingle();
 
-    // --- Deterministic cache layer ---
-    const cacheFingerprint = await generateCacheFingerprint(
-      normalizedRegulations, normalizedDocuments, normalizedLanguage, profile, assessment?.annual_revenue_eur
-    );
-    console.log('Cache fingerprint:', cacheFingerprint);
+    // ------------------------------------------------------------
+    // Input: prima chiamata (documenti + normative) oppure prosecuzione
+    // ------------------------------------------------------------
+    let normalizedDocuments: ReturnType<typeof normalizeUserDocuments>;
+    let normalizedRegulations: string[];
+    let normalizedLanguage: string;
+    let state: AnalysisState | null = null;
 
-    const { data: cachedResult } = await supabase
-      .from('gap_analysis_cache').select('result_payload')
-      .eq('user_id', user.id).eq('cache_key', cacheFingerprint).maybeSingle();
-
-    // Requirements scope (strictly limited to selected regulations)
-    const applicableRequirements: RegulatoryRequirement[] = REQUIREMENTS_CATALOG.filter(req =>
-      normalizedRegulations.some(reg => reg.toLowerCase() === req.regulation.toLowerCase())
-    );
-
-    // Merge dynamic requirements from database (active only)
-    try {
-      const { data: dbRequirements } = await supabase
-        .from('regulatory_requirements')
-        .select('*')
-        .eq('active', true);
-
-      if (dbRequirements && dbRequirements.length > 0) {
-        const existingKeys = new Set(applicableRequirements.map(r => `${r.regulation.toLowerCase()}:${r.reference.toLowerCase()}`));
-        let added = 0;
-
-        for (const dbReq of dbRequirements) {
-          // Only include if regulation matches AND not already in hardcoded catalog
-          if (!normalizedRegulations.some(reg => reg.toLowerCase() === dbReq.regulation.toLowerCase())) continue;
-          const key = `${dbReq.regulation.toLowerCase()}:${dbReq.reference.toLowerCase()}`;
-          if (existingKeys.has(key)) continue;
-
-          applicableRequirements.push({
-            id: dbReq.requirement_id,
-            regulation: dbReq.regulation,
-            reference: dbReq.reference,
-            description_it: dbReq.description_it,
-            description_en: dbReq.description_en,
-            risk_level: dbReq.risk_level as any,
-            remediation_effort: dbReq.remediation_effort as any,
-            coverage_keywords: dbReq.coverage_keywords || [],
-            rag_validation_keywords: dbReq.rag_validation_keywords || [],
-            gap_description_it: dbReq.gap_description_it,
-            gap_description_en: dbReq.gap_description_en,
-            recommended_action_it: dbReq.recommended_action_it,
-            recommended_action_en: dbReq.recommended_action_en,
-            action_hours: dbReq.action_hours,
-            action_cost_eur: dbReq.action_cost_eur,
-            coverage_threshold: dbReq.coverage_threshold || 0.10,
-            min_keyword_matches: dbReq.min_keyword_matches || 1,
-          });
-          existingKeys.add(key);
-          added++;
-        }
-        if (added > 0) {
-          console.log(`📊 Added ${added} dynamic requirements from database`);
-        }
+    if (isContinuation) {
+      const saved = assessment.requirement_checks as AnalysisState | null;
+      if (!saved || saved.version !== CHECKS_VERSION || saved.status !== 'in_progress' || !Array.isArray(saved.pending)) {
+        return errorResponse(409, 'No analysis in progress for this assessment');
       }
-    } catch (dbErr) {
-      console.warn('Could not fetch dynamic requirements:', dbErr);
+      state = saved;
+      normalizedRegulations = saved.regulations;
+      normalizedLanguage = saved.language || 'it';
+      const { data: storedDocs } = await supabase
+        .from('assessment_documents').select('name, type, content')
+        .eq('assessment_id', assessmentId).order('name', { ascending: true });
+      normalizedDocuments = normalizeUserDocuments(storedDocs || []);
+      if (normalizedDocuments.length === 0) return errorResponse(409, 'Documents of this assessment are no longer available');
+      console.log(`Continuing gap analysis for ${assessmentId}: ${saved.pending.length} requirements pending`);
+    } else {
+      const { userDocuments, regulations, language = 'it' } = body;
+      if (!Array.isArray(userDocuments) || userDocuments.length === 0) {
+        return errorResponse(400, 'userDocuments must be a non-empty array');
+      }
+      if (userDocuments.length > 50) {
+        return errorResponse(400, 'Too many documents (max 50)');
+      }
+      if (!Array.isArray(regulations) || regulations.length === 0) {
+        return errorResponse(400, 'regulations must be a non-empty array');
+      }
+      normalizedLanguage = canonicalizeString(language || 'it').toLowerCase() || 'it';
+      normalizedRegulations = [...new Set(regulations.map((r: string) => canonicalizeString(r)))]
+        .filter(Boolean).sort((a, b) => a.localeCompare(b));
+      normalizedDocuments = normalizeUserDocuments(userDocuments);
+      if (normalizedRegulations.length === 0) return errorResponse(400, 'No valid regulations after normalization');
+      if (normalizedDocuments.length === 0) return errorResponse(400, 'No valid user documents after normalization');
+      console.log('Starting evidence-based gap analysis for assessment:', assessmentId);
+
+      // I documenti restano disponibili per le chiamate successive e per i documenti generati
+      await supabase.from('assessment_documents').delete().eq('assessment_id', assessmentId);
+      const docRows = normalizedDocuments.map(d => ({
+        assessment_id: assessmentId,
+        user_id: user.id,
+        name: d.name,
+        type: d.type,
+        content: d.content,
+        content_hash: d.content_hash,
+        content_length: d.content_length,
+      }));
+      for (let i = 0; i < docRows.length; i += 10) {
+        const { error } = await supabase.from('assessment_documents').insert(docRows.slice(i, i + 10));
+        if (error) throw error;
+      }
     }
 
-    console.log(`Applicable requirements: ${applicableRequirements.length} for regulations: ${normalizedRegulations.join(', ')}`);
-
-    // ============================================================
-    // REQUIREMENT CHECKS
-    // Ogni requisito applicabile riceve un giudizio documentale:
-    // covered / partial / missing / to_verify / not_applicable.
-    // Il giudizio è prodotto da un auditor AI che legge SOLO gli estratti
-    // dei documenti caricati (con citazioni verificate a posteriori);
-    // in caso di indisponibilità dell'AI si applica la regola a parole chiave.
-    // ============================================================
     const isIt = normalizedLanguage === 'it';
     const readableDocuments = normalizedDocuments.filter(d => readableRatio(d.content) >= READABLE_THRESHOLD);
     const unreadableDocuments = normalizedDocuments.filter(d => readableRatio(d.content) < READABLE_THRESHOLD).map(d => d.name);
-    if (unreadableDocuments.length > 0) {
-      console.warn(`⚠️ ${unreadableDocuments.length} documents look unreadable (binary noise) and are excluded from evidence: ${unreadableDocuments.join(', ')}`);
+    if (!isContinuation && unreadableDocuments.length > 0) {
+      console.warn(`⚠️ ${unreadableDocuments.length} documents look unreadable and are excluded from evidence: ${unreadableDocuments.join(', ')}`);
     }
 
-    let checks: RequirementCheck[];
-    const cachedChecks = cachedResult?.result_payload?.version === CHECKS_VERSION && Array.isArray(cachedResult?.result_payload?.checks)
-      ? cachedResult.result_payload.checks as RequirementCheck[]
-      : null;
+    // ------------------------------------------------------------
+    // Catalogo dei requisiti applicabili (validati sulla knowledge base)
+    // ------------------------------------------------------------
+    const catalog = await loadApplicableRequirements(supabase, normalizedRegulations);
+    const ragValidationCache = await buildRagValidationCache(supabase, normalizedRegulations);
+    const applicableRequirements = catalog.filter(req => {
+      const regCache = ragValidationCache.get(req.regulation.toLowerCase());
+      if (!regCache || regCache.size === 0) return true; // normativa senza testo strutturato: catalogo integrato
+      const ok = req.rag_validation_keywords.some(kw => regCache.has(kw.toLowerCase()));
+      if (!ok) console.log(`Skipping ${req.id}: not found in RAG knowledge base for regulation ${req.regulation}`);
+      return ok;
+    });
+    const requirementById = new Map(applicableRequirements.map(r => [r.id, r]));
+    console.log(`Applicable requirements: ${applicableRequirements.length} for regulations: ${normalizedRegulations.join(', ')}`);
 
-    if (cachedChecks) {
-      console.log('✅ CACHE HIT - returning cached requirement checks');
-      checks = cachedChecks;
-    } else {
-      console.log('❌ CACHE MISS - running evidence-based requirement checks...');
+    // ------------------------------------------------------------
+    // Cache deterministica (stessi documenti, normative, profilo => stesso esito)
+    // ------------------------------------------------------------
+    const cacheFingerprint = state?.cache_key || await generateCacheFingerprint(
+      normalizedRegulations, normalizedDocuments, normalizedLanguage, profile, assessment?.annual_revenue_eur,
+      applicableRequirements.map(r => r.id),
+    );
 
-      // 1) Corpus dei documenti leggibili (per parole chiave e verifica citazioni)
+    if (!state) {
+      const { data: cachedResult } = await supabase
+        .from('gap_analysis_cache').select('result_payload')
+        .eq('user_id', user.id).eq('cache_key', cacheFingerprint).maybeSingle();
+      const cachedChecks = cachedResult?.result_payload?.version === CHECKS_VERSION && Array.isArray(cachedResult?.result_payload?.checks)
+        ? cachedResult.result_payload.checks as RequirementCheck[]
+        : null;
+      const now = new Date().toISOString();
+      state = {
+        version: CHECKS_VERSION,
+        status: 'in_progress',
+        language: normalizedLanguage,
+        regulations: normalizedRegulations,
+        started_at: now,
+        updated_at: now,
+        cache_key: cacheFingerprint,
+        total: applicableRequirements.length,
+        pending: cachedChecks ? [] : applicableRequirements.map(r => r.id),
+        checks: cachedChecks || [],
+        unreadable_documents: unreadableDocuments,
+        documents_analyzed: readableDocuments.map(d => d.name),
+      };
+      if (cachedChecks) console.log('✅ CACHE HIT - reusing cached requirement checks');
+      await supabase.from('compliance_assessments').update({ requirement_checks: state, status: 'in_progress' }).eq('id', assessmentId);
+    }
+
+    // ------------------------------------------------------------
+    // Valutazione documentale della tranche corrente
+    // ------------------------------------------------------------
+    const sliceIds = state.pending.slice(0, SLICE_SIZE);
+    const sliceRequirements = sliceIds.map(id => requirementById.get(id)).filter((r): r is RegulatoryRequirement => !!r);
+
+    if (sliceRequirements.length > 0) {
       const userCorpus = readableDocuments.map(d => `${d.name} ${d.content}`.toLowerCase()).join(' \n ');
       const corpusNormalized = normalizeQuote(readableDocuments.map(d => d.content).join(' \n '));
 
-      // 2) Il requisito deve esistere nella knowledge base normativa della sua normativa
-      const ragValidationCache = await buildRagValidationCache(supabase, normalizedRegulations);
-      console.log(`RAG validation cache: ${Array.from(ragValidationCache.values()).reduce((s, set) => s + set.size, 0)} entries across ${ragValidationCache.size} regulations`);
-      const validatedRequirements = applicableRequirements.filter(req => {
-        const regCache = ragValidationCache.get(req.regulation.toLowerCase());
-        const ok = regCache && req.rag_validation_keywords.some(kw => regCache.has(kw.toLowerCase()));
-        if (!ok) console.log(`Skipping ${req.id}: not found in RAG knowledge base for regulation ${req.regulation}`);
-        return ok;
-      });
-
-      // 3) Sezioni granulari dei documenti + embedding (cache su user_document_embeddings)
+      // Sezioni dei documenti + embedding (persistiti per l'assessment)
       const geminiKey = Deno.env.get('GEMINI_API_KEY');
       const sections: EvidenceSection[] = [];
       for (const doc of readableDocuments) {
@@ -2319,15 +2395,12 @@ denoServe(protect(async (req) => {
           if (s.trim().length >= 50) sections.push({ text: s, norm: normalizeForMatch(s), docName: doc.name, embedding: null });
         }
       }
-      console.log(`📐 ${readableDocuments.length} readable documents split into ${sections.length} sections`);
-
       if (geminiKey && sections.length > 0) {
         try {
           const { data: cached } = await supabase
             .from('user_document_embeddings')
-            .select('section_text, embedding, section_index')
-            .eq('assessment_id', assessmentId)
-            .order('section_index', { ascending: true });
+            .select('section_text, embedding')
+            .eq('assessment_id', assessmentId);
           const cachedByText = new Map<string, number[]>();
           for (const row of cached || []) {
             let emb: any = row.embedding;
@@ -2339,7 +2412,6 @@ denoServe(protect(async (req) => {
             console.log(`📐 Generating ${missing.length} section embeddings (${sections.length - missing.length} cached)`);
             const fresh = await generateBatchEmbeddingsForGap(geminiKey, missing.map(s => s.text));
             missing.forEach((s, i) => { s.embedding = fresh[i] || null; });
-            // Persist for future runs of the same assessment
             await supabase.from('user_document_embeddings').delete().eq('assessment_id', assessmentId);
             const rows = sections.map((s, idx) => ({
               user_id: user.id,
@@ -2354,41 +2426,38 @@ denoServe(protect(async (req) => {
             }
           }
           for (const s of sections) if (!s.embedding) s.embedding = cachedByText.get(s.text) || null;
-          console.log(`📐 Section embeddings ready: ${sections.filter(s => s.embedding).length}/${sections.length}`);
         } catch (e) {
           console.error('Section embeddings unavailable, evidence selection will use keywords only:', e);
         }
       }
 
-      // 4) Embedding dei requisiti (per selezionare gli estratti pertinenti)
-      let reqEmbeddings: Array<number[] | null> = validatedRequirements.map(() => null);
+      let reqEmbeddings: Array<number[] | null> = sliceRequirements.map(() => null);
       if (geminiKey && sections.some(s => s.embedding)) {
         try {
-          const reqTexts = validatedRequirements.map(r => `${r.reference}. ${r.description_it} ${evidenceExpectedFor(r)}`.substring(0, 4000));
-          reqEmbeddings = await generateBatchEmbeddingsForGap(geminiKey, reqTexts);
+          reqEmbeddings = await generateBatchEmbeddingsForGap(
+            geminiKey,
+            sliceRequirements.map(r => `${r.reference}. ${r.description_it} ${evidenceExpectedFor(r)}`.substring(0, 4000)),
+          );
         } catch (e) {
           console.error('Requirement embeddings failed:', e);
         }
       }
 
-      // 5) Analisi a parole chiave (sempre disponibile: serve come fallback e come segnale)
       const keywordInfo = new Map<string, { covered: string[]; ratio: number }>();
-      for (const req of validatedRequirements) {
+      for (const req of sliceRequirements) {
         const covered = getCoveredKeywords(userCorpus, req.coverage_keywords);
         const unique = Math.max(1, getUniqueKeywordCount(req.coverage_keywords));
         keywordInfo.set(req.id, { covered, ratio: covered.length / unique });
       }
 
-      // 6) Valutazione documentale AI a lotti
       const aiKey = getAIKey();
       const llmResults = new Map<string, any>();
-      if (aiKey && validatedRequirements.length > 0) {
-        const batches: Array<Array<{ req: RegulatoryRequirement; evidence: Array<{ docName: string; text: string }> }>> = [];
+      if (aiKey) {
         const BATCH_SIZE = 5;
-        for (let i = 0; i < validatedRequirements.length; i += BATCH_SIZE) {
-          const slice = validatedRequirements.slice(i, i + BATCH_SIZE);
-          batches.push(slice.map((req) => {
-            const idx = validatedRequirements.indexOf(req);
+        const batches: Array<Array<{ req: RegulatoryRequirement; evidence: Array<{ docName: string; text: string }> }>> = [];
+        for (let i = 0; i < sliceRequirements.length; i += BATCH_SIZE) {
+          batches.push(sliceRequirements.slice(i, i + BATCH_SIZE).map((req) => {
+            const idx = sliceRequirements.indexOf(req);
             const evidence = selectEvidenceForRequirement(req, reqEmbeddings[idx], sections, 6000)
               .map(e => ({ docName: e.docName, text: e.text }));
             return { req, evidence };
@@ -2406,16 +2475,15 @@ denoServe(protect(async (req) => {
             }
           }
           return new Map<string, any>();
-        }), 3);
+        }), 4);
         for (const map of results) for (const [k, v] of map) llmResults.set(k, v);
-        console.log(`🤖 LLM assessed ${llmResults.size}/${validatedRequirements.length} requirements`);
-      } else if (!aiKey) {
+        console.log(`🤖 LLM assessed ${llmResults.size}/${sliceRequirements.length} requirements in this slice`);
+      } else {
         console.log('⚠️ AI key not available, using keyword rules only');
       }
 
-      // 7) Consolidamento dei giudizi
       const allowedStatuses = new Set(['covered', 'partial', 'missing', 'not_applicable']);
-      checks = validatedRequirements.map((req) => {
+      const newChecks: RequirementCheck[] = sliceRequirements.map((req) => {
         const kw = keywordInfo.get(req.id) || { covered: [], ratio: 0 };
         const llm = llmResults.get(req.id);
         const base = {
@@ -2441,36 +2509,32 @@ denoServe(protect(async (req) => {
             .filter((m: any) => typeof m === 'string' && m.trim()).map((m: string) => m.trim().substring(0, 300)).slice(0, 8);
           let actions: string[] = (Array.isArray(llm.recommended_actions) ? llm.recommended_actions : [])
             .filter((a: any) => typeof a === 'string' && a.trim()).map((a: string) => a.trim().substring(0, 500)).slice(0, 3);
-          let assessment = typeof llm.assessment === 'string' ? llm.assessment.trim().substring(0, 1200) : '';
+          let assessmentText = typeof llm.assessment === 'string' ? llm.assessment.trim().substring(0, 1200) : '';
 
-          // Grounding: "covered" senza citazioni verificate diventa "partial"
           if (status === 'covered' && evidence.length === 0) {
             status = 'partial';
             missingElements.unshift(isIt
               ? 'Le evidenze indicate non sono state ritrovate testualmente nei documenti: verificare che il contenuto sia effettivamente presente.'
               : 'The cited evidence could not be found verbatim in the documents: verify that the content is actually present.');
           }
-          // not_applicable ammesso solo per requisiti condizionali
           if (status === 'not_applicable' && !req.conditional) status = 'missing';
-          // Requisito condizionale senza alcuna evidenza: non è un gap certo, va verificato
           if (req.conditional && status === 'missing' && evidence.length === 0) status = 'to_verify';
 
           if (actions.length === 0 && (status === 'missing' || status === 'partial')) {
-            actions = [isIt ? req.recommended_action_it : req.recommended_action_en];
+            actions = [isIt ? req.recommended_action_it : req.recommended_action_en].filter(Boolean);
           }
-          if (!assessment) {
-            assessment = status === 'missing'
+          if (!assessmentText) {
+            assessmentText = status === 'missing'
               ? (isIt ? 'Nessuna documentazione pertinente individuata nei documenti caricati.' : 'No relevant documentation found in the uploaded documents.')
               : status === 'to_verify'
               ? (isIt ? 'Dalla documentazione non risulta se il requisito si applica all\'organizzazione.' : 'The documentation does not show whether the requirement applies to the organisation.')
               : '';
           }
-
           return {
             ...base,
             status,
             risk_level: riskProfileFor(req.risk_level, status),
-            assessment,
+            assessment: assessmentText,
             evidence,
             missing_elements: missingElements,
             recommended_actions: actions,
@@ -2499,27 +2563,47 @@ denoServe(protect(async (req) => {
               : `Partial documentation: only some references appear (${kw.covered.join(', ')}).`)
             : (isIt ? 'Nessuna documentazione pertinente individuata nei documenti caricati.' : 'No relevant documentation found in the uploaded documents.'),
           evidence: [],
-          missing_elements: covered ? [] : [isIt ? req.gap_description_it : req.gap_description_en],
-          recommended_actions: covered ? [] : [isIt ? req.recommended_action_it : req.recommended_action_en],
+          missing_elements: covered ? [] : [isIt ? req.gap_description_it : req.gap_description_en].filter(Boolean),
+          recommended_actions: covered ? [] : [isIt ? req.recommended_action_it : req.recommended_action_en].filter(Boolean),
           confidence: null,
           method: 'keyword' as const,
         };
       });
 
-      // Ordine deterministico
-      checks.sort((a, b) => `${a.regulation}|${a.reference}`.localeCompare(`${b.regulation}|${b.reference}`));
-
-      await supabase.from('gap_analysis_cache').upsert({
-        user_id: user.id,
-        cache_key: cacheFingerprint,
-        input_fingerprint: cacheFingerprint,
-        regulations: normalizedRegulations,
-        language: normalizedLanguage,
-        documents_count: normalizedDocuments.length,
-        result_payload: { version: CHECKS_VERSION, checks, unreadable_documents: unreadableDocuments },
-      }, { onConflict: 'user_id,cache_key' });
-      console.log(`✅ Requirement checks cached (${checks.length} requirements)`);
+      const done = new Set(newChecks.map(c => c.requirement_id));
+      state.checks = [...state.checks.filter(c => !done.has(c.requirement_id)), ...newChecks];
     }
+
+    // Requisiti in pending non più presenti nel catalogo vengono semplicemente saltati
+    state.pending = state.pending.filter(id => !sliceIds.includes(id));
+    state.updated_at = new Date().toISOString();
+
+    if (state.pending.length > 0) {
+      await supabase.from('compliance_assessments').update({ requirement_checks: state, status: 'in_progress' }).eq('id', assessmentId);
+      console.log(`Slice done: ${state.checks.length}/${state.total} checks, ${state.pending.length} pending`);
+      return new Response(JSON.stringify({
+        success: true,
+        status: 'in_progress',
+        progress: { done: state.checks.length, total: state.total },
+        unreadable_documents: unreadableDocuments,
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // ------------------------------------------------------------
+    // Finalizzazione: gap, punteggi, piano d'azione
+    // ------------------------------------------------------------
+    const checks = state.checks
+      .sort((a, b) => `${a.regulation}|${a.reference}`.localeCompare(`${b.regulation}|${b.reference}`));
+
+    await supabase.from('gap_analysis_cache').upsert({
+      user_id: user.id,
+      cache_key: cacheFingerprint,
+      input_fingerprint: cacheFingerprint,
+      regulations: normalizedRegulations,
+      language: normalizedLanguage,
+      documents_count: normalizedDocuments.length,
+      result_payload: { version: CHECKS_VERSION, checks, unreadable_documents: unreadableDocuments },
+    }, { onConflict: 'user_id,cache_key' });
 
     const gapChecks = checks.filter(c => c.status === 'missing' || c.status === 'partial');
     const coveredCount = checks.filter(c => c.status === 'covered').length;
@@ -2529,7 +2613,6 @@ denoServe(protect(async (req) => {
     const notApplicableCount = checks.filter(c => c.status === 'not_applicable').length;
     console.log(`Checks: ${coveredCount} covered, ${partialCount} partial, ${missingCount} missing, ${toVerifyCount} to verify, ${notApplicableCount} not applicable`);
 
-    // --- Fonte normativa per tracciabilità ---
     let sourceChunks: Array<{ id: string; content: string; document_id: string }> = [];
     try {
       sourceChunks = await getRelevantRagChunkObjects(supabase, normalizedRegulations, 100);
@@ -2554,7 +2637,6 @@ denoServe(protect(async (req) => {
       return { chunk_id: null, excerpt: null };
     }
 
-    // --- Persistenza gap ---
     const gapsToInsert = gapChecks.map((c) => {
       const rl = c.risk_level || 'medium';
       const re = (c.remediation_effort || 'medium').toLowerCase();
@@ -2590,14 +2672,13 @@ denoServe(protect(async (req) => {
     await supabase.from('identified_gaps').delete().eq('assessment_id', assessmentId);
 
     let insertedGaps: any[] = [];
-    if (gapsToInsert.length > 0) {
+    for (let i = 0; i < gapsToInsert.length; i += 25) {
       const { data, error: gapsError } = await supabase
-        .from('identified_gaps').insert(gapsToInsert).select();
+        .from('identified_gaps').insert(gapsToInsert.slice(i, i + 25)).select();
       if (gapsError) throw gapsError;
-      insertedGaps = data || [];
+      insertedGaps.push(...(data || []));
     }
 
-    // --- Punteggi complessivi ---
     const applicableCount = coveredCount + partialCount + missingCount;
     const overallCompliance = applicableCount === 0
       ? 100
@@ -2613,22 +2694,30 @@ denoServe(protect(async (req) => {
       ? Math.min(35, 15 + lowCount * 3)
       : 0;
 
+    const finalState = {
+      version: CHECKS_VERSION,
+      status: 'completed',
+      language: normalizedLanguage,
+      regulations: normalizedRegulations,
+      started_at: state.started_at,
+      updated_at: new Date().toISOString(),
+      generated_at: new Date().toISOString(),
+      cache_key: cacheFingerprint,
+      total: checks.length,
+      unreadable_documents: unreadableDocuments,
+      documents_analyzed: readableDocuments.map(d => d.name),
+      counts: { covered: coveredCount, partial: partialCount, missing: missingCount, to_verify: toVerifyCount, not_applicable: notApplicableCount },
+      checks,
+    };
+
     await supabase.from('compliance_assessments').update({
       overall_risk_score: overallRisk,
       overall_compliance_percentage: overallCompliance,
-      requirement_checks: {
-        version: CHECKS_VERSION,
-        generated_at: new Date().toISOString(),
-        unreadable_documents: unreadableDocuments,
-        documents_analyzed: readableDocuments.map(d => d.name),
-        counts: { covered: coveredCount, partial: partialCount, missing: missingCount, to_verify: toVerifyCount, not_applicable: notApplicableCount },
-        checks,
-      },
+      requirement_checks: finalState,
       status: 'completed',
       completed_at: new Date().toISOString(),
     }).eq('id', assessmentId);
 
-    // --- Piano d'azione: un'azione per riga, senza stime economiche ---
     const actionPlans = insertedGaps
       .filter((g: any) => g.priority <= 3)
       .flatMap((gap: any) => {
@@ -2644,14 +2733,16 @@ denoServe(protect(async (req) => {
           status: 'pending',
         }));
       });
-    if (actionPlans.length > 0) {
-      await supabase.from('action_plans').insert(actionPlans);
+    for (let i = 0; i < actionPlans.length; i += 50) {
+      await supabase.from('action_plans').insert(actionPlans.slice(i, i + 50));
     }
 
     console.log(`Gap analysis completed: ${insertedGaps.length} gaps (${highCount} high, ${mediumCount} medium, ${lowCount} low), risk=${overallRisk}, compliance=${overallCompliance}%`);
 
     return new Response(JSON.stringify({
       success: true,
+      status: 'completed',
+      progress: { done: checks.length, total: checks.length },
       gaps: insertedGaps,
       checks,
       unreadable_documents: unreadableDocuments,
@@ -2838,10 +2929,12 @@ async function generateCacheFingerprint(
   userDocuments: Array<{ name: string; type: string; content: string }>,
   language: string,
   profile: any,
-  annualRevenue: number | null | undefined
+  annualRevenue: number | null | undefined,
+  requirementIds: string[] = [],
 ): Promise<string> {
   const canonicalInput = JSON.stringify({
-    v: 'gap-analysis-v18-realistic-fines',
+    v: CHECKS_VERSION,
+    q: [...requirementIds].sort(),
     r: [...regulations].map(canonicalizeString).filter(Boolean).sort((a, b) => a.localeCompare(b)),
     l: canonicalizeString(language).toLowerCase() || 'it',
     p: {

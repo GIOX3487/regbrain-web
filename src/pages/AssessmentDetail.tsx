@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useNavigate, useParams } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, supabaseHttpUrl } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -68,7 +68,11 @@ interface RequirementCheck {
 
 interface RequirementChecksPayload {
   version?: string;
+  status?: 'in_progress' | 'completed';
+  updated_at?: string;
   generated_at?: string;
+  total?: number;
+  pending?: string[];
   unreadable_documents?: string[];
   documents_analyzed?: string[];
   counts?: Record<string, number>;
@@ -129,8 +133,8 @@ function CoverageScopeDisclaimer({ regulations, checks, unreadableDocuments, doc
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">
               {isIt
-                ? `Verifica documentale su ${checks.length} requisiti chiave delle normative selezionate, condotta su ${documentsAnalyzed.length} documenti leggibili. Copre gli obblighi principali, non ogni singola disposizione: per un audit esaustivo affiancare la revisione di un consulente.`
-                : `Documentary check on ${checks.length} key requirements of the selected regulations, carried out on ${documentsAnalyzed.length} readable documents. It covers the main obligations, not every single provision: pair it with a consultant's review for an exhaustive audit.`}
+                ? `Verifica documentale su ${checks.length} requisiti: le disposizioni delle normative selezionate che impongono obblighi all'organizzazione, confrontate con ${documentsAnalyzed.length} documenti leggibili. L'analisi valuta ciò che risulta dai documenti, non l'effettiva applicazione delle misure, e non sostituisce il parere di un legale.`
+                : `Documentary check on ${checks.length} requirements: the provisions of the selected regulations that impose obligations on the organisation, compared with ${documentsAnalyzed.length} readable documents. The analysis assesses what the documents show, not the actual application of measures, and does not replace legal advice.`}
             </p>
             <div className="flex flex-wrap gap-2">
               {perRegulation.map(reg => (
@@ -268,6 +272,7 @@ export default function AssessmentDetail() {
       noCovered: 'Nessun requisito risulta documentato in modo completo.',
       noToVerify: 'Nessun requisito da verificare.',
       analysisInProgress: 'Analisi in corso: la pagina si aggiorna da sola appena i risultati sono pronti.',
+      resumeAnalysis: 'Riprendi l\'analisi',
       suggestedActions: 'Azioni suggerite'
     },
     en: {
@@ -364,6 +369,7 @@ export default function AssessmentDetail() {
       noCovered: 'No requirement is fully documented.',
       noToVerify: 'Nothing to verify.',
       analysisInProgress: 'Analysis in progress: this page refreshes automatically when results are ready.',
+      resumeAnalysis: 'Resume analysis',
       suggestedActions: 'Suggested actions'
     },
     es: {
@@ -460,6 +466,7 @@ export default function AssessmentDetail() {
       noCovered: 'Ningún requisito está documentado por completo.',
       noToVerify: 'Nada por verificar.',
       analysisInProgress: 'Análisis en curso: la página se actualiza sola cuando los resultados están listos.',
+      resumeAnalysis: 'Reanudar el análisis',
       suggestedActions: 'Acciones sugeridas'
     },
     fr: {
@@ -556,6 +563,7 @@ export default function AssessmentDetail() {
       noCovered: 'Aucune exigence n\'est entièrement documentée.',
       noToVerify: 'Rien à vérifier.',
       analysisInProgress: 'Analyse en cours : la page se met à jour automatiquement dès que les résultats sont prêts.',
+      resumeAnalysis: 'Reprendre l\'analyse',
       suggestedActions: 'Actions suggérées'
     },
     de: {
@@ -652,6 +660,7 @@ export default function AssessmentDetail() {
       noCovered: 'Keine Anforderung ist vollständig dokumentiert.',
       noToVerify: 'Nichts zu prüfen.',
       analysisInProgress: 'Analyse läuft: die Seite aktualisiert sich automatisch, sobald Ergebnisse vorliegen.',
+      resumeAnalysis: 'Analyse fortsetzen',
       suggestedActions: 'Vorgeschlagene Maßnahmen'
     }
   };
@@ -706,12 +715,51 @@ export default function AssessmentDetail() {
     loadAssessment();
   }, [id]);
 
-  // Finché l'analisi è in corso, ricarica ogni 5 secondi
+  // Finché l'analisi è in corso, ricarica ogni 5 secondi; se nessuno la sta portando avanti
+  // (ultimo aggiornamento più vecchio di 45 secondi) la riprende da qui.
+  const [resuming, setResuming] = useState(false);
+  const resumingRef = useRef(false);
   useEffect(() => {
     if (!assessment || assessment.status === 'completed') return;
-    const timer = setInterval(() => { loadAssessment(true); }, 5000);
+    const timer = setInterval(() => {
+      loadAssessment(true);
+      const payload = assessment.requirement_checks as RequirementChecksPayload | null;
+      const stale = payload?.status === 'in_progress' && Array.isArray(payload.pending) && payload.pending.length > 0
+        && payload.updated_at && Date.now() - Date.parse(payload.updated_at) > 45000;
+      if (stale && !resumingRef.current) resumeAnalysis();
+    }, 5000);
     return () => clearInterval(timer);
-  }, [assessment?.status, id]);
+  }, [assessment?.status, assessment?.requirement_checks, id]);
+
+  const resumeAnalysis = async () => {
+    if (resumingRef.current || !id) return;
+    resumingRef.current = true;
+    setResuming(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      let guard = 0;
+      while (guard < 60) {
+        guard++;
+        const response = await fetch(`${supabaseHttpUrl}/functions/v1/gap-analysis`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}`, 'apikey': anonKey },
+          body: JSON.stringify({ assessmentId: id, continue: true }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data?.error || `Errore ${response.status}`);
+        await loadAssessment(true);
+        if (data.status !== 'in_progress') break;
+      }
+    } catch (err) {
+      console.error('Resume analysis failed:', err);
+      toast({ title: 'Impossibile riprendere l\'analisi', description: err instanceof Error ? err.message : 'Riprova tra poco.', variant: 'destructive' });
+    } finally {
+      resumingRef.current = false;
+      setResuming(false);
+    }
+  };
 
   const loadAssessment = async (silent = false) => {
     try {
@@ -1718,9 +1766,20 @@ export default function AssessmentDetail() {
 
         {analysisInProgress && (
           <Card className="mb-6 border-primary/40">
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary shrink-0"></div>
-              <p className="text-sm">{t.analysisInProgress}</p>
+            <CardContent className="p-4 space-y-2">
+              <div className="flex items-center gap-3">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary shrink-0"></div>
+                <p className="text-sm flex-1">
+                  {t.analysisInProgress}
+                  {checksPayload?.total ? ` ${checks.length} / ${checksPayload.total}` : ''}
+                </p>
+                {!resuming && checksPayload?.status === 'in_progress' && (
+                  <Button size="sm" variant="outline" onClick={resumeAnalysis}>{t.resumeAnalysis}</Button>
+                )}
+              </div>
+              {checksPayload?.total ? (
+                <Progress value={Math.round((checks.length / Math.max(1, checksPayload.total)) * 100)} />
+              ) : null}
             </CardContent>
           </Card>
         )}

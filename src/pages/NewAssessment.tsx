@@ -40,6 +40,7 @@ export default function NewAssessment() {
   const [uploadedFiles, setUploadedFiles] = useState<Array<{ name: string, content: string, type: string, truncated: boolean }>>([]);
   const [unreadableFiles, setUnreadableFiles] = useState<Array<{ name: string, reason: string }>>([]);
   const [extracting, setExtracting] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
   const MAX_FILES = 30;
   const MAX_CHARS_PER_FILE = 40000;
@@ -128,6 +129,7 @@ export default function NewAssessment() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    let createdAssessmentId: string | null = null;
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -146,6 +148,7 @@ export default function NewAssessment() {
         .single();
 
       if (assessmentError) throw assessmentError;
+      createdAssessmentId = assessment.id;
 
       const safeDocuments = uploadedFiles.map((file) => ({
         name: file.name,
@@ -158,90 +161,75 @@ export default function NewAssessment() {
         return;
       }
 
-      // Fire-and-forget: invoke edge function, then poll DB for results
+      // L'analisi procede a tranche: ogni chiamata valuta un gruppo di requisiti e
+      // restituisce l'avanzamento; si prosegue con { continue: true } fino al completamento.
       const supabaseUrl = supabaseHttpUrl;
       const sessionToken = session.access_token;
       const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-
-      // Launch the edge function (don't await response - connection may drop on long analyses)
-      fetch(`${supabaseUrl}/functions/v1/gap-analysis`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${sessionToken}`,
-          'apikey': anonKey,
-        },
-        body: JSON.stringify({
-          assessmentId: assessment.id,
-          userDocuments: safeDocuments,
-          regulations: formData.scope_regulations,
-          language
-        }),
-      }).catch(() => {
-        // Connection may close before response - that's OK, we poll instead
-        console.log('Edge function connection closed, polling for results...');
-      });
-
-      // Poll the database for results (the edge function saves gaps to DB)
-      const maxPollTime = 480000; // 8 minutes max
-      const pollInterval = 3000; // check every 3 seconds
-      const startTime = Date.now();
-      let found = false;
+      const callAnalysis = async (payload: Record<string, unknown>) => {
+        const response = await fetch(`${supabaseUrl}/functions/v1/gap-analysis`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${sessionToken}`,
+            'apikey': anonKey,
+          },
+          body: JSON.stringify({ assessmentId: assessment.id, ...payload }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data?.error || `Errore ${response.status}`);
+        return data as { status: 'in_progress' | 'completed'; progress?: { done: number; total: number }; unreadable_documents?: string[] };
+      };
 
       toast({
-        title: "⏳ Analisi in corso",
-        description: "L'analisi dei documenti è in corso, attendere...",
+        title: "Analisi avviata",
+        description: "Lettura dei documenti e verifica dei requisiti in corso. Non chiudere la pagina.",
       });
 
-      while (Date.now() - startTime < maxPollTime) {
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-
-        // Quick status check first (lightweight query)
-        const { data: updatedAssessment } = await supabase
-          .from('compliance_assessments')
-          .select('overall_compliance_percentage, status')
-          .eq('id', assessment.id)
-          .single();
-
-        if (updatedAssessment && updatedAssessment.status === 'completed') {
-          const { data: gaps } = await supabase
-            .from('identified_gaps')
-            .select('id')
-            .eq('assessment_id', assessment.id);
-
-          found = true;
-          toast({
-            title: "✅ Analisi completata",
-            description: `${gaps?.length || 0} gap identificati - navigazione ai risultati...`,
-          });
-          setTimeout(() => {
-            navigate(`/compliance/assessment/${assessment.id}`);
-          }, 500);
-          break;
-        }
+      let result = await callAnalysis({
+        userDocuments: safeDocuments,
+        regulations: formData.scope_regulations,
+        language,
+      });
+      setProgress(result.progress || null);
+      let guard = 0;
+      while (result.status === 'in_progress' && guard < 60) {
+        guard++;
+        result = await callAnalysis({ continue: true });
+        setProgress(result.progress || null);
       }
 
-      if (!found) {
-        // Don't show error - navigate to assessment page which will show results when ready
+      if (result.status === 'completed') {
+        const { data: gaps } = await supabase
+          .from('identified_gaps')
+          .select('id')
+          .eq('assessment_id', assessment.id);
         toast({
-          title: "⏳ Analisi ancora in corso",
-          description: "L'analisi è ancora in elaborazione. Verrai reindirizzato alla pagina dei risultati.",
+          title: "Analisi completata",
+          description: `${result.progress?.total || 0} requisiti verificati, ${gaps?.length || 0} gap identificati.`,
         });
-        setTimeout(() => {
-          navigate(`/compliance/assessment/${assessment.id}`);
-        }, 1000);
+      } else {
+        toast({
+          title: "Analisi ancora in corso",
+          description: "Puoi seguirne l'avanzamento nella pagina della valutazione.",
+        });
       }
+      navigate(`/compliance/assessment/${assessment.id}`);
 
     } catch (error) {
       console.error('Error:', error);
       const message = error instanceof Error ? error.message : 'Impossibile creare la valutazione';
       toast({
-        title: "Errore",
-        description: message,
+        title: "Errore durante l'analisi",
+        description: `${message}. Se la valutazione è stata creata, puoi riprendere l'analisi dalla sua pagina.`,
         variant: "destructive",
       });
+      if (createdAssessmentId) {
+        setTimeout(() => navigate(`/compliance/assessment/${createdAssessmentId}`), 1500);
+      }
     } finally {
       setLoading(false);
+      setProgress(null);
     }
   };
 
@@ -569,7 +557,7 @@ export default function NewAssessment() {
                 {loading ? (
                   <>
                     <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                    Analisi in corso...
+                    {progress ? `Analisi in corso: ${progress.done} di ${progress.total} requisiti verificati` : 'Analisi in corso...'}
                   </>
                 ) : (
                   'Avvia analisi compliance'
