@@ -2540,6 +2540,7 @@ denoServe(protect(async (req) => {
 
       // 3) Gruppi di requisiti finché resta tempo
       let processedInThisRun = 0;
+      let lastStageMs = 0;
       while (state.pending.length > 0 && Date.now() < deadline && processedInThisRun < MAX_PER_INVOCATION) {
         const groupIds = state.pending.slice(0, GROUP_SIZE);
         const groupRequirements = groupIds.map(id => requirementById.get(id)).filter((r): r is RegulatoryRequirement => !!r);
@@ -2672,21 +2673,23 @@ denoServe(protect(async (req) => {
             };
           });
 
+          const tStage = Date.now();
           const { error: stageError } = await supabase.from('assessment_requirement_checks').upsert(
             newChecks.map(c => ({ assessment_id: assessmentId, requirement_id: c.requirement_id, check_payload: c })),
             { onConflict: 'assessment_id,requirement_id' },
           );
           if (stageError) throw stageError;
+          const stageMs = Date.now() - tStage;
           state.done += newChecks.length;
+          lastStageMs = stageMs;
           processedInThisRun += newChecks.length;
         }
 
         state.pending = state.pending.slice(groupIds.length);
         state.updated_at = new Date().toISOString();
-        console.log(`✓ ${groupRequirements.length} requisiti in ${Date.now() - tGroup}ms (${state.done}/${state.total})`);
-
-        // Avanzamento salvato a ogni gruppo: se la chiamata cade, l'analisi riprende da qui
+        const tSave = Date.now();
         if (state.pending.length > 0) await saveState(supabase, assessmentId, state);
+        console.log(`✓ ${groupRequirements.length} requisiti in ${Date.now() - tGroup}ms (salvataggio esiti ${lastStageMs}ms, stato ${Date.now() - tSave}ms) — ${state.done}/${state.total}`);
       }
     }
 
@@ -2706,6 +2709,7 @@ denoServe(protect(async (req) => {
     // ------------------------------------------------------------
     // Finalizzazione: gap, punteggi, piano d'azione
     // ------------------------------------------------------------
+    const tFinal = Date.now();
     const checks = (await loadStagedChecks(supabase, assessmentId))
       .sort((a, b) => `${a.regulation}|${a.reference}`.localeCompare(`${b.regulation}|${b.reference}`));
 
@@ -2854,6 +2858,7 @@ denoServe(protect(async (req) => {
       await supabase.from('action_plans').insert(actionPlans.slice(i, i + 50));
     }
 
+    console.log(`Finalizzazione in ${Date.now() - tFinal}ms`);
     console.log(`Gap analysis completed: ${insertedGaps.length} gaps (${highCount} high, ${mediumCount} medium, ${lowCount} low), risk=${overallRisk}, compliance=${overallCompliance}%`);
 
     return new Response(JSON.stringify({
