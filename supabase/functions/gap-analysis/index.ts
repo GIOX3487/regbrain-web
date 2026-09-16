@@ -2190,10 +2190,12 @@ async function runWithConcurrency<T>(tasks: Array<() => Promise<T>>, limit: numb
 const BUDGET_MS = 70000;
 // Le funzioni edge hanno anche un limite di tempo CPU: oltre questo numero di requisiti
 // per invocazione conviene restituire l'avanzamento e proseguire con una nuova chiamata.
-const MAX_PER_INVOCATION = 80;
-const GROUP_SIZE = 36;
+// MAX_PER_INVOCATION deve restare un multiplo di GROUP_SIZE: così ogni gruppo è pieno
+// e nessun requisito viene valutato senza il proprio vettore.
+const MAX_PER_INVOCATION = 108;
+const GROUP_SIZE = 54;
 const LLM_BATCH_SIZE = 3;
-const LLM_CONCURRENCY = 12;
+const LLM_CONCURRENCY = 18;
 const EVIDENCE_CHARS = 4200;
 const SECTION_CHARS = 1100;
 
