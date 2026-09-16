@@ -1899,7 +1899,9 @@ export default function AssessmentDetail() {
               <TabsTrigger value="covered">{t.coveredTab} ({coveredChecks.length})</TabsTrigger>
             )}
             {(toVerifyChecks.length > 0 || notApplicableChecks.length > 0) && (
-              <TabsTrigger value="verify">{t.toVerifyTab} ({toVerifyChecks.length})</TabsTrigger>
+              <TabsTrigger value="verify">
+                {t.toVerifyTab} ({toVerifyChecks.length + notApplicableChecks.length})
+              </TabsTrigger>
             )}
             <TabsTrigger value="actions">{t.actionPlanTab} ({actionPlans.length})</TabsTrigger>
             <TabsTrigger value="documents">{t.documentsTab}</TabsTrigger>
@@ -2106,15 +2108,44 @@ export default function AssessmentDetail() {
               <div className="pt-4">
                 <p className="text-sm text-muted-foreground mb-2">{t.notApplicableIntro}</p>
                 <div className="space-y-2">
-                  {notApplicableChecks.map((c) => (
-                    <div key={c.requirement_id} className="rounded-md border p-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="outline">{t.statusNotApplicable}</Badge>
-                        <span className="text-sm font-medium">{c.reference}</span>
-                      </div>
-                      {c.assessment && <p className="text-xs text-muted-foreground mt-1">{c.assessment}</p>}
-                    </div>
-                  ))}
+                  {(() => {
+                    // Quando una normativa intera è esclusa la motivazione è la stessa per decine
+                    // di requisiti: raggrupparli evita un muro di righe identiche.
+                    const groups = new Map<string, RequirementCheck[]>();
+                    for (const c of notApplicableChecks) {
+                      const key = `${c.regulation}|${c.assessment || ''}`;
+                      groups.set(key, [...(groups.get(key) || []), c]);
+                    }
+                    return Array.from(groups.entries()).map(([key, items]) => (
+                      items.length > 3 ? (
+                        <div key={key} className="rounded-md border p-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="outline">{t.statusNotApplicable}</Badge>
+                            <span className="text-sm font-medium">
+                              {items[0].regulation}: {items.length} requisiti
+                            </span>
+                          </div>
+                          {items[0].assessment && (
+                            <p className="text-xs text-muted-foreground mt-1">{items[0].assessment}</p>
+                          )}
+                          <p className="text-xs text-muted-foreground mt-2">
+                            {items.slice(0, 12).map(i => i.reference).join(' · ')}
+                            {items.length > 12 ? ` · e altri ${items.length - 12}` : ''}
+                          </p>
+                        </div>
+                      ) : (
+                        items.map(c => (
+                          <div key={c.requirement_id} className="rounded-md border p-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge variant="outline">{t.statusNotApplicable}</Badge>
+                              <span className="text-sm font-medium">{c.reference}</span>
+                            </div>
+                            {c.assessment && <p className="text-xs text-muted-foreground mt-1">{c.assessment}</p>}
+                          </div>
+                        ))
+                      )
+                    ));
+                  })()}
                 </div>
               </div>
             )}
