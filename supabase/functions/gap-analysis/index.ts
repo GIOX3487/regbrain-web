@@ -1913,6 +1913,7 @@ interface RequirementCheck {
   severity: string;
   remediation_effort: string;
   conditional: boolean;
+  applicability_note: string | null;
   status: CheckStatus;
   risk_level: RiskProfile | null;
   assessment: string;
@@ -2494,6 +2495,7 @@ denoServe(protect(async (req) => {
           severity: req.risk_level,
           remediation_effort: req.remediation_effort,
           conditional: !!req.conditional,
+          applicability_note: req.applicability_note_it || null,
           keyword_coverage: Math.round(kw.ratio * 100) / 100,
         };
 

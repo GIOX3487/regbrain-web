@@ -56,6 +56,7 @@ interface RequirementCheck {
   severity: string;
   remediation_effort: string;
   conditional: boolean;
+  applicability_note?: string | null;
   status: 'covered' | 'partial' | 'missing' | 'to_verify' | 'not_applicable';
   risk_level: 'high' | 'medium' | 'low' | null;
   assessment: string;
@@ -273,6 +274,7 @@ export default function AssessmentDetail() {
       noToVerify: 'Nessun requisito da verificare.',
       analysisInProgress: 'Analisi in corso: la pagina si aggiorna da sola appena i risultati sono pronti.',
       resumeAnalysis: 'Riprendi l\'analisi',
+      appliesWhen: 'Si applica se',
       suggestedActions: 'Azioni suggerite'
     },
     en: {
@@ -370,6 +372,7 @@ export default function AssessmentDetail() {
       noToVerify: 'Nothing to verify.',
       analysisInProgress: 'Analysis in progress: this page refreshes automatically when results are ready.',
       resumeAnalysis: 'Resume analysis',
+      appliesWhen: 'Applies when',
       suggestedActions: 'Suggested actions'
     },
     es: {
@@ -467,6 +470,7 @@ export default function AssessmentDetail() {
       noToVerify: 'Nada por verificar.',
       analysisInProgress: 'Análisis en curso: la página se actualiza sola cuando los resultados están listos.',
       resumeAnalysis: 'Reanudar el análisis',
+      appliesWhen: 'Se aplica si',
       suggestedActions: 'Acciones sugeridas'
     },
     fr: {
@@ -564,6 +568,7 @@ export default function AssessmentDetail() {
       noToVerify: 'Rien à vérifier.',
       analysisInProgress: 'Analyse en cours : la page se met à jour automatiquement dès que les résultats sont prêts.',
       resumeAnalysis: 'Reprendre l\'analyse',
+      appliesWhen: "S'applique si",
       suggestedActions: 'Actions suggérées'
     },
     de: {
@@ -661,6 +666,7 @@ export default function AssessmentDetail() {
       noToVerify: 'Nichts zu prüfen.',
       analysisInProgress: 'Analyse läuft: die Seite aktualisiert sich automatisch, sobald Ergebnisse vorliegen.',
       resumeAnalysis: 'Analyse fortsetzen',
+      appliesWhen: 'Gilt wenn',
       suggestedActions: 'Vorgeschlagene Maßnahmen'
     }
   };
@@ -2092,6 +2098,11 @@ export default function AssessmentDetail() {
                     <span className="text-sm text-muted-foreground">{c.reference}</span>
                   </div>
                   <CardTitle className="text-base">{c.description}</CardTitle>
+                  {c.applicability_note && (
+                    <CardDescription className="mt-1">
+                      <span className="font-medium text-foreground">{t.appliesWhen}:</span> {c.applicability_note}
+                    </CardDescription>
+                  )}
                   {c.assessment && <CardDescription className="mt-1">{c.assessment}</CardDescription>}
                 </CardHeader>
                 {c.recommended_actions?.length > 0 && (
