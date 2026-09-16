@@ -2384,9 +2384,13 @@ function getDocumentSchema(type: string, mode: string = 'standard'): any {
         },
         conclusioni: { type: 'string' },
         raccomandazioni_top3: { type: 'array', items: { type: 'string' } },
+        dichiarazioni_applicabilita: {
+          type: 'string',
+          description: 'Le dichiarazioni rese dall\'organizzazione sull\'applicabilità degli obblighi, riportate alla lettera, con la precisazione che non sono state verificate documentalmente e che su di esse si fonda l\'esclusione di alcuni requisiti. Se non ne sono state rese, dirlo e spiegare come sono stati trattati gli obblighi condizionali.',
+        },
         limiti_analisi: { type: 'string' }
       },
-      required: ['title', 'executive_summary', 'risultati_per_normativa', 'conclusioni']
+      required: ['title', 'executive_summary', 'risultati_per_normativa', 'conclusioni', 'dichiarazioni_applicabilita']
     };
   }
 
@@ -2731,6 +2735,57 @@ ${toVerifyChecks.slice(0, 60).map((c: any) => `- ${c.reference}: ${String(c.asse
 ${notApplicableChecks.slice(0, 40).map((c: any) => `- ${c.reference}: ${String(c.assessment || '').substring(0, 200)}`).join('\n') || '- nessuno'}${notApplicableChecks.length > 40 ? `\n- e altri ${notApplicableChecks.length - 40} requisiti non applicabili` : ''}
 ` : '';
 
+  // Dichiarazioni di applicabilità: un lettore del report deve poter vedere su quali
+  // affermazioni dell'organizzazione si fonda l'esclusione di un obbligo.
+  const declaredProfile = assessment.applicability_profile && typeof assessment.applicability_profile === 'object'
+    ? assessment.applicability_profile
+    : null;
+  const declaredAnswers: Record<string, string> = declaredProfile?.answers || {};
+  const DECLARATION_LABELS: Record<string, string> = {
+    ai_provider: 'fornitore di sistemi di IA',
+    ai_deployer: 'deployer di sistemi di IA',
+    ai_importer_distributor: 'importatore o distributore di sistemi di IA',
+    ai_high_risk: 'sistemi di IA ad alto rischio',
+    ai_gpai: 'modelli di IA per finalità generali',
+    ai_transparency: 'sistemi che interagiscono con le persone o generano contenuti sintetici',
+    cra_manufacturer: 'fabbricante di prodotti con elementi digitali',
+    cra_importer_distributor: 'importatore o distributore di prodotti con elementi digitali',
+    cra_open_source: 'gestore di software open source',
+    da_data_holder: 'titolare dei dati o fabbricante di prodotti connessi',
+    da_cloud_provider: 'fornitore di servizi cloud o edge',
+    da_recipient: 'utente o destinatario di dati',
+    dora_financial_entity: 'entità finanziaria',
+    dora_ctpp: 'fornitore terzo critico di servizi TIC',
+    dora_not_micro: 'entità finanziaria diversa dalle microimprese',
+    nis2_entity: 'soggetto essenziale o importante ai fini NIS2',
+    nis2_digital_provider: 'fornitore di servizi o infrastrutture digitali',
+    gdpr_transfers: 'trasferimenti di dati fuori dall\'Unione europea',
+    gdpr_special_categories: 'trattamento di categorie particolari di dati o di dati giudiziari',
+    gdpr_profiling: 'profilazione o decisioni automatizzate',
+    org_religious: 'chiesa, associazione o comunità religiosa',
+    org_outside_eu: 'soggetto stabilito fuori dall\'Unione europea',
+  };
+  const declLine = (value: string) => Object.entries(declaredAnswers)
+    .filter(([key, v]) => v === value && DECLARATION_LABELS[key])
+    .map(([key]) => DECLARATION_LABELS[key]);
+  const declaredYes = declLine('si');
+  const declaredNo = declLine('no');
+  const declaredUnknown = declLine('non_so');
+  const declarationsSection = declaredProfile ? `
+
+## DICHIARAZIONI DI APPLICABILITÀ RESE DALL'ORGANIZZAZIONE
+${declaredProfile.size ? `- Dimensione dichiarata: ${declaredProfile.size}` : ''}
+${declaredYes.length > 0 ? `- L'organizzazione ha dichiarato di rientrare fra: ${declaredYes.join('; ')}` : ''}
+${declaredNo.length > 0 ? `- L'organizzazione ha dichiarato di NON rientrare fra: ${declaredNo.join('; ')}` : ''}
+${declaredUnknown.length > 0 ? `- Condizioni sulle quali l'organizzazione non si è pronunciata: ${declaredUnknown.join('; ')}` : ''}
+
+REGOLA: queste sono dichiarazioni dell'organizzazione, non verificate documentalmente. Il report deve riportarle in una sezione dedicata e deve precisare, nei limiti dell'analisi, che l'esclusione di alcuni obblighi si fonda su di esse.
+` : `
+
+## DICHIARAZIONI DI APPLICABILITÀ
+L'organizzazione non ha dichiarato il proprio profilo di applicabilità prima dell'analisi. Gli obblighi condizionali la cui applicabilità non risulta dai documenti sono stati classificati come "da verificare" e non come gap: il report deve dirlo esplicitamente nei limiti dell'analisi.
+`;
+
   const userDocsSection = userDocumentsSummary ? `
 
 ## DOCUMENTI AZIENDALI CARICATI DALL'UTENTE
@@ -2781,7 +2836,7 @@ REGOLE PER QUESTA ORIGINE:
 - Data Completamento: ${assessment.completed_at || 'In corso'}
 
 ## GAP IDENTIFICATI (${allGaps.length} totali)
-${gapsSection}${checksSection}`}
+${gapsSection}${checksSection}${declarationsSection}`}
 ${userDocsSection}${gapDocEvidence}
 ${conversation ? `## ${assessment._source === 'chat' ? 'CONVERSAZIONE CON L\'UTENTE (fonte primaria)' : 'CONTESTO AGGIUNTIVO'}:\n${conversation}\n` : ''}`;
 

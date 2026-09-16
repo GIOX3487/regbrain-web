@@ -11,6 +11,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Upload, Loader2, Info } from "lucide-react";
 import { extractDocumentText, DocumentExtractionError } from "@/lib/client-document-extract";
+import {
+  ORG_SIZES,
+  questionsForRegulations,
+  buildAnswers,
+  countAnswered,
+} from "@/lib/applicability-questions";
 
 const AVAILABLE_REGULATIONS = [
   { id: 'GDPR', name: 'GDPR', description: 'Regolamento generale sulla protezione dei dati (UE 2016/679)' },
@@ -41,6 +47,11 @@ export default function NewAssessment() {
   const [unreadableFiles, setUnreadableFiles] = useState<Array<{ name: string, reason: string }>>([]);
   const [extracting, setExtracting] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  // Dichiarazioni di applicabilità: indici delle opzioni scelte, per ogni domanda.
+  const [applicability, setApplicability] = useState<Record<string, number[]>>({});
+  const [orgSize, setOrgSize] = useState('');
+  const applicabilityQuestions = questionsForRegulations(formData.scope_regulations);
+  const answeredCount = countAnswered(applicabilityQuestions, applicability);
 
   const MAX_FILES = 30;
   const MAX_CHARS_PER_FILE = 40000;
@@ -209,10 +220,15 @@ export default function NewAssessment() {
       }, 3000);
 
       try {
+        const declaredAnswers = buildAnswers(applicabilityQuestions, applicability);
+        const hasDeclarations = Object.keys(declaredAnswers).length > 0 || !!orgSize;
         let result = await callAnalysis({
           userDocuments: safeDocuments,
           regulations: formData.scope_regulations,
           language,
+          ...(hasDeclarations
+            ? { applicabilityProfile: { answers: declaredAnswers, size: orgSize || undefined } }
+            : {}),
         });
         setProgress(result.progress || null);
         let guard = 0;
@@ -482,6 +498,97 @@ export default function NewAssessment() {
                   </p>
                 )}
               </div>
+
+              {formData.scope_regulations.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <Label>Applicabilità degli obblighi (facoltativo)</Label>
+                    <span className="text-xs text-muted-foreground">
+                      {answeredCount} di {applicabilityQuestions.length} risposte
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Molti obblighi si applicano solo a certi soggetti: un fornitore di sistemi di IA, un
+                    fabbricante, un'entità finanziaria. Nessun documento aziendale lo dichiara, quindi senza
+                    queste risposte l'analisi può solo segnalarli come da verificare. Rispondendo, gli obblighi
+                    che non vi riguardano vengono esclusi e quelli che vi riguardano diventano gap veri.
+                    Puoi saltare: l'analisi verificherà tutto, con una nota nel report.
+                  </p>
+
+                  <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
+                    <div className="space-y-2">
+                      <Label htmlFor="org-size" className="text-sm font-medium">
+                        Dimensione dell'organizzazione
+                      </Label>
+                      <Select value={orgSize} onValueChange={setOrgSize}>
+                        <SelectTrigger id="org-size">
+                          <SelectValue placeholder="Seleziona" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ORG_SIZES.map(size => (
+                            <SelectItem key={size} value={size}>{size}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {applicabilityQuestions.map(question => {
+                      const picked = applicability[question.id] || [];
+                      return (
+                        <div key={question.id} className="space-y-2 pt-3 border-t first:border-t-0 first:pt-0">
+                          <div className="space-y-1">
+                            <p className="text-sm font-medium">
+                              {question.question}
+                              {question.regulation && (
+                                <span className="ml-2 text-xs font-normal text-muted-foreground">
+                                  {question.regulation}
+                                </span>
+                              )}
+                            </p>
+                            {question.help && (
+                              <p className="text-xs text-muted-foreground">{question.help}</p>
+                            )}
+                          </div>
+                          <div className="space-y-2">
+                            {question.choices.map((choice, index) => {
+                              const checked = picked.includes(index);
+                              const inputId = `${question.id}-${index}`;
+                              return (
+                                <div key={inputId} className="flex items-start space-x-3">
+                                  <Checkbox
+                                    id={inputId}
+                                    checked={checked}
+                                    onCheckedChange={(value) => {
+                                      setApplicability(prev => {
+                                        const current = prev[question.id] || [];
+                                        if (!value) {
+                                          return { ...prev, [question.id]: current.filter(i => i !== index) };
+                                        }
+                                        // Le opzioni "nessuno" e "non lo so" escludono le altre,
+                                        // e nelle domande a risposta singola la scelta sostituisce la precedente.
+                                        const exclusive = question.kind === 'single' || choice.none || choice.unknown;
+                                        if (exclusive) return { ...prev, [question.id]: [index] };
+                                        const kept = current.filter(i => {
+                                          const other = question.choices[i];
+                                          return other && !other.none && !other.unknown;
+                                        });
+                                        return { ...prev, [question.id]: [...kept, index] };
+                                      });
+                                    }}
+                                  />
+                                  <label htmlFor={inputId} className="text-sm leading-tight cursor-pointer">
+                                    {choice.label}
+                                  </label>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label>Carica Documenti aziendali per Gap Analysis</Label>

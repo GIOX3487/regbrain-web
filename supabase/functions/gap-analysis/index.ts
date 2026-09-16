@@ -1996,6 +1996,114 @@ function quoteIsVerified(quote: string, corpusNormalized: string): boolean {
   return segments.every(s => corpusNormalized.includes(s));
 }
 
+// ------------------------------------------------------------
+// Profilo di applicabilità dichiarato dall'organizzazione all'avvio dell'analisi.
+// Serve per gli obblighi che dipendono da chi è l'organizzazione (fornitore di IA,
+// fabbricante, entità finanziaria) e non da cosa c'è scritto nei suoi documenti:
+// nessun documento aziendale dichiara queste cose, quindi senza risposta il requisito
+// resterebbe per sempre "da verificare".
+type ApplicabilityAnswer = 'si' | 'no' | 'non_so';
+interface ApplicabilityProfile {
+  answers?: Record<string, ApplicabilityAnswer>;
+  size?: string;
+  declared_at?: string;
+}
+
+// Ogni voce lega una condizione del catalogo a una chiave del profilo. Le chiavi della
+// stessa dimensione sono alternative fra loro (basta che una ricorra); dimensioni diverse
+// devono ricorrere tutte.
+const APPLICABILITY_RULES: Array<{ regulation: string; dimension: string; key: string; pattern: RegExp; label_it: string }> = [
+  { regulation: 'AI Act', dimension: 'ai_role', key: 'ai_provider', pattern: /fornitor/, label_it: 'fornitore di sistemi di IA' },
+  { regulation: 'AI Act', dimension: 'ai_role', key: 'ai_deployer', pattern: /deployer/, label_it: 'deployer di sistemi di IA' },
+  { regulation: 'AI Act', dimension: 'ai_role', key: 'ai_importer_distributor', pattern: /importator|distributor|rappresentante autorizzato/, label_it: 'importatore o distributore di sistemi di IA' },
+  { regulation: 'AI Act', dimension: 'ai_feature', key: 'ai_high_risk', pattern: /alto rischio/, label_it: 'sistemi di IA ad alto rischio' },
+  { regulation: 'AI Act', dimension: 'ai_feature', key: 'ai_gpai', pattern: /gpai|finalità generali/, label_it: 'modelli di IA per finalità generali' },
+  { regulation: 'AI Act', dimension: 'ai_feature', key: 'ai_transparency', pattern: /sintetic|interagire direttamente|riconoscimento delle emozioni|categorizzazione biometrica/, label_it: 'sistemi che interagiscono con le persone o generano contenuti sintetici' },
+  { regulation: 'CRA', dimension: 'cra_role', key: 'cra_manufacturer', pattern: /fabbricant/, label_it: 'fabbricante di prodotti con elementi digitali' },
+  { regulation: 'CRA', dimension: 'cra_role', key: 'cra_importer_distributor', pattern: /importator|distribu/, label_it: 'importatore o distributore di prodotti con elementi digitali' },
+  { regulation: 'CRA', dimension: 'cra_role', key: 'cra_open_source', pattern: /open source/, label_it: 'gestore di software open source' },
+  { regulation: 'Data Act', dimension: 'da_role', key: 'da_data_holder', pattern: /titolar[ei] d[ei]i? dati|prodott[oi] conness|servizi correlati|fabbricant/, label_it: 'titolare dei dati o fabbricante di prodotti connessi' },
+  { regulation: 'Data Act', dimension: 'da_role', key: 'da_cloud_provider', pattern: /servizi di trattamento d(ei )?dati|cloud|edge|saas|paas|iaas/, label_it: 'fornitore di servizi cloud o edge' },
+  { regulation: 'Data Act', dimension: 'da_role', key: 'da_recipient', pattern: /destinatari d?e?i? ?dati|utenti di prodotti|data recipients/, label_it: 'utente o destinatario di dati' },
+  { regulation: 'DORA', dimension: 'dora_subject', key: 'dora_financial_entity', pattern: /entità finanziar/, label_it: 'entità finanziaria' },
+  { regulation: 'DORA', dimension: 'dora_subject', key: 'dora_ctpp', pattern: /ctpp|fornitor[ei] terz[oi] critic/, label_it: 'fornitore terzo critico di servizi TIC' },
+  { regulation: 'DORA', dimension: 'dora_size', key: 'dora_not_micro', pattern: /microimpres/, label_it: 'entità finanziaria diversa dalle microimprese' },
+  { regulation: 'NIS2', dimension: 'nis2_subject', key: 'nis2_entity', pattern: /soggett[oi] essenzial|soggett[oi] important/, label_it: 'soggetto essenziale o importante' },
+  { regulation: 'NIS2', dimension: 'nis2_subject', key: 'nis2_digital_provider', pattern: /dns|tld|nomi di dominio|cloud|data center|cdn|msp|mssp|marketplace/, label_it: 'fornitore di servizi digitali o infrastrutture digitali' },
+  { regulation: 'GDPR', dimension: 'gdpr_transfers', key: 'gdpr_transfers', pattern: /paes[ei] terz|trasferiment|organizzazioni internazionali/, label_it: 'trasferimenti di dati fuori dall\'Unione europea' },
+  { regulation: 'GDPR', dimension: 'gdpr_special', key: 'gdpr_special_categories', pattern: /categorie particolari|condanne penali/, label_it: 'trattamento di categorie particolari di dati o di dati giudiziari' },
+  { regulation: 'GDPR', dimension: 'gdpr_profiling', key: 'gdpr_profiling', pattern: /profilazion|decision[ei] automatizzat/, label_it: 'profilazione o decisioni automatizzate' },
+  { regulation: 'GDPR', dimension: 'org_religious', key: 'org_religious', pattern: /chiese|comunità religios|associazioni religios/, label_it: 'chiesa, associazione o comunità religiosa' },
+  { regulation: 'GDPR', dimension: 'org_outside_eu', key: 'org_outside_eu', pattern: /stabilit[ei] fuori dall|fuori dall'unione|non stabilit[ei] nell'unione/, label_it: 'organizzazione stabilita fuori dall\'Unione europea' },
+];
+
+interface ApplicabilityVerdict {
+  status: 'applicable' | 'not_applicable' | 'unknown';
+  reason_it: string;
+}
+
+function applicabilityVerdict(req: RegulatoryRequirement, profile: ApplicabilityProfile | null): ApplicabilityVerdict | null {
+  if (!profile?.answers || !req.conditional) return null;
+  const haystack = `${req.applicability_note_it || ''} § ${req.description_it || ''}`.toLowerCase();
+  const byDimension = new Map<string, Array<{ key: string; label_it: string }>>();
+  for (const rule of APPLICABILITY_RULES) {
+    if (rule.regulation.toLowerCase() !== req.regulation.toLowerCase()) continue;
+    if (!rule.pattern.test(haystack)) continue;
+    if (!(rule.key in profile.answers)) continue;
+    const list = byDimension.get(rule.dimension) || [];
+    list.push({ key: rule.key, label_it: rule.label_it });
+    byDimension.set(rule.dimension, list);
+  }
+  if (byDimension.size === 0) return null;
+
+  const escluse: string[] = [];
+  let incerta = false;
+  for (const [, keys] of byDimension) {
+    const values = keys.map(k => profile.answers![k.key]);
+    if (values.some(v => v === 'si')) continue;
+    if (values.every(v => v === 'no')) {
+      escluse.push(keys.map(k => k.label_it).join(' o '));
+      continue;
+    }
+    incerta = true;
+  }
+  if (escluse.length > 0) {
+    return {
+      status: 'not_applicable',
+      reason_it: `Requisito non applicabile in base a quanto dichiarato all'avvio dell'analisi: l'organizzazione non rientra fra ${escluse.join('; ')}.`,
+    };
+  }
+  if (incerta) {
+    return {
+      status: 'unknown',
+      reason_it: 'All\'avvio dell\'analisi non è stato dichiarato se questa condizione ricorre: il requisito resta da verificare.',
+    };
+  }
+  return {
+    status: 'applicable',
+    reason_it: 'Condizione di applicabilità dichiarata come ricorrente all\'avvio dell\'analisi.',
+  };
+}
+
+function profileFactsForPrompt(profile: ApplicabilityProfile | null): string {
+  if (!profile?.answers) return '';
+  const labelByKey = new Map(APPLICABILITY_RULES.map(r => [r.key, r.label_it]));
+  const si: string[] = [];
+  const no: string[] = [];
+  for (const [key, value] of Object.entries(profile.answers)) {
+    const label = labelByKey.get(key);
+    if (!label) continue;
+    if (value === 'si' && !si.includes(label)) si.push(label);
+    if (value === 'no' && !no.includes(label)) no.push(label);
+  }
+  const righe: string[] = [];
+  if (profile.size) righe.push(`Dimensione dichiarata: ${profile.size}.`);
+  if (si.length > 0) righe.push(`L'organizzazione ha dichiarato di rientrare fra: ${si.join('; ')}.`);
+  if (no.length > 0) righe.push(`L'organizzazione ha dichiarato di NON rientrare fra: ${no.join('; ')}.`);
+  if (righe.length === 0) return '';
+  return `Dichiarazioni rese dall'organizzazione all'avvio dell'analisi (valgono come i fatti scritti nei documenti, ma riguardano solo l'applicabilità degli obblighi, mai la loro attuazione):\n${righe.join('\n')}`;
+}
+
 // Frasi che non provano nulla: autodichiarazioni di conformità e impegni per il futuro.
 // Una citazione di questo tipo non può sostenere uno status diverso da "missing".
 const NON_EVIDENCE_PATTERNS: RegExp[] = [
@@ -2080,6 +2188,7 @@ async function assessRequirementBatchWithLLM(
   language: string,
   profile: any,
   documentNames: string[],
+  declaredFacts = '',
 ): Promise<Map<string, any>> {
   const isIt = language === 'it';
   const systemPrompt = `Sei un auditor di protezione dei dati e conformità normativa. Valuti se la documentazione di un'organizzazione soddisfa requisiti normativi specifici basandoti ESCLUSIVAMENTE sugli estratti forniti.
@@ -2128,7 +2237,7 @@ ${evidenceText}`;
   });
 
   const userMessage = `Documenti caricati dall'organizzazione (${documentNames.length}): ${documentNames.join(' | ')}
-
+${declaredFacts ? `\n${declaredFacts}\n` : ''}
 ${userParts.join('\n\n==========\n\n')}`;
 
   const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -2322,7 +2431,7 @@ denoServe(protect(async (req) => {
 
     const { data: assessment } = await supabase
       .from('compliance_assessments')
-      .select('id, annual_revenue_eur, scope_regulations, analysis_progress, status')
+      .select('id, annual_revenue_eur, scope_regulations, analysis_progress, status, applicability_profile')
       .eq('id', assessmentId).eq('user_id', user.id).maybeSingle();
     if (!assessment) return errorResponse(404, 'Assessment not found');
 
@@ -2361,6 +2470,20 @@ denoServe(protect(async (req) => {
       }
       if (!Array.isArray(regulations) || regulations.length === 0) {
         return errorResponse(400, 'regulations must be a non-empty array');
+      }
+      if (body.applicabilityProfile && typeof body.applicabilityProfile === 'object') {
+        const raw = body.applicabilityProfile as ApplicabilityProfile;
+        const answers: Record<string, ApplicabilityAnswer> = {};
+        for (const [k, v] of Object.entries(raw.answers || {})) {
+          if (v === 'si' || v === 'no' || v === 'non_so') answers[String(k).substring(0, 60)] = v;
+        }
+        const cleaned: ApplicabilityProfile = {
+          answers,
+          size: typeof raw.size === 'string' ? raw.size.substring(0, 120) : undefined,
+          declared_at: new Date().toISOString(),
+        };
+        await supabase.from('compliance_assessments').update({ applicability_profile: cleaned }).eq('id', assessmentId);
+        assessment.applicability_profile = cleaned;
       }
       normalizedLanguage = canonicalizeString(language || 'it').toLowerCase() || 'it';
       normalizedRegulations = [...new Set(regulations.map((r: string) => canonicalizeString(r)))]
@@ -2420,9 +2543,13 @@ denoServe(protect(async (req) => {
     // ------------------------------------------------------------
     // Cache deterministica (stessi documenti, normative, profilo => stesso esito)
     // ------------------------------------------------------------
+    const applicabilityProfile = (assessment?.applicability_profile || null) as ApplicabilityProfile | null;
+    // Le dichiarazioni di applicabilità cambiano l'esito: entrano nella chiave della cache,
+    // altrimenti un secondo profilo sugli stessi documenti riuserebbe il risultato del primo.
     const cacheFingerprint = state?.cache_key || await generateCacheFingerprint(
       normalizedRegulations, normalizedDocuments, normalizedLanguage, profile, assessment?.annual_revenue_eur,
       applicableRequirements.map(r => r.id),
+      applicabilityProfile,
     );
 
     if (!state) {
@@ -2482,6 +2609,53 @@ denoServe(protect(async (req) => {
         console.warn(`${unresolved.length} requisiti non presenti nel catalogo, esclusi dal conteggio: ${unresolved.slice(0, 10).join(', ')}`);
         state.pending = state.pending.filter(id => requirementById.has(id));
         state.total = Math.max(state.done + state.pending.length, state.done);
+      }
+    }
+
+    // Obblighi esclusi dalle dichiarazioni rese all'avvio: si risolvono senza leggere i documenti
+    // e senza interrogare il modello, quindi escono subito dalla coda.
+    if (state.pending.length > 0 && applicabilityProfile?.answers) {
+      const risolti: RequirementCheck[] = [];
+      for (const id of state.pending) {
+        const req = requirementById.get(id);
+        if (!req) continue;
+        const verdict = applicabilityVerdict(req, applicabilityProfile);
+        if (verdict?.status !== 'not_applicable') continue;
+        risolti.push({
+          requirement_id: req.id,
+          regulation: req.regulation,
+          reference: req.reference,
+          description: isIt ? req.description_it : req.description_en,
+          severity: req.risk_level,
+          remediation_effort: req.remediation_effort,
+          conditional: true,
+          applicability_note: req.applicability_note_it || null,
+          status: 'not_applicable',
+          risk_level: null,
+          assessment: verdict.reason_it,
+          evidence: [],
+          missing_elements: [],
+          recommended_actions: [],
+          confidence: null,
+          applicability: 'no',
+          method: 'llm_evidence',
+          keyword_coverage: 0,
+        });
+      }
+      if (risolti.length > 0) {
+        for (let i = 0; i < risolti.length; i += 100) {
+          const { error } = await supabase.from('assessment_requirement_checks').upsert(
+            risolti.slice(i, i + 100).map(c => ({ assessment_id: assessmentId, requirement_id: c.requirement_id, check_payload: c })),
+            { onConflict: 'assessment_id,requirement_id' },
+          );
+          if (error) throw error;
+        }
+        const esclusi = new Set(risolti.map(c => c.requirement_id));
+        state.pending = state.pending.filter(id => !esclusi.has(id));
+        state.done += risolti.length;
+        state.updated_at = new Date().toISOString();
+        await saveState(supabase, assessmentId, state);
+        console.log(`🚫 ${risolti.length} requisiti esclusi dalle dichiarazioni di applicabilità, ${state.pending.length} restano da valutare`);
       }
     }
 
@@ -2588,6 +2762,7 @@ denoServe(protect(async (req) => {
       }
 
       // 3) Gruppi di requisiti finché resta tempo
+      const declaredFacts = profileFactsForPrompt(applicabilityProfile);
       let processedInThisRun = 0;
       let lastStageMs = 0;
       while (state.pending.length > 0 && Date.now() < deadline && processedInThisRun < MAX_PER_INVOCATION) {
@@ -2621,7 +2796,7 @@ denoServe(protect(async (req) => {
             const results = await runWithConcurrency(batches.map((batch) => async () => {
               for (let attempt = 1; attempt <= 3; attempt++) {
                 try {
-                  const map = await assessRequirementBatchWithLLM(aiKey, batch, normalizedLanguage, profile, documentNames);
+                  const map = await assessRequirementBatchWithLLM(aiKey, batch, normalizedLanguage, profile, documentNames, declaredFacts);
                   if (map.size > 0) return map;
                   console.warn(`LLM batch returned no checks (attempt ${attempt})`);
                 } catch (e) {
@@ -2663,7 +2838,15 @@ denoServe(protect(async (req) => {
                 .filter(e => quoteIsSubstantive(e.quote))
                 .slice(0, 5);
               const declaredOnly = rawEvidence.length > 0 && evidence.length === 0;
-              const applicability = typeof llm.applicability === 'string' ? llm.applicability.toLowerCase() : '';
+              // Una condizione dichiarata all'avvio vale più della deduzione del modello:
+              // se l'organizzazione ha detto che ricorre, il requisito è applicabile e la sua
+              // assenza è un gap vero, non una cosa da verificare.
+              const verdict = applicabilityVerdict(req, applicabilityProfile);
+              const applicability = verdict?.status === 'applicable'
+                ? 'si'
+                : verdict?.status === 'unknown'
+                ? 'non_determinabile'
+                : typeof llm.applicability === 'string' ? llm.applicability.toLowerCase() : '';
               const missingElements: string[] = (Array.isArray(llm.missing_elements) ? llm.missing_elements : [])
                 .filter((m: any) => typeof m === 'string' && m.trim()).map((m: string) => m.trim().substring(0, 300)).slice(0, 8);
               let actions: string[] = (Array.isArray(llm.recommended_actions) ? llm.recommended_actions : [])
@@ -2693,6 +2876,11 @@ denoServe(protect(async (req) => {
               // altrimenti finisce tra i requisiti da verificare, non tra quelli mancanti.
               if (req.conditional && (status === 'missing' || status === 'partial') && applicability !== 'si') {
                 if (evidence.length === 0 || applicability === 'non_determinabile') status = 'to_verify';
+              }
+              // Su un gap l'utente deve poter vedere perché l'obbligo lo riguarda.
+              if (verdict?.status === 'applicable' && (status === 'missing' || status === 'partial')
+                  && !assessmentText.includes('all\'avvio')) {
+                assessmentText = `${assessmentText} ${verdict.reason_it}`.trim().substring(0, 1200);
               }
 
               if (actions.length === 0 && (status === 'missing' || status === 'partial')) {
@@ -3148,10 +3336,12 @@ async function generateCacheFingerprint(
   profile: any,
   annualRevenue: number | null | undefined,
   requirementIds: string[] = [],
+  applicabilityProfile: ApplicabilityProfile | null = null,
 ): Promise<string> {
   const canonicalInput = JSON.stringify({
     v: CHECKS_VERSION,
     q: [...requirementIds].sort(),
+    a: Object.entries(applicabilityProfile?.answers || {}).sort(([x], [y]) => x.localeCompare(y)),
     r: [...regulations].map(canonicalizeString).filter(Boolean).sort((a, b) => a.localeCompare(b)),
     l: canonicalizeString(language).toLowerCase() || 'it',
     p: {

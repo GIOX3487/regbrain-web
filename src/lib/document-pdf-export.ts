@@ -1423,6 +1423,11 @@ function exportGapReport(doc: jsPDF, content: any) {
       y = writeWrapped(doc, `${i + 1}. ${stripMarkdown(r)}`, MARGIN_LEFT + 3, y, SAFE_WIDTH - 3);
     });
   }
+  if (content.dichiarazioni_applicabilita) {
+    y += 5;
+    y = writeSubTitle(doc, "Dichiarazioni di applicabilità", y);
+    y = writeWrapped(doc, stripMarkdown(content.dichiarazioni_applicabilita), MARGIN_LEFT, y, SAFE_WIDTH);
+  }
   y += 5;
   doc.setFontSize(8);
   doc.setTextColor(100, 100, 100);
