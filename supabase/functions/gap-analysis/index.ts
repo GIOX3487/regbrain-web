@@ -2269,12 +2269,11 @@ function mapDbRequirement(dbReq: any): RegulatoryRequirement {
 async function loadApplicableRequirements(supabase: any, regulations: string[]): Promise<RegulatoryRequirement[]> {
   const result: RegulatoryRequirement[] = [];
   let dbRows: any[] = [];
-  try {
-    const { data } = await supabase.from('regulatory_requirements').select('*').eq('active', true);
-    dbRows = data || [];
-  } catch (e) {
-    console.warn('Could not fetch database catalog:', e);
-  }
+  // Il client Supabase non solleva eccezioni sugli errori di query: senza questo controllo
+  // un errore transitorio passerebbe per "catalogo vuoto" e l'analisi userebbe l'elenco ridotto.
+  const { data, error } = await supabase.from('regulatory_requirements').select('*').eq('active', true);
+  if (error) throw error;
+  dbRows = data || [];
   for (const reg of regulations) {
     const fromDb = dbRows.filter(r => String(r.regulation).toLowerCase() === reg.toLowerCase());
     if (fromDb.length > 0) {
@@ -2468,6 +2467,22 @@ denoServe(protect(async (req) => {
     // solo se il budget si esaurisce prima della fine.
     const deadline = Date.now() + BUDGET_MS;
 
+    // I requisiti ancora in coda devono esistere nel catalogo caricato in questa invocazione.
+    // Se il catalogo non si carica (errore transitorio sul database) l'analisi va interrotta,
+    // non portata a termine su un elenco svuotato: chiuderla darebbe una percentuale falsa.
+    if (state.pending.length > 0) {
+      const unresolved = state.pending.filter(id => !requirementById.has(id));
+      if (unresolved.length === state.pending.length) {
+        console.error(`Catalogo non disponibile: nessuno dei ${state.pending.length} requisiti in coda è stato trovato`);
+        return errorResponse(503, 'Catalogo dei requisiti non disponibile in questo momento: riprovare tra qualche istante');
+      }
+      if (unresolved.length > 0) {
+        console.warn(`${unresolved.length} requisiti non presenti nel catalogo, esclusi dal conteggio: ${unresolved.slice(0, 10).join(', ')}`);
+        state.pending = state.pending.filter(id => requirementById.has(id));
+        state.total = Math.max(state.done + state.pending.length, state.done);
+      }
+    }
+
     if (state.pending.length > 0) {
       // Il nome del file non entra nel corpus: un documento chiamato "Registro dei trattamenti"
       // non deve produrre corrispondenze di parole chiave che il contenuto non giustifica.
@@ -2574,7 +2589,11 @@ denoServe(protect(async (req) => {
       let processedInThisRun = 0;
       let lastStageMs = 0;
       while (state.pending.length > 0 && Date.now() < deadline && processedInThisRun < MAX_PER_INVOCATION) {
-        const groupIds = state.pending.slice(0, GROUP_SIZE);
+        // Il gruppo non può sconfinare oltre MAX_PER_INVOCATION: gli embedding dei requisiti
+        // sono stati calcolati esattamente per i primi MAX_PER_INVOCATION in coda, e valutare
+        // un requisito senza il suo vettore significa cercarne le prove alla cieca.
+        const groupSize = Math.min(GROUP_SIZE, MAX_PER_INVOCATION - processedInThisRun);
+        const groupIds = state.pending.slice(0, groupSize);
         const groupRequirements = groupIds.map(id => requirementById.get(id)).filter((r): r is RegulatoryRequirement => !!r);
         const tGroup = Date.now();
 
@@ -2766,6 +2785,12 @@ denoServe(protect(async (req) => {
     const checks = (await loadStagedChecks(supabase, assessmentId))
       .sort((a, b) => `${a.regulation}|${a.reference}`.localeCompare(`${b.regulation}|${b.reference}`));
 
+    // Chiudere l'analisi senza esiti produrrebbe "100% di conformità, nessun gap": meglio un errore.
+    if (checks.length === 0) {
+      console.error(`Finalizzazione senza esiti per ${assessmentId}: la tabella di appoggio è vuota`);
+      return errorResponse(500, 'Nessun esito disponibile per questa analisi: rilanciarla dall\'inizio');
+    }
+
     await supabase.from('gap_analysis_cache').upsert({
       user_id: user.id,
       cache_key: cacheFingerprint,
@@ -2851,8 +2876,10 @@ denoServe(protect(async (req) => {
     }
 
     const applicableCount = coveredCount + partialCount + missingCount;
+    // Senza nemmeno un requisito valutabile la percentuale non esiste: scriverne una (tanto meno 100)
+    // farebbe passare per conformità piena un'analisi che non ha verificato nulla.
     const overallCompliance = applicableCount === 0
-      ? 100
+      ? null
       : Math.max(0, Math.min(100, Math.round(((coveredCount + 0.5 * partialCount) / applicableCount) * 100)));
     const highCount = gapsToInsert.filter(g => g.risk_level === 'high').length;
     const mediumCount = gapsToInsert.filter(g => g.risk_level === 'medium').length;

@@ -159,9 +159,14 @@ export default function ComplianceHub() {
   const hubProfileLabel: Record<RiskProfile, string> = { high: 'Alto', medium: 'Medio', low: 'Basso', none: 'Nessuno' };
   const profileOfScore = (score: number | null | undefined): RiskProfile =>
     !score || score <= 0 ? 'none' : score >= 66 ? 'high' : score >= 36 ? 'medium' : 'low';
-  const avgCompliance = assessments.length > 0
-    ? assessments.reduce((acc, a) => acc + (a.overall_compliance_percentage || 0), 0) / assessments.length
-    : 0;
+  // Solo le valutazioni concluse hanno una percentuale: includere le altre come zero
+  // farebbe crollare la media nel momento stesso in cui si avvia una nuova analisi.
+  const completedWithScore = assessments.filter(
+    a => a.status === 'completed' && typeof a.overall_compliance_percentage === 'number',
+  );
+  const avgCompliance = completedWithScore.length > 0
+    ? completedWithScore.reduce((acc, a) => acc + a.overall_compliance_percentage, 0) / completedWithScore.length
+    : null;
 
   return (
     <div className="min-h-screen bg-background pb-20 lg:pb-0">
@@ -272,8 +277,10 @@ export default function ComplianceHub() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl sm:text-3xl font-bold">{avgCompliance.toFixed(1)}%</div>
-              <Progress value={avgCompliance} className="mt-2" />
+              <div className="text-2xl sm:text-3xl font-bold">
+                {avgCompliance === null ? '--' : `${avgCompliance.toFixed(1)}%`}
+              </div>
+              <Progress value={avgCompliance ?? 0} className="mt-2" />
             </CardContent>
           </Card>
 

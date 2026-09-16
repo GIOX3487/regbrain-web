@@ -177,8 +177,17 @@ export default function NewAssessment() {
           body: JSON.stringify({ assessmentId: assessment.id, ...payload }),
         });
         const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data?.error || `Errore ${response.status}`);
+        if (!response.ok) {
+          const err = new Error(data?.error || `Errore ${response.status}`) as Error & { httpStatus?: number };
+          err.httpStatus = response.status;
+          throw err;
+        }
         return data as { status: 'in_progress' | 'completed'; progress?: { done: number; total: number }; unreadable_documents?: string[] };
+      };
+      // Limite di CPU, sovraccarico o errore momentaneo: l'avanzamento è salvato, si riprende da lì.
+      const isTransient = (e: unknown) => {
+        const s = (e as { httpStatus?: number })?.httpStatus;
+        return s === 546 || s === 429 || (typeof s === 'number' && s >= 500);
       };
       let analysisResult: { status: 'in_progress' | 'completed'; progress?: { done: number; total: number } } = { status: 'in_progress' };
 
@@ -207,9 +216,18 @@ export default function NewAssessment() {
         });
         setProgress(result.progress || null);
         let guard = 0;
+        let retries = 0;
         while (result.status === 'in_progress' && guard < 20) {
           guard++;
-          result = await callAnalysis({ continue: true });
+          try {
+            result = await callAnalysis({ continue: true });
+            retries = 0;
+          } catch (e) {
+            if (!isTransient(e) || retries >= 3) throw e;
+            retries++;
+            await new Promise(r => setTimeout(r, 4000 * retries));
+            continue;
+          }
           setProgress(result.progress || null);
         }
         analysisResult = result;

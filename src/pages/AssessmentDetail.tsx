@@ -696,17 +696,22 @@ export default function AssessmentDetail() {
   // (ultimo aggiornamento più vecchio di 45 secondi) la riprende da qui.
   const [resuming, setResuming] = useState(false);
   const resumingRef = useRef(false);
+  const resumeFailuresRef = useRef(0);
+  // La callback dell'intervallo vive quanto l'effetto: senza questo riferimento leggerebbe
+  // sempre lo stato della prima render e crederebbe ferma un'analisi che sta avanzando.
+  const assessmentRef = useRef<Assessment | null>(null);
+  useEffect(() => { assessmentRef.current = assessment; }, [assessment]);
   useEffect(() => {
     if (!assessment || assessment.status === 'completed') return;
-    const timer = setInterval(() => {
-      loadAssessment(true);
-      const progress = assessment.analysis_progress;
+    const timer = setInterval(async () => {
+      await loadAssessment(true);
+      const progress = assessmentRef.current?.analysis_progress;
       const stale = progress?.status === 'in_progress' && Array.isArray(progress.pending) && progress.pending.length > 0
         && progress.updated_at && Date.now() - Date.parse(progress.updated_at) > 40000;
-      if (stale && !resumingRef.current) resumeAnalysis();
+      if (stale && !resumingRef.current && resumeFailuresRef.current < 3) resumeAnalysis();
     }, 5000);
     return () => clearInterval(timer);
-  }, [assessment?.status, assessment?.requirement_checks, id]);
+  }, [assessment?.status, id]);
 
   const resumeAnalysis = async () => {
     if (resumingRef.current || !id) return;
@@ -717,6 +722,7 @@ export default function AssessmentDetail() {
       if (!session) return;
       const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
       let guard = 0;
+      let transientRetries = 0;
       while (guard < 60) {
         guard++;
         const response = await fetch(`${supabaseHttpUrl}/functions/v1/gap-analysis`, {
@@ -725,13 +731,33 @@ export default function AssessmentDetail() {
           body: JSON.stringify({ assessmentId: id, continue: true }),
         });
         const data = await response.json().catch(() => ({}));
+        if (response.status === 409) {
+          resumeFailuresRef.current = 3;
+          throw new Error('Questa analisi non può più essere ripresa: rilanciala dalla pagina della nuova gap analysis.');
+        }
+        // Limite di CPU, sovraccarico o errore momentaneo: lo stato salvato consente di riprovare.
+        if (response.status === 546 || response.status === 429 || response.status >= 500) {
+          transientRetries++;
+          if (transientRetries > 3) throw new Error(data?.error || `Errore ${response.status}`);
+          await new Promise(r => setTimeout(r, 4000 * transientRetries));
+          continue;
+        }
+        transientRetries = 0;
         if (!response.ok) throw new Error(data?.error || `Errore ${response.status}`);
         await loadAssessment(true);
+        resumeFailuresRef.current = 0;
         if (data.status !== 'in_progress') break;
       }
     } catch (err) {
       console.error('Resume analysis failed:', err);
-      toast({ title: 'Impossibile riprendere l\'analisi', description: err instanceof Error ? err.message : 'Riprova tra poco.', variant: 'destructive' });
+      resumeFailuresRef.current += 1;
+      if (resumeFailuresRef.current <= 3) {
+        toast({
+          title: 'Impossibile riprendere l\'analisi',
+          description: err instanceof Error ? err.message : 'Riprova tra poco.',
+          variant: 'destructive',
+        });
+      }
     } finally {
       resumingRef.current = false;
       setResuming(false);
@@ -1745,6 +1771,17 @@ export default function AssessmentDetail() {
               <CardTitle className="text-sm font-medium">{t.compliance}</CardTitle>
             </CardHeader>
             <CardContent>
+              {assessment.status !== 'completed' || assessment.overall_compliance_percentage === null ? (
+                <>
+                  <div className="text-3xl font-bold mb-2 text-muted-foreground">--</div>
+                  <Progress value={0} />
+                  <div className="mt-2 text-sm text-muted-foreground">
+                    {assessment.status === 'completed'
+                      ? 'Nessun requisito valutabile con i documenti caricati'
+                      : 'Disponibile al termine dell\'analisi'}
+                  </div>
+                </>
+              ) : (<>
               <div className="text-3xl font-bold mb-2">
                 {(assessment.overall_compliance_percentage ?? 0).toFixed(0)}%
               </div>
@@ -1777,6 +1814,7 @@ export default function AssessmentDetail() {
                   </div>
                 );
               })()}
+              </>)}
             </CardContent>
           </Card>
 
