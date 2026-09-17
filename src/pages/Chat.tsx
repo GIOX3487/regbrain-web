@@ -299,14 +299,6 @@ const Chat = () => {
             </Button>
           </>
         )}
-        <Button variant="ghost" className="w-full justify-start" onClick={() => { 
-          navigate('/aggiornamenti', { state: { fromChat: true } }); 
-          sessionStorage.setItem('chatReturn', 'true');
-          setSidebarOpen(false); 
-        }}>
-          <FileText className="w-4 h-4 mr-2" />
-          Aggiornamenti
-        </Button>
       </nav>
 
       <div className="space-y-1">

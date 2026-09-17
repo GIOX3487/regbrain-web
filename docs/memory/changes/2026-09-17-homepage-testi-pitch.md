@@ -1,12 +1,12 @@
 ---
 date: 2026-09-17
 author: Matteo Piccirilli, agente Claude (Opus 5)
-roadmap_ids: ["SITE-01"]
+roadmap_ids: ["SITE-01", "SITE-02"]
 state_review: updated
 state_reason: Lo stato non copriva il sito pubblico; va registrato che la homepage e' stata riallineata al posizionamento del pitch e che restano due decisioni aperte su contatti e team.
 roadmap_review: updated
 roadmap_reason: Nessun ID esistente copriva il sito pubblico: aggiunto SITE-01 con il prossimo passo verificabile.
-files: ["src/pages/Landing.tsx", "src/App.tsx", "src/pages/CookiePolicy.tsx", "docs/memory/STATE.md", "roadmap.md"]
+files: ["src/pages/Landing.tsx", "src/App.tsx", "src/pages/CookiePolicy.tsx", "src/pages/PrivacyPolicy.tsx", "src/pages/TermsConditions.tsx", "src/pages/Chat.tsx", "supabase/functions/generate-benchmark/index.ts", "supabase/functions/market-intelligence/index.ts", "docs/memory/STATE.md", "roadmap.md"]
 ---
 
 ## Richiesta e contesto
@@ -98,6 +98,52 @@ Restano da rileggere con lo stesso metro `src/pages/PrivacyPolicy.tsx`, che elen
 i responsabili, e `src/pages/TermsConditions.tsx`, che dice che i pagamenti sono gestiti tramite
 Stripe. Nel prodotto non c'e' nessuna integrazione di pagamento.
 
+## Privacy policy e termini riscritti, Perplexity e aggiornamenti normativi rimossi (stessa PR)
+
+Applicato alle altre due pagine legali lo stesso metodo della cookie policy: censire il codice e il
+database, poi scrivere solo quello che esiste.
+
+`src/pages/PrivacyPolicy.tsx` dichiarava sub-responsabili mai usati (Stripe, OpenAI), collocava AWS
+su eu-central-1 mentre il progetto e' su eu-west-1 in Irlanda, ometteva Vercel che e' un
+responsabile reale, elencava fra i dati raccolti nome, cognome e ruolo professionale quando la
+registrazione chiede solo email e password, elencava indirizzo IP, browser e pagine visitate quando
+nessuna tabella applicativa li contiene, dichiarava l'autenticazione a piu' fattori che non e'
+implementata e backup giornalieri con conservazione a trenta giorni che il piano in uso non offre,
+e prevedeva una riga di consenso marketing per comunicazioni che il prodotto non puo' inviare.
+
+Censimento su cui e' stata riscritta, verificato su codice e database: registrazione con sola email
+e password; profilo con giurisdizione, settore, dimensione e ruoli; valutazioni con ambito,
+fatturato dichiarato e profilo di applicabilita'; documenti caricati in un bucket non pubblico con
+limite di 10 MB per file; domande e risposte dell'assistente in `query_log`; sessioni demo con email
+e scadenza. Nessuna colonna con indirizzo IP o user agent in alcuna tabella pubblica. Regole di
+sicurezza a livello di riga attive su tutte e 50 le tabelle pubbliche. Responsabili effettivi:
+Supabase (eu-west-1, Irlanda), Amazon Web Services sotto Supabase, Vercel per la pubblicazione,
+Google per l'API Gemini. La pagina nuova aggiunge una sezione che dichiara esplicitamente che
+porzioni del testo dei documenti caricati vengono inviate all'API di Google, cosa che
+l'informativa precedente non diceva, e un riquadro che elenca le misure che ancora non ci sono.
+
+`src/pages/TermsConditions.tsx` descriveva quattro piani di abbonamento, pagamenti tramite Stripe,
+fatturazione elettronica via SDI, rinnovo automatico disattivabile da impostazioni inesistenti e
+recesso di quattordici giorni su un acquisto che la piattaforma non permette. Riscritte le sezioni 3
+e 4 sulla fase attuale: accesso gratuito o regolato da accordo scritto separato, nessun pagamento
+trattato dalla piattaforma, nessun rinnovo automatico. Corretto il limite di responsabilita', che
+era ancorato a importi mai pagati, e l'elenco delle tecnologie terze, che citava OpenAI.
+
+Su richiesta del committente, rimossi dal prodotto Perplexity e la sezione aggiornamenti normativi:
+
+- eliminato il ramo Perplexity da `generate-benchmark`, che inviava settore, giurisdizione e
+  normative dell'azienda analizzata a un servizio statunitense quando la chiave era configurata, e
+  da `market-intelligence`, che lo usava come provider primario. Zero occorrenze rimaste nel
+  repository;
+- rimossi la rotta `/aggiornamenti` e la pagina `NewsUpdates`, la rotta `/admin/seed-news` e la
+  pagina `SeedNews`, il componente `NewsUpdater`, il componente `NewsSection` (gia' non importato da
+  nessuna parte) e la voce "Aggiornamenti" nella barra laterale della chat;
+- rimosse le edge function `auto-update-news`, `scrape-regulatory-updates`, `seed-news` e
+  `api-v1-regulatory-updates`, nessuna delle quali risultava pubblicata sul progetto Supabase;
+- `monitor-eur-lex` resta: scrive su `documents`, cioe' il catalogo normativo, non sul flusso di
+  notizie. La tabella `news_updates` resta nel database con i suoi dati, perche' la sezione potrebbe
+  essere reintrodotta.
+
 ## Verifiche ed esiti
 
 `npx tsc -p tsconfig.app.json --noEmit` verde e `npm run build` verde. La pagina e' stata
@@ -110,7 +156,11 @@ cui si mostrava prima. La pagina `/cookie-policy` e' stata aperta nello stesso b
 contiene piu' nessuna delle voci inventate e le tabelle corrispondono al censimento sopra. Un
 controllo automatico sulla pagina pubblica caricata senza login ha registrato zero cookie, zero
 voci di local storage, una sola voce di session storage (`site_auth_token`) e zero richieste a
-host esterni, che e' esattamente quello che la pagina dichiara. Tutte le
+host esterni, che e' esattamente quello che la pagina dichiara. Anche `/privacy` e `/terms` sono
+state aperte nello stesso browser: nessun residuo di Stripe, OpenAI, Intercom, Plausible, SDI,
+Perplexity o dei nomi dei piani, nessun errore JavaScript. `/aggiornamenti` risponde con la pagina
+404, come atteso dopo la rimozione. `deno check` e' verde su `generate-benchmark` e
+`market-intelligence`. Tutte le
 sezioni si impaginano correttamente su viewport 1280, comprese le griglie a due e quattro
 colonne. Non e' stata verificata la resa su viewport mobile reale ne' l'accessibilita'.
 
@@ -131,8 +181,19 @@ Due decisioni restano aperte e non sono state prese in questa PR:
 - la sezione team del sito non riporta lo sviluppatore e consulente AI presente nel pitch;
 - `src/pages/PrivacyPolicy.tsx` e `src/pages/TermsConditions.tsx` citano Stripe, che il prodotto
   non integra;
-- il testo della cookie policy nuova indica le basi giuridiche ma non e' stato rivisto da un
-  legale: va fatto passare dal Chief Legal Officer prima del rilascio pubblico.
+- il testo delle tre pagine legali indica le basi giuridiche ma non e' stato rivisto da un legale:
+  va fatto passare dal Chief Legal Officer prima del rilascio pubblico;
+- il titolare del trattamento resta indicato come "RegBrain" senza ragione sociale, partita IVA ne'
+  sede: il committente ha dichiarato che la societa' non e' ancora costituita. L'articolo 13 del
+  GDPR richiede identita' e contatti del titolare, quindi la sezione va completata prima della
+  vendita a clienti che facciano due diligence;
+- il foro competente indicato nei termini resta Milano, scelta non rivista in questa PR;
+- non e' verificato se la chiave dell'API Gemini in uso sia su piano a pagamento. Sul livello
+  gratuito Google usa i contenuti inviati per migliorare i modelli, il che contraddirebbe quanto
+  l'informativa dichiara. Va accertato prima della pubblicazione;
+- il progetto Supabase e' su piano gratuito, che non prevede backup automatici. Per questo
+  l'informativa non li dichiara, ma resta un rischio di prodotto: i documenti dei clienti non hanno
+  ripristino.
 
 ## Prossimo passo
 

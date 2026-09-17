@@ -75,66 +75,9 @@ denoServe(protect(async (req) => {
     const basePercentile = 50 + (percentileDelta * 1.5); // 1.5 factor for sensitivity
     const deterministicPercentile = Math.min(95, Math.max(5, Math.round(basePercentile)));
 
-    // ===== PERPLEXITY AI: Get Real Market Data =====
-    const PERPLEXITY_API_KEY = Deno.env.get('PERPLEXITY_API_KEY');
-    let marketIntelligence = '';
-    let marketSources: Array<{ title: string; url: string }> = [];
-    
-    if (PERPLEXITY_API_KEY) {
-      console.log('Fetching real market data from Perplexity AI...');
-      try {
-        const marketQuery = buildMarketIntelligenceQuery(assessment);
-        
-        const perplexityResponse = await fetch('https://api.perplexity.ai/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${PERPLEXITY_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'sonar',
-            messages: [
-              {
-                role: 'system',
-                content: 'You are a compliance and cybersecurity market intelligence expert. Provide accurate, data-driven insights about sector compliance trends and statistics. Always cite your sources with specific URLs.'
-              },
-              {
-                role: 'user',
-                content: marketQuery
-              }
-            ],
-            temperature: 0.1, // Low temperature for consistency
-            max_tokens: 1500,
-            search_recency_filter: 'month'
-          })
-        });
-
-        if (perplexityResponse.ok) {
-          const perplexityData = await perplexityResponse.json();
-          marketIntelligence = perplexityData.choices[0]?.message?.content || '';
-          
-          if (perplexityData.citations && Array.isArray(perplexityData.citations)) {
-            marketSources = perplexityData.citations.map((url: string, idx: number) => ({
-              title: `Source ${idx + 1}`,
-              url: url
-            }));
-          }
-          
-          if (perplexityData.search_results && Array.isArray(perplexityData.search_results)) {
-            marketSources = perplexityData.search_results.map((result: any) => ({
-              title: result.title || result.name || 'Source',
-              url: result.url || result.link || ''
-            })).filter((s: any) => s.url);
-          }
-          
-          console.log('Market intelligence retrieved with', marketSources.length, 'sources');
-        } else {
-          console.warn('Perplexity API error:', perplexityResponse.status);
-        }
-      } catch (error) {
-        console.error('Error fetching market intelligence:', error);
-      }
-    }
+    // Nessuna ricerca di mercato esterna: il benchmark usa solo i dati interni.
+    const marketIntelligence = '';
+    const marketSources: Array<{ title: string; url: string }> = [];
 
     const LOVABLE_API_KEY = getAIKey();
     if (!LOVABLE_API_KEY) {
@@ -555,27 +498,6 @@ function mapCategoryToArea(category: string): string {
     'General': 'Conformità Generale'
   };
   return mapping[category] || category;
-}
-
-function buildMarketIntelligenceQuery(assessment: any): string {
-  const regulations = assessment.scope_regulations.join(', ');
-  const currentYear = new Date().getFullYear();
-  
-  return `
-Provide FACTUAL market intelligence for ${assessment.scope_sector} sector in ${assessment.scope_jurisdiction} regarding ${regulations}.
-
-Focus on ${currentYear} verified data only:
-1. Official compliance adoption rates with specific percentages from authoritative sources
-2. Common compliance gaps documented by regulatory bodies
-3. Best practices from ENISA, Gartner, PwC, Deloitte, or official regulatory guidance
-4. Proven quick win implementations with measurable results
-
-IMPORTANT: 
-- Only cite REAL, verifiable sources with actual URLs
-- Do not invent statistics - only use documented data
-- Be specific about data sources and dates
-- If data is not available, say so explicitly
-`;
 }
 
 function buildBenchmarkPrompt(

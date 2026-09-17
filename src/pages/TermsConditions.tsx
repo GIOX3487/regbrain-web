@@ -5,7 +5,7 @@ import { Separator } from "@/components/ui/separator";
 
 const TermsConditions = () => {
   const navigate = useNavigate();
-  const lastUpdated = "29 Dicembre 2024";
+  const lastUpdated = "17 settembre 2026";
   const companyName = "RegBrain";
   const companyEmail = "regbrain.contact@gmail.com";
 
@@ -36,6 +36,7 @@ const TermsConditions = () => {
           {/* Title */}
           <div className="text-center mb-12">
             <h1 className="text-3xl md:text-4xl font-bold mb-4">Termini e Condizioni di Utilizzo</h1>
+            <p className="text-sm text-muted-foreground">Ultimo aggiornamento: {lastUpdated}</p>
           </div>
 
           {/* Important Notice */}
@@ -67,7 +68,7 @@ const TermsConditions = () => {
               <li><strong>"Piattaforma"</strong>: il servizio software-as-a-service (SaaS) RegBrain accessibile via web</li>
               <li><strong>"Titolare"</strong>: {companyName}</li>
               <li><strong>"Utente"</strong>: qualsiasi persona fisica o giuridica che accede alla Piattaforma</li>
-              <li><strong>"Abbonamento"</strong>: il contratto di utilizzo del servizio secondo i piani tariffari disponibili</li>
+              <li><strong>"Accordo"</strong>: il contratto con cui il Titolare concede all'Utente l'accesso alla Piattaforma</li>
               <li><strong>"Contenuti"</strong>: tutti i documenti, dati e informazioni caricati dall'Utente</li>
             </ul>
 
@@ -113,32 +114,30 @@ const TermsConditions = () => {
               <div className="p-2 rounded-lg bg-primary/10">
                 <CreditCard className="h-5 w-5 text-primary" />
               </div>
-              <h2 className="text-2xl font-bold m-0">3. Piani di Abbonamento e Pagamenti</h2>
+              <h2 className="text-2xl font-bold m-0">3. Accesso al servizio e corrispettivi</h2>
             </div>
             <Separator className="mb-4" />
             
-            <h3 className="text-lg font-semibold mb-3">3.1 Piani Disponibili</h3>
+            <h3 className="text-lg font-semibold mb-3">3.1 Fase attuale</h3>
             <p className="text-muted-foreground mb-4">
-              La Piattaforma offre diversi piani di abbonamento:
-            </p>
-            <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
-              <li><strong>Starter</strong>: funzionalità base per professionisti individuali</li>
-              <li><strong>Professional</strong>: funzionalità avanzate per PMI</li>
-              <li><strong>Business</strong>: soluzione completa per aziende</li>
-              <li><strong>Enterprise</strong>: soluzione personalizzata con supporto dedicato</li>
-            </ul>
-
-            <h3 className="text-lg font-semibold mb-3 mt-6">3.2 Modalità di Pagamento</h3>
-            <p className="text-muted-foreground">
-              I pagamenti sono gestiti tramite Stripe, piattaforma certificata PCI-DSS. 
-              Gli abbonamenti sono fatturati mensilmente o annualmente in anticipo. 
-              Le fatture sono emesse elettronicamente tramite il Sistema di Interscambio (SDI).
+              La Piattaforma non prevede al momento alcun listino pubblico, alcun carrello e alcuna procedura di
+              acquisto online. L'accesso viene concesso gratuitamente, per prova o valutazione, oppure a
+              condizioni economiche definite in un accordo scritto separato fra il Titolare e l'Utente.
             </p>
 
-            <h3 className="text-lg font-semibold mb-3 mt-6">3.3 Rinnovo Automatico</h3>
+            <h3 className="text-lg font-semibold mb-3 mt-6">3.2 Pagamenti</h3>
+            <p className="text-muted-foreground mb-4">
+              La Piattaforma non tratta pagamenti e non integra alcun fornitore di servizi di pagamento: non
+              vengono richiesti né conservati dati di carte o di conti correnti. Gli eventuali corrispettivi
+              previsti da un accordo scritto sono fatturati fuori dalla Piattaforma, con le modalità e le
+              scadenze indicate nell'accordo stesso.
+            </p>
+
+            <h3 className="text-lg font-semibold mb-3 mt-6">3.3 Rinnovo</h3>
             <p className="text-muted-foreground">
-              Gli abbonamenti si rinnovano automaticamente alla scadenza. 
-              L'Utente può disattivare il rinnovo automatico in qualsiasi momento dalle impostazioni del proprio account.
+              Non esistono abbonamenti a rinnovo automatico. Durata e rinnovo dell'accesso sono quelli previsti
+              dall'accordo scritto, se presente. Quando verranno introdotti piani a pagamento con sottoscrizione
+              diretta, questi Termini saranno aggiornati prima dell'attivazione.
             </p>
           </section>
 
@@ -148,27 +147,24 @@ const TermsConditions = () => {
               <div className="p-2 rounded-lg bg-primary/10">
                 <XCircle className="h-5 w-5 text-primary" />
               </div>
-              <h2 className="text-2xl font-bold m-0">4. Diritto di Recesso e Rimborsi</h2>
+              <h2 className="text-2xl font-bold m-0">4. Cessazione e recesso</h2>
             </div>
             <Separator className="mb-4" />
             
-            <h3 className="text-lg font-semibold mb-3">4.1 Diritto di Recesso</h3>
             <p className="text-muted-foreground mb-4">
-              Ai sensi del Codice del Consumo (D.Lgs. 206/2005), i consumatori hanno diritto di recedere 
-              dal contratto entro 14 giorni dalla sottoscrizione dell'abbonamento, senza dover fornire alcuna motivazione.
+              Non essendoci una procedura di acquisto online sulla Piattaforma, non si apre alcun termine di
+              recesso a distanza e non ci sono importi da rimborsare. L'Utente può interrompere in qualsiasi
+              momento l'uso del servizio e chiedere la cancellazione dell'account scrivendo all'indirizzo di
+              contatto.
             </p>
-
-            <h3 className="text-lg font-semibold mb-3 mt-6">4.2 Esclusioni</h3>
-            <p className="text-muted-foreground">
-              Il diritto di recesso non si applica quando l'Utente ha iniziato ad utilizzare attivamente 
-              il servizio (es. esecuzione di analisi, caricamento documenti, generazione report) 
-              con il consenso esplicito alla perdita del diritto di recesso.
+            <p className="text-muted-foreground mb-4">
+              Se l'accesso è regolato da un accordo scritto, valgono le clausole di recesso e di cessazione
+              previste da quell'accordo.
             </p>
-
-            <h3 className="text-lg font-semibold mb-3 mt-6">4.3 Rimborsi</h3>
             <p className="text-muted-foreground">
-              I rimborsi sono elaborati entro 14 giorni dalla ricezione della richiesta valida 
-              e accreditati sullo stesso metodo di pagamento utilizzato per l'acquisto.
+              Quando la Piattaforma consentirà la sottoscrizione diretta di un piano a pagamento, ai
+              consumatori si applicherà il diritto di recesso di quattordici giorni previsto dal Codice del
+              Consumo e questa sezione sarà riscritta di conseguenza.
             </p>
           </section>
 
@@ -198,9 +194,11 @@ const TermsConditions = () => {
 
             <h3 className="text-lg font-semibold mb-3 mt-6">5.3 Limitazione dei Danni</h3>
             <p className="text-muted-foreground">
-              In nessun caso il Titolare sarà responsabile per danni indiretti, incidentali, consequenziali 
-              o punitivi derivanti dall'uso della Piattaforma. La responsabilità massima è limitata 
-              all'importo pagato dall'Utente nei 12 mesi precedenti l'evento.
+              Nei limiti consentiti dalla legge, il Titolare non risponde dei danni indiretti o consequenziali
+              derivanti dall'uso della Piattaforma. Quando l'accesso è concesso a titolo gratuito, la
+              responsabilità è limitata ai casi di dolo e colpa grave; quando è regolato da un accordo
+              scritto, valgono i limiti previsti da quell'accordo. Restano ferme le responsabilità che la legge
+              non consente di escludere.
             </p>
           </section>
 
@@ -226,9 +224,10 @@ const TermsConditions = () => {
               La Piattaforma utilizza tecnologie e servizi di terze parti, tra cui:
             </p>
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground mb-4">
-              <li>Modelli di intelligenza artificiale forniti da OpenAI e Google</li>
-              <li>Infrastruttura cloud e database gestiti da fornitori terzi</li>
-              <li>Framework e librerie open-source (React, Tailwind CSS, etc.)</li>
+              <li>modelli di intelligenza artificiale forniti da Google, tramite l'API Gemini</li>
+              <li>banca dati, autenticazione e archivio documenti forniti da Supabase, su infrastruttura AWS</li>
+              <li>pubblicazione dell'applicazione web su Vercel</li>
+              <li>librerie open source, fra cui React e Tailwind CSS</li>
             </ul>
             <p className="text-muted-foreground mb-4">
               I rispettivi diritti su tali tecnologie rimangono di proprietà dei relativi titolari.
