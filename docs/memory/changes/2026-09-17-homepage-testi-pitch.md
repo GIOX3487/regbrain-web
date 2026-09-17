@@ -6,7 +6,7 @@ state_review: updated
 state_reason: Lo stato non copriva il sito pubblico; va registrato che la homepage e' stata riallineata al posizionamento del pitch e che restano due decisioni aperte su contatti e team.
 roadmap_review: updated
 roadmap_reason: Nessun ID esistente copriva il sito pubblico: aggiunto SITE-01 con il prossimo passo verificabile.
-files: ["src/pages/Landing.tsx", "docs/memory/STATE.md", "roadmap.md"]
+files: ["src/pages/Landing.tsx", "src/App.tsx", "docs/memory/STATE.md", "roadmap.md"]
 ---
 
 ## Richiesta e contesto
@@ -41,12 +41,41 @@ Il 98% non e' stato sostituito da un altro numero di marketing ma dalle misurazi
 esecuzioni, 254 obblighi a catalogo, 250 verifiche in 70 secondi), con il metodo dichiarato nella
 stessa sezione. Aggiornata anche la riga del footer, che ripeteva il posizionamento enterprise.
 
+## Secondo giro di revisione (stessa PR)
+
+Dopo la prima lettura della pagina, quattro correzioni richieste dal committente:
+
+- il titolo della hero passa da "Gli agenti fanno il lavoro. Tu firmi." a "Automazione della
+  compliance: dove gli agenti fanno il lavoro e tu firmi.", che dice cosa vende il prodotto prima
+  di dire come lavora;
+- tolta la virgola in "Cosa cambia, in concreto";
+- tolto il riquadro "Metodo." sotto i quattro numeri misurati. I numeri restano, la spiegazione del
+  corpus di prova non e' piu' in pagina: chi contesta un numero lo chiede, e la dichiarazione
+  completa resta nel registro e nel pitch;
+- tolto il banner cookie che compariva a ogni primo accesso. Rimosso l'uso di `CookieBanner` da
+  `src/App.tsx`; il componente resta nel repository, non renderizzato, per poterlo reinserire se
+  in futuro si installano strumenti di misurazione.
+
+Sulla rimozione del banner: una ricerca nel codice non trova nessuno script di analytics o
+marketing caricato dal sito (nessun gtag, nessun Plausible, nessun Posthog, nessun pixel). Le
+preferenze raccolte dal banner erano salvate in `localStorage` e non venivano lette da nessuna
+altra parte del codice, quindi il consenso non governava niente. Con il solo `site_auth_token` di
+sessione, che e' tecnicamente necessario, il banner non e' dovuto.
+
+Resta pero' un'incoerenza non toccata da questa PR: `src/pages/CookiePolicy.tsx` continua a
+descrivere il cookie `cookie_consent` e a elencare Plausible Analytics e Posthog fra i servizi
+terzi, che non sono installati. Quella pagina andava corretta gia' prima di questa modifica.
+
 ## Verifiche ed esiti
 
 `npx tsc -p tsconfig.app.json --noEmit` verde e `npm run build` verde. La pagina e' stata
 costruita e aperta in un browser headless su una copia locale della build, con le variabili
-d'ambiente del progetto: il titolo reso e' "Gli agenti fanno il lavoro. Tu firmi." e tutte le
-sezioni nuove si impaginano correttamente su viewport 1280, comprese le griglie a due e quattro
+d'ambiente del progetto. Dopo il secondo giro: il titolo reso e' "Automazione della compliance:
+dove gli agenti fanno il lavoro e tu firmi.", il titolo di sezione legge "Cosa cambia in
+concreto", il riquadro "Metodo." non compare piu' e il banner cookie non compare su una sessione
+senza consenso salvato, con attesa di quattro secondi contro il ritardo di un secondo e mezzo con
+cui si mostrava prima. Tutte le
+sezioni si impaginano correttamente su viewport 1280, comprese le griglie a due e quattro
 colonne. Non e' stata verificata la resa su viewport mobile reale ne' l'accessibilita'.
 
 Nessuna verifica eseguita in produzione: la modifica e' proposta in PR e va guardata
@@ -63,7 +92,8 @@ Due decisioni restano aperte e non sono state prese in questa PR:
 
 - l'indirizzo di contatto pubblico e' ancora `regbrain.contact@gmail.com`, in due punti. Nel pitch
   e' stato portato a un dominio aziendale: cambiarlo anche sul sito richiede che la casella esista;
-- la sezione team del sito non riporta lo sviluppatore e consulente AI presente nel pitch.
+- la sezione team del sito non riporta lo sviluppatore e consulente AI presente nel pitch;
+- `src/pages/CookiePolicy.tsx` descrive cookie e servizi terzi che il sito non usa.
 
 ## Prossimo passo
 

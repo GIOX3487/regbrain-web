@@ -110,9 +110,9 @@ const Landing = () => {
               GDPR · NIS2 · DORA · AI Act · CRA · Data Act
             </Badge>
             <h1 className="text-3xl sm:text-5xl md:text-6xl font-bold tracking-tight px-2 leading-tight">
-              Gli agenti fanno il lavoro.{" "}
+              Automazione della compliance: dove gli agenti fanno il lavoro e{" "}
               <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-                Tu firmi.
+                tu firmi.
               </span>
             </h1>
 
@@ -413,7 +413,7 @@ const Landing = () => {
       <section className="px-4 sm:px-6 py-16 sm:py-20">
         <div className="max-w-6xl mx-auto">
           <div className="text-center space-y-4 mb-12">
-            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold">Cosa cambia, in concreto</h2>
+            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold">Cosa cambia in concreto</h2>
           </div>
 
           <div className="grid md:grid-cols-2 gap-6 sm:gap-8 mb-8">
@@ -513,15 +513,6 @@ const Landing = () => {
                 per verificare 250 obblighi su tutte e sei le normative.
               </p>
             </div>
-          </div>
-
-          <div className="document-card bg-muted/40">
-            <p className="text-sm text-muted-foreground">
-              <strong className="text-foreground">Metodo.</strong> Misurazioni del 17 settembre 2026 su un corpus a
-              verità nota: otto documenti di un'azienda ben documentata con tre omissioni deliberate. Due sono state
-              rilevate come obblighi mancanti, la terza come parziale, coerentemente con quanto i documenti dicevano
-              davvero. Ogni citazione prodotta è stata confrontata con il testo dei documenti caricati.
-            </p>
           </div>
         </div>
       </section>
