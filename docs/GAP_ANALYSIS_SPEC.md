@@ -1,3 +1,5 @@
+> Historical v18 specification. The current v21 evaluator and release requirements are described in [GAP_ANALYSIS_HARDENING.md](GAP_ANALYSIS_HARDENING.md). The matching, scoring and fine-estimation rules below do not describe the current implementation.
+
 # Specifica Tecnica Completa — RegBrain Gap Analysis
 
 Versione codice analizzato: `gap-analysis-v18-realistic-fines` (cache fingerprint, `supabase/functions/gap-analysis/index.ts` r. 2760).
@@ -468,3 +470,4 @@ Livelli:
 - < 40% → `basic`
 
 **Scope fondamentale**: analisi rule-based sul `REQUIREMENTS_CATALOG` + requisiti dinamici approvati. Non tutti gli articoli di ogni normativa vengono analizzati. Normative senza KB → 0 gap, ma senza errore esplicito.
+

@@ -1,3 +1,4 @@
+import { formatComplianceScore } from '@/lib/compliance-score';
 import { useState, useEffect, useMemo, useRef } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useNavigate, useParams } from "react-router-dom";
@@ -37,7 +38,7 @@ interface Assessment {
   description: string;
   assessment_type: string;
   overall_risk_score: number;
-  overall_compliance_percentage: number;
+  overall_compliance_percentage: number | null;
   scope_jurisdiction: string;
   scope_sector: string;
   scope_regulations: string[];
@@ -731,6 +732,7 @@ export default function AssessmentDetail() {
           body: JSON.stringify({ assessmentId: id, continue: true }),
         });
         const data = await response.json().catch(() => ({}));
+        if (data.retryAfterMs) await new Promise(r => setTimeout(r, data.retryAfterMs));
         if (response.status === 409) {
           resumeFailuresRef.current = 3;
           throw new Error('Questa analisi non può più essere ripresa: rilanciala dalla pagina della nuova gap analysis.');
@@ -1136,7 +1138,7 @@ export default function AssessmentDetail() {
       const pdfProfileLabel: Record<string, string> = { high: uiT.riskHigh, medium: uiT.riskMedium, low: uiT.riskLow, none: uiT.riskNone };
       const riskCountsText = uiT.riskCounts.replace('{h}', String(highGaps)).replace('{m}', String(mediumGaps)).replace('{l}', String(lowGaps));
       
-      doc.text(`• ${t.compliance}: ${assessment.overall_compliance_percentage ?? 0}%`, 25, yPos);
+      doc.text(`• ${t.compliance}: ${formatComplianceScore(assessment.overall_compliance_percentage)}`, 25, yPos);
       yPos += 8;
       doc.text(`• ${uiT.riskProfile}: ${pdfProfileLabel[pdfProfile]} (${riskCountsText})`, 25, yPos);
       yPos += 8;
@@ -1159,7 +1161,7 @@ export default function AssessmentDetail() {
       yPos += 8;
       doc.setTextColor(0, 0, 0);
       
-      const complianceLevel = (assessment.overall_compliance_percentage || 0) >= 80 ? (selectedLanguage === 'it' ? 'buono' : 'good') : 
+      const complianceLevel = assessment.overall_compliance_percentage == null ? (selectedLanguage === 'it' ? 'non determinabile' : 'not assessable') : (assessment.overall_compliance_percentage || 0) >= 80 ? (selectedLanguage === 'it' ? 'buono' : 'good') : 
         (assessment.overall_compliance_percentage || 0) >= 60 ? (selectedLanguage === 'it' ? 'sufficiente' : 'sufficient') : 
         (assessment.overall_compliance_percentage || 0) >= 40 ? (selectedLanguage === 'it' ? 'insufficiente' : 'insufficient') : (selectedLanguage === 'it' ? 'critico' : 'critical');
       
@@ -1168,8 +1170,8 @@ export default function AssessmentDetail() {
       const checksSentenceEn = pdfChecks.length > 0
         ? ` ${pdfChecks.length} requirements were checked: ${pdfCovered.length} are documented, ${gaps.length} show gaps${pdfToVerify.length > 0 ? `, ${pdfToVerify.length} need an applicability check` : ''}${pdfNotApplicable.length > 0 ? `, ${pdfNotApplicable.length} are not applicable` : ''}.` : '';
       const summaryText = selectedLanguage === 'it' 
-        ? `L'analisi ha confrontato la documentazione caricata con i requisiti di ${assessment.scope_regulations?.join(', ') || 'le normative selezionate'}.${checksSentenceIt} Il livello di conformità documentale è del ${assessment.overall_compliance_percentage ?? 0}% (${complianceLevel}) e il profilo di rischio complessivo è ${pdfProfileLabel[pdfProfile].toLowerCase()} (${riskCountsText}). Il piano d'azione elenca, per ciascun gap, le azioni per colmarlo. L'analisi valuta ciò che risulta dai documenti, non l'effettiva applicazione delle misure, e non sostituisce il parere di un legale o del DPO.${pdfUnreadable.length > 0 ? ` Documenti esclusi perché non leggibili: ${pdfUnreadable.join(', ')}.` : ''}`
-        : `The analysis compared the uploaded documentation with the requirements of ${assessment.scope_regulations?.join(', ') || 'the selected regulations'}.${checksSentenceEn} Documentary compliance is ${assessment.overall_compliance_percentage ?? 0}% (${complianceLevel}) and the overall risk profile is ${pdfProfileLabel[pdfProfile].toLowerCase()} (${riskCountsText}). The action plan lists, for each gap, the actions to close it. The analysis assesses what the documents show, not the actual application of measures, and does not replace legal or DPO advice.${pdfUnreadable.length > 0 ? ` Documents excluded as unreadable: ${pdfUnreadable.join(', ')}.` : ''}`;
+        ? `L'analisi ha confrontato la documentazione caricata con i requisiti di ${assessment.scope_regulations?.join(', ') || 'le normative selezionate'}.${checksSentenceIt} Il livello di conformità documentale è del ${formatComplianceScore(assessment.overall_compliance_percentage)} (${complianceLevel}) e il profilo di rischio complessivo è ${pdfProfileLabel[pdfProfile].toLowerCase()} (${riskCountsText}). Il piano d'azione elenca, per ciascun gap, le azioni per colmarlo. L'analisi valuta ciò che risulta dai documenti, non l'effettiva applicazione delle misure, e non sostituisce il parere di un legale o del DPO.${pdfUnreadable.length > 0 ? ` Documenti esclusi perché non leggibili: ${pdfUnreadable.join(', ')}.` : ''}`
+        : `The analysis compared the uploaded documentation with the requirements of ${assessment.scope_regulations?.join(', ') || 'the selected regulations'}.${checksSentenceEn} Documentary compliance is ${formatComplianceScore(assessment.overall_compliance_percentage)} (${complianceLevel}) and the overall risk profile is ${pdfProfileLabel[pdfProfile].toLowerCase()} (${riskCountsText}). The action plan lists, for each gap, the actions to close it. The analysis assesses what the documents show, not the actual application of measures, and does not replace legal or DPO advice.${pdfUnreadable.length > 0 ? ` Documents excluded as unreadable: ${pdfUnreadable.join(', ')}.` : ''}`;
       
       doc.setFontSize(9);
       doc.setFont('helvetica', 'normal');
@@ -1529,35 +1531,12 @@ export default function AssessmentDetail() {
         duration: 300000, // keep toast visible during generation
       });
 
-      // Fetch user documents associated with this assessment for DPIA context
-      const { data: userDocEmbeddings } = await supabase
-        .from('user_document_embeddings')
-        .select('document_name, section_text')
-        .eq('assessment_id', id)
-        .order('section_index', { ascending: true })
-        .limit(50);
-
-      const userDocumentsSummary = userDocEmbeddings && userDocEmbeddings.length > 0
-        ? userDocEmbeddings.reduce((acc: Record<string, string[]>, row) => {
-            if (!acc[row.document_name]) acc[row.document_name] = [];
-            acc[row.document_name].push(row.section_text);
-            return acc;
-          }, {} as Record<string, string[]>)
-        : null;
-
-      const formattedDocsSummary = userDocumentsSummary
-        ? Object.entries(userDocumentsSummary)
-            .map(([name, sections]) => `[${name}]: ${(sections as string[]).join(' ').substring(0, 1500)}`)
-            .join('\n---\n')
-        : '';
-
       const { data, error } = await supabase.functions.invoke('generate-audit-document', {
         body: {
           documentType: type,
           assessmentId: id,
           conversationHistory: [],
           language: documentLanguage,
-          userDocumentsSummary: formattedDocsSummary,
           userConfig: userConfig || null,
         }
       });
@@ -2304,3 +2283,4 @@ export default function AssessmentDetail() {
     </div>
   );
 }
+
