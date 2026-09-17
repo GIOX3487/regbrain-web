@@ -486,18 +486,12 @@ const Landing = () => {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mb-8">
             <div className="document-card space-y-2">
               <div className="text-3xl sm:text-4xl font-bold text-primary">55 su 55</div>
               <p className="text-sm text-muted-foreground">
                 citazioni corrispondenti alla lettera al documento citato e attribuite al file giusto,
                 confrontate a macchina con il testo caricato.
-              </p>
-            </div>
-            <div className="document-card space-y-2">
-              <div className="text-3xl sm:text-4xl font-bold text-primary">50 su 51</div>
-              <p className="text-sm text-muted-foreground">
-                esiti identici rilanciando la stessa analisi sullo stesso fascicolo.
               </p>
             </div>
             <div className="document-card space-y-2">

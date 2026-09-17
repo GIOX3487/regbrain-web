@@ -12,8 +12,6 @@ import Documents from "./pages/Documents";
 import Audit from "./pages/Audit";
 import DocumentLoader from "./pages/DocumentLoader";
 import ManageRegulations from "./pages/ManageRegulations";
-import NewsUpdates from "./pages/NewsUpdates";
-import SeedNews from "./pages/SeedNews";
 import BatchUpload from "./pages/BatchUpload";
 import ComplianceHub from "./pages/ComplianceHub";
 import NewAssessment from "./pages/NewAssessment";
@@ -74,7 +72,6 @@ const App = () => (
             <Route path="/audit" element={<Audit />} />
             <Route path="/admin/load-documents" element={<DocumentLoader />} />
             <Route path="/admin/manage-regulations" element={<ManageRegulations />} />
-            <Route path="/admin/seed-news" element={<SeedNews />} />
             <Route path="/admin/batch-upload" element={<BatchUpload />} />
             <Route path="/admin/load-cra" element={<LoadCRA />} />
             <Route path="/admin/load-gdpr" element={<LoadGDPR />} />
@@ -94,7 +91,6 @@ const App = () => (
             <Route path="/admin/verify-knowledge-base" element={<VerifyKnowledgeBase />} />
             <Route path="/admin/rag-quality" element={<RagQuality />} />
             <Route path="/admin/manage-requirements" element={<ManageRequirements />} />
-            <Route path="/aggiornamenti" element={<NewsUpdates />} />
             <Route path="/compliance" element={<ComplianceHub />} />
             <Route path="/compliance/analysis" element={<ComplianceAnalysis />} />
             <Route path="/compliance/new-assessment" element={<NewAssessment />} />

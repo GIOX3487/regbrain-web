@@ -75,7 +75,6 @@ serve(async (req) => {
     }
 
     // No valid cache, generate new data
-    const PERPLEXITY_API_KEY = Deno.env.get('PERPLEXITY_API_KEY');
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 
     const sectorTerms = sectorKeywords[sector] || [sector];
@@ -158,43 +157,7 @@ Rispondi SOLO con il JSON.`;
     let citations: string[] = [];
     let usedProvider = 'unknown';
 
-    // Try Perplexity first
-    if (PERPLEXITY_API_KEY) {
-      try {
-        const perplexityResponse = await fetch('https://api.perplexity.ai/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${PERPLEXITY_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'sonar',
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: userPrompt }
-            ],
-            search_recency_filter: 'month',
-            return_citations: true,
-            temperature: 0.1,
-          }),
-        });
-
-        if (perplexityResponse.ok) {
-          const perplexityData = await perplexityResponse.json();
-          content = perplexityData.choices?.[0]?.message?.content;
-          citations = perplexityData.citations || [];
-          usedProvider = 'perplexity';
-          console.log('Perplexity response received, citations:', citations?.length || 0);
-        } else {
-          const errorText = await perplexityResponse.text();
-          console.warn('Perplexity failed (status', perplexityResponse.status, '), falling back to Lovable AI:', errorText);
-        }
-      } catch (perplexityError) {
-        console.warn('Perplexity error, falling back to Lovable AI:', perplexityError);
-      }
-    }
-
-    // Fallback to Lovable AI (Gemini)
+    // Generazione tramite il provider AI configurato
     if (!content && LOVABLE_API_KEY) {
       console.log('Using Lovable AI fallback for market intelligence');
       const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -237,7 +200,7 @@ Rispondi SOLO con il JSON.`;
     }
 
     if (!content) {
-      throw new Error('No AI provider available. Configure PERPLEXITY_API_KEY or LOVABLE_API_KEY.');
+      throw new Error('Nessun provider AI configurato.');
     }
 
     // Parse JSON from response
@@ -259,7 +222,7 @@ Rispondi SOLO con il JSON.`;
       };
     }
 
-    // Enrich with real citations from Perplexity
+    // Arricchimento con le citazioni disponibili
     if (citations && citations.length > 0) {
       // Add real source URLs to trends
       if (marketData.sector_trends) {

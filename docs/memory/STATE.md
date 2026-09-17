@@ -52,6 +52,17 @@ ancora integrato. TypeScript e build verdi, resa verificata su una build locale 
 nessuna verifica in produzione. Restano aperte due decisioni: indirizzo di contatto pubblico
 (ancora una casella gmail) e presenza dello sviluppatore AI nella sezione team (SITE-01).
 
+Le tre pagine legali del sito (cookie policy, informativa privacy, termini) contenevano testo di
+esempio mai adattato: cookie e servizi terzi inesistenti, Stripe e OpenAI fra i responsabili,
+piani di abbonamento e pagamenti che il prodotto non ha, misure di sicurezza non implementate.
+Riscritte nello stesso branch su un censimento di codice e database. Il titolare del trattamento
+resta senza ragione sociale perche' la societa' non e' costituita, e nessuna delle tre e' stata
+rivista da un legale (SITE-02).
+
+Su richiesta, rimossi dal prodotto Perplexity e la sezione aggiornamenti normativi (rotta
+`/aggiornamenti`, pagine, componenti, rotta admin di popolamento e quattro edge function non
+pubblicate). La tabella `news_updates` resta nel database, la sezione puo' essere reintrodotta.
+
 ## Memoria e coordinamento
 
 Memoria, istruzioni per gli agenti e workflow sono integrati con la [PR #4](https://github.com/GIOX3487/regbrain-web/pull/4), commit `72b7e2e69866ce0665f39b0e52d2ddda659e9398` (MEM-01). I 18 test della memoria e le verifiche applicative sono verdi anche su main. Il controllo fidato è stato provato sulla PR #5: una revisione senza registro è stata rifiutata con il messaggio richiesto ([prova negativa](https://github.com/GIOX3487/regbrain-web/actions/runs/35203449382)). Lo stato del blocco tecnico dei merge è **non attivo**: il piano del repository privato non consente i ruleset, e la protezione main non è leggibile dall'integrazione. MEM-02 resta bloccato su configurazione/piano dell'amministratore; vedere [procedura](README.md).
