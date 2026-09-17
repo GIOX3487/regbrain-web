@@ -89,6 +89,16 @@ denoServe(protect(async (req) => {
         throw new Error('Assessment not found');
       }
       assessment = found;
+      const { data: originalDocs, error: originalDocsError } = await supabase.from('assessment_documents')
+        .select('name, content').eq('assessment_id', assessmentId).order('name');
+      if (originalDocsError) throw originalDocsError;
+      if (originalDocs?.length) {
+        // A bounded per-file allocation includes every uploaded document, even on a cache hit.
+        const perFile = Math.floor(40000 / originalDocs.length);
+        userDocumentsSummary = originalDocs.map((d: any) =>
+          `[${d.name}]\n${String(d.content).slice(0, perFile)}${d.content.length > perFile ? '\n[estratto parziale]' : ''}`,
+        ).join('\n---\n');
+      }
     }
 
     const { data: pendingDoc, error: pendingError } = await supabase
@@ -2999,3 +3009,4 @@ Scrivi TUTTO in italiano professionale.
 
 IMPORTANTE: Usa SEMPRE la funzione generate_compliance_document per restituire il documento completo.`;
 }
+

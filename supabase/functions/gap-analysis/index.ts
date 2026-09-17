@@ -1,3 +1,8 @@
+import { generateCacheFingerprint } from '../_shared/gap-cache.ts';
+import { loadRegulatorySources, findRegulatorySource } from '../_shared/gap-sources.ts';
+import type { RegulatorySource } from '../_shared/gap-sources.ts';
+import { CHECKS_VERSION, RISK_SCORE_MAP, PRIORITY_MATRIX, riskProfileFor, evidenceExpectedFor, applicabilityVerdict, profileFactsForPrompt, normalizeModelCheck } from '../_shared/gap-checks.ts';
+import type { RegulatoryRequirement, RequirementCheck, CheckStatus, ApplicabilityProfile, ApplicabilityAnswer } from '../_shared/gap-checks.ts';
 import { protect } from '../_shared/access.ts';
 import { aiFetch as fetch, getAIKey, getAIModel } from '../_shared/ai.ts';
 import { serve as denoServe } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -13,34 +18,6 @@ const corsHeaders = {
 // Each entry is a concrete, verifiable requirement with keywords
 // used for deterministic document matching. NO AI involved.
 // ============================================================
-
-interface RegulatoryRequirement {
-  id: string;
-  regulation: string;
-  reference: string;
-  description_it: string;
-  description_en: string;
-  risk_level: 'critical' | 'high' | 'medium' | 'low';
-  remediation_effort: 'very_high' | 'high' | 'medium' | 'low';
-  // Keywords that, if found in user docs, indicate coverage
-  coverage_keywords: string[];
-  // Keywords in RAG chunks that confirm this requirement exists
-  rag_validation_keywords: string[];
-  gap_description_it: string;
-  gap_description_en: string;
-  recommended_action_it: string;
-  recommended_action_en: string;
-  action_hours: number;
-  action_cost_eur: number;
-  // Per-requirement coverage thresholds (optional, defaults: 0.40 / 3)
-  coverage_threshold?: number;   // 0.0-1.0, default 0.40
-  min_keyword_matches?: number;  // default 3
-  // Requisito condizionale: si applica solo se ricorre una situazione (es. trasferimenti extra UE)
-  conditional?: boolean;
-  applicability_note_it?: string;
-  // Cosa deve risultare dalla documentazione (catalogo in database)
-  evidence_expected_it?: string;
-}
 
 const REQUIREMENTS_CATALOG: RegulatoryRequirement[] = [
   // ===== GDPR =====
@@ -1902,253 +1879,6 @@ const REQUIREMENTS_CATALOG: RegulatoryRequirement[] = [
 // I requisiti coperti restano fuori dai gap (verde).
 // ============================================================
 
-type CheckStatus = 'covered' | 'partial' | 'missing' | 'to_verify' | 'not_applicable';
-type RiskProfile = 'high' | 'medium' | 'low';
-
-interface RequirementCheck {
-  requirement_id: string;
-  regulation: string;
-  reference: string;
-  description: string;
-  severity: string;
-  remediation_effort: string;
-  conditional: boolean;
-  applicability_note: string | null;
-  status: CheckStatus;
-  risk_level: RiskProfile | null;
-  assessment: string;
-  evidence: Array<{ document: string; quote: string }>;
-  missing_elements: string[];
-  recommended_actions: string[];
-  confidence: number | null;
-  applicability?: string | null;
-  method: 'llm_evidence' | 'keyword' | 'semantic';
-  keyword_coverage: number;
-}
-
-const CHECKS_VERSION = 'gap-analysis-v20-evidence-checks';
-const SEVERITY_RANK: Record<string, number> = { critical: 3, high: 2, medium: 1, low: 0 };
-const RISK_SCORE_MAP: Record<string, number> = { high: 74, medium: 52, low: 28 };
-
-function riskProfileFor(severity: string, status: CheckStatus): RiskProfile | null {
-  if (status !== 'missing' && status !== 'partial') return null;
-  const base = SEVERITY_RANK[severity] ?? 1;
-  const rank = status === 'partial' ? Math.max(0, base - 1) : base;
-  return rank >= 2 ? 'high' : rank === 1 ? 'medium' : 'low';
-}
-
-const PRIORITY_MATRIX: Record<string, Record<string, number>> = {
-  high: { very_high: 1, high: 1, medium: 2, low: 2 },
-  medium: { very_high: 2, high: 2, medium: 3, low: 3 },
-  low: { very_high: 3, high: 3, medium: 4, low: 4 },
-};
-
-// Cosa deve risultare dalla documentazione per considerare soddisfatto il requisito.
-// Guida l'auditor AI: elementi obbligatori del documento atteso.
-const EVIDENCE_EXPECTED_IT: Record<string, string> = {
-  gdpr_art5_principles: 'Una policy o regolamento interno che enunci i principi applicati (liceità, correttezza, trasparenza, limitazione della finalità, minimizzazione, esattezza, limitazione della conservazione, integrità) e come vengono attuati; termini di conservazione definiti.',
-  gdpr_art6_lawfulness: 'Per ciascuna finalità di trattamento la base giuridica indicata (registro, informative o mappatura dedicata); per l\'interesse legittimo, un test di bilanciamento.',
-  gdpr_art13_14_information: 'Informative complete: identità e contatti del titolare e del DPO, finalità e basi giuridiche, destinatari, trasferimenti extra UE, periodo di conservazione, diritti, reclamo al Garante, obbligatorietà del conferimento; una per ogni categoria di interessati (dipendenti, clienti, fornitori, candidati, utenti del sito).',
-  gdpr_art12_15_22_data_subject_rights: 'Una procedura scritta per ricevere e gestire le richieste degli interessati: canali, verifica dell\'identità, termine di un mese, registro delle richieste, responsabili, moduli.',
-  gdpr_art25_privacy_by_design: 'Evidenza che la protezione dei dati è considerata nella progettazione di nuovi trattamenti o sistemi: checklist privacy by design, impostazioni predefinite restrittive, valutazioni preliminari, procedure di change management con verifica privacy.',
-  gdpr_art28_processor: 'Contratti o nomine dei responsabili del trattamento con i contenuti dell\'art. 28, par. 3 (istruzioni, riservatezza, misure di sicurezza, sub-responsabili, assistenza, cancellazione o restituzione, audit); elenco dei fornitori nominati; verifica dei fornitori.',
-  gdpr_art30_records: 'Registro delle attività di trattamento con, per ogni trattamento: finalità, categorie di interessati e di dati, destinatari, eventuali trasferimenti extra UE, termini di conservazione, descrizione delle misure di sicurezza; se l\'organizzazione agisce anche come responsabile, il registro del responsabile.',
-  gdpr_art32_security: 'Descrizione delle misure tecniche e organizzative: controllo degli accessi, autenticazione, cifratura, backup e ripristino, gestione delle vulnerabilità, log, disciplinare per l\'uso degli strumenti, test periodici; una valutazione dei rischi che le giustifica.',
-  gdpr_art33_34_breach: 'Procedura di gestione delle violazioni: rilevazione, valutazione del rischio, notifica al Garante entro 72 ore, comunicazione agli interessati, registro delle violazioni, ruoli e contatti.',
-  gdpr_art35_dpia: 'Valutazioni d\'impatto svolte per i trattamenti ad alto rischio oppure una valutazione documentata di non necessità della DPIA con i criteri applicati.',
-  gdpr_art37_dpo: 'Atto di designazione del DPO con compiti e contatti, comunicazione al Garante, oppure valutazione documentata che spiega perché la designazione non è obbligatoria.',
-  gdpr_art7_consent: 'Moduli o flussi di raccolta del consenso distinti per finalità, modalità di registrazione della prova e di revoca.',
-  gdpr_art9_special_categories: 'Individuazione dei trattamenti di categorie particolari, condizione dell\'art. 9, par. 2 applicata e garanzie specifiche adottate.',
-  gdpr_art22_automated_decisions: 'Dichiarazione sull\'esistenza o meno di decisioni unicamente automatizzate o profilazione; se presenti, logica, garanzie e intervento umano.',
-  gdpr_art24_accountability: 'Regolamento o modello organizzativo privacy con ruoli e responsabilità, politiche di protezione dei dati e riesame periodico documentato.',
-  gdpr_art26_joint_controllers: 'Accordi di contitolarità con ripartizione delle responsabilità oppure dichiarazione motivata di assenza di contitolarità.',
-  gdpr_art29_staff_instructions: 'Lettere di autorizzazione o istruzioni operative per il personale, elenco degli autorizzati, evidenza di formazione (programma, date, partecipanti).',
-  gdpr_art38_39_dpo_position: 'Relazioni periodiche del DPO, evidenza del suo coinvolgimento, comunicazione dei contatti al Garante e pubblicazione nelle informative.',
-  gdpr_art44_49_transfers: 'Elenco dei trasferimenti extra UE (fornitori, cloud) con lo strumento di garanzia adottato per ciascuno, oppure dichiarazione che non avvengono trasferimenti.',
-};
-
-function evidenceExpectedFor(req: RegulatoryRequirement): string {
-  return req.evidence_expected_it || EVIDENCE_EXPECTED_IT[req.id] || req.description_it;
-}
-
-// Normalizzazione per la verifica delle citazioni
-function normalizeQuote(text: string): string {
-  return (text || '')
-    .toLowerCase()
-    .replace(/[‘’“”'"«»]/g, '')
-    .replace(/[^\p{L}\p{N}]+/gu, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-// Una citazione è verificata solo se ogni suo tratto compare alla lettera nei documenti.
-// Le omissioni segnalate con [...] sono ammesse: ogni segmento viene controllato per intero,
-// così nessuna parte della frase mostrata all'utente può essere inventata.
-function quoteIsVerified(quote: string, corpusNormalized: string): boolean {
-  const raw = String(quote || '');
-  if (normalizeQuote(raw).length < 12) return false;
-  const segments = raw
-    .split(/\[\s*(?:\.{3}|…)\s*\]|\.{3}|…/)
-    .map(normalizeQuote)
-    .filter(s => s.split(' ').filter(Boolean).length >= 4);
-  if (segments.length === 0) return false;
-  if (!segments.some(s => s.split(' ').filter(Boolean).length >= 6)) return false;
-  return segments.every(s => corpusNormalized.includes(s));
-}
-
-// ------------------------------------------------------------
-// Profilo di applicabilità dichiarato dall'organizzazione all'avvio dell'analisi.
-// Serve per gli obblighi che dipendono da chi è l'organizzazione (fornitore di IA,
-// fabbricante, entità finanziaria) e non da cosa c'è scritto nei suoi documenti:
-// nessun documento aziendale dichiara queste cose, quindi senza risposta il requisito
-// resterebbe per sempre "da verificare".
-type ApplicabilityAnswer = 'si' | 'no' | 'non_so';
-interface ApplicabilityProfile {
-  answers?: Record<string, ApplicabilityAnswer>;
-  size?: string;
-  declared_at?: string;
-}
-
-// Ogni voce lega una condizione del catalogo a una chiave del profilo. Le chiavi della
-// stessa dimensione sono alternative fra loro (basta che una ricorra); dimensioni diverse
-// devono ricorrere tutte.
-const APPLICABILITY_RULES: Array<{ regulation: string; dimension: string; key: string; pattern: RegExp; label_it: string }> = [
-  { regulation: 'AI Act', dimension: 'ai_role', key: 'ai_provider', pattern: /fornitor/, label_it: 'fornitore di sistemi di IA' },
-  { regulation: 'AI Act', dimension: 'ai_role', key: 'ai_deployer', pattern: /deployer/, label_it: 'deployer di sistemi di IA' },
-  { regulation: 'AI Act', dimension: 'ai_role', key: 'ai_importer_distributor', pattern: /importator|distributor|rappresentante autorizzato/, label_it: 'importatore o distributore di sistemi di IA' },
-  { regulation: 'AI Act', dimension: 'ai_feature', key: 'ai_high_risk', pattern: /alto rischio/, label_it: 'sistemi di IA ad alto rischio' },
-  { regulation: 'AI Act', dimension: 'ai_feature', key: 'ai_gpai', pattern: /gpai|finalità generali/, label_it: 'modelli di IA per finalità generali' },
-  { regulation: 'AI Act', dimension: 'ai_feature', key: 'ai_transparency', pattern: /sintetic|interagire direttamente|riconoscimento delle emozioni|categorizzazione biometrica/, label_it: 'sistemi che interagiscono con le persone o generano contenuti sintetici' },
-  { regulation: 'CRA', dimension: 'cra_role', key: 'cra_manufacturer', pattern: /fabbricant/, label_it: 'fabbricante di prodotti con elementi digitali' },
-  { regulation: 'CRA', dimension: 'cra_role', key: 'cra_importer_distributor', pattern: /importator|distribu/, label_it: 'importatore o distributore di prodotti con elementi digitali' },
-  { regulation: 'CRA', dimension: 'cra_role', key: 'cra_open_source', pattern: /open source/, label_it: 'gestore di software open source' },
-  { regulation: 'Data Act', dimension: 'da_role', key: 'da_data_holder', pattern: /titolar[ei] d[ei]i? dati|prodott[oi] conness|servizi correlati|fabbricant/, label_it: 'titolare dei dati o fabbricante di prodotti connessi' },
-  { regulation: 'Data Act', dimension: 'da_role', key: 'da_cloud_provider', pattern: /servizi di trattamento d(ei )?dati|cloud|edge|saas|paas|iaas/, label_it: 'fornitore di servizi cloud o edge' },
-  { regulation: 'Data Act', dimension: 'da_role', key: 'da_recipient', pattern: /destinatari d?e?i? ?dati|utenti di prodotti|data recipients/, label_it: 'utente o destinatario di dati' },
-  { regulation: 'DORA', dimension: 'dora_subject', key: 'dora_financial_entity', pattern: /entità finanziar/, label_it: 'entità finanziaria' },
-  { regulation: 'DORA', dimension: 'dora_subject', key: 'dora_ctpp', pattern: /ctpp|fornitor[ei] terz[oi] critic/, label_it: 'fornitore terzo critico di servizi TIC' },
-  { regulation: 'DORA', dimension: 'dora_size', key: 'dora_not_micro', pattern: /microimpres/, label_it: 'entità finanziaria diversa dalle microimprese' },
-  { regulation: 'NIS2', dimension: 'nis2_subject', key: 'nis2_entity', pattern: /soggett[oi] essenzial|soggett[oi] important/, label_it: 'soggetto essenziale o importante' },
-  { regulation: 'NIS2', dimension: 'nis2_subject', key: 'nis2_digital_provider', pattern: /dns|tld|nomi di dominio|cloud|data center|cdn|msp|mssp|marketplace/, label_it: 'fornitore di servizi digitali o infrastrutture digitali' },
-  { regulation: 'GDPR', dimension: 'gdpr_transfers', key: 'gdpr_transfers', pattern: /paes[ei] terz|trasferiment|organizzazioni internazionali/, label_it: 'trasferimenti di dati fuori dall\'Unione europea' },
-  { regulation: 'GDPR', dimension: 'gdpr_special', key: 'gdpr_special_categories', pattern: /categorie particolari|condanne penali/, label_it: 'trattamento di categorie particolari di dati o di dati giudiziari' },
-  { regulation: 'GDPR', dimension: 'gdpr_profiling', key: 'gdpr_profiling', pattern: /profilazion|decision[ei] automatizzat/, label_it: 'profilazione o decisioni automatizzate' },
-  { regulation: 'GDPR', dimension: 'org_religious', key: 'org_religious', pattern: /chiese|comunità religios|associazioni religios/, label_it: 'chiesa, associazione o comunità religiosa' },
-  { regulation: 'GDPR', dimension: 'org_outside_eu', key: 'org_outside_eu', pattern: /stabilit[ei] fuori dall|fuori dall'unione|non stabilit[ei] nell'unione/, label_it: 'organizzazione stabilita fuori dall\'Unione europea' },
-];
-
-// Alcune normative si rivolgono per intero a una categoria di soggetti: se l'organizzazione
-// dichiara di non rientrarvi, non ha senso cercare gap nei loro obblighi, nemmeno in quelli
-// che il catalogo non marca come condizionali. Il GDPR non ha una porta d'ingresso di questo
-// tipo: riguarda chiunque tratti dati personali.
-const REGULATION_GATES: Array<{ regulation: string; keys: string[]; label_it: string }> = [
-  { regulation: 'AI Act', keys: ['ai_provider', 'ai_deployer', 'ai_importer_distributor'], label_it: 'alcun ruolo rispetto ai sistemi di intelligenza artificiale (né fornitore, né deployer, né importatore o distributore)' },
-  { regulation: 'CRA', keys: ['cra_manufacturer', 'cra_importer_distributor', 'cra_open_source'], label_it: 'alcun ruolo rispetto ai prodotti con elementi digitali (né fabbricante, né importatore o distributore, né gestore di software open source)' },
-  { regulation: 'Data Act', keys: ['da_data_holder', 'da_cloud_provider', 'da_recipient'], label_it: 'alcun ruolo rispetto ai dati generati da prodotti connessi e servizi di trattamento dati' },
-  { regulation: 'DORA', keys: ['dora_financial_entity', 'dora_ctpp'], label_it: 'la qualifica di entità finanziaria né quella di fornitore di servizi TIC per entità finanziarie' },
-  { regulation: 'NIS2', keys: ['nis2_entity', 'nis2_digital_provider'], label_it: 'la qualifica di soggetto essenziale o importante ai fini NIS2' },
-];
-
-function regulationGateExcludes(regulation: string, profile: ApplicabilityProfile | null): string | null {
-  if (!profile?.answers) return null;
-  const gate = REGULATION_GATES.find(g => g.regulation.toLowerCase() === regulation.toLowerCase());
-  if (!gate) return null;
-  const declared = gate.keys.filter(k => k in profile.answers!);
-  if (declared.length === 0) return null;
-  if (!declared.every(k => profile.answers![k] === 'no')) return null;
-  return `L'intero regolamento non si applica in base a quanto dichiarato all'avvio dell'analisi: l'organizzazione ha dichiarato di non avere ${gate.label_it}.`;
-}
-
-interface ApplicabilityVerdict {
-  status: 'applicable' | 'not_applicable' | 'unknown';
-  reason_it: string;
-}
-
-function applicabilityVerdict(req: RegulatoryRequirement, profile: ApplicabilityProfile | null): ApplicabilityVerdict | null {
-  if (!profile?.answers) return null;
-  const gateReason = regulationGateExcludes(req.regulation, profile);
-  if (gateReason) return { status: 'not_applicable', reason_it: gateReason };
-  if (!req.conditional) return null;
-  const haystack = `${req.applicability_note_it || ''} § ${req.description_it || ''}`.toLowerCase();
-  const byDimension = new Map<string, Array<{ key: string; label_it: string }>>();
-  for (const rule of APPLICABILITY_RULES) {
-    if (rule.regulation.toLowerCase() !== req.regulation.toLowerCase()) continue;
-    if (!rule.pattern.test(haystack)) continue;
-    if (!(rule.key in profile.answers)) continue;
-    const list = byDimension.get(rule.dimension) || [];
-    list.push({ key: rule.key, label_it: rule.label_it });
-    byDimension.set(rule.dimension, list);
-  }
-  if (byDimension.size === 0) return null;
-
-  const escluse: string[] = [];
-  let incerta = false;
-  for (const [, keys] of byDimension) {
-    const values = keys.map(k => profile.answers![k.key]);
-    if (values.some(v => v === 'si')) continue;
-    if (values.every(v => v === 'no')) {
-      escluse.push(keys.map(k => k.label_it).join(' o '));
-      continue;
-    }
-    incerta = true;
-  }
-  if (escluse.length > 0) {
-    return {
-      status: 'not_applicable',
-      reason_it: `Requisito non applicabile in base a quanto dichiarato all'avvio dell'analisi: l'organizzazione non rientra fra ${escluse.join('; ')}.`,
-    };
-  }
-  if (incerta) {
-    return {
-      status: 'unknown',
-      reason_it: 'All\'avvio dell\'analisi non è stato dichiarato se questa condizione ricorre: il requisito resta da verificare.',
-    };
-  }
-  return {
-    status: 'applicable',
-    reason_it: 'Condizione di applicabilità dichiarata come ricorrente all\'avvio dell\'analisi.',
-  };
-}
-
-function profileFactsForPrompt(profile: ApplicabilityProfile | null): string {
-  if (!profile?.answers) return '';
-  const labelByKey = new Map(APPLICABILITY_RULES.map(r => [r.key, r.label_it]));
-  const si: string[] = [];
-  const no: string[] = [];
-  for (const [key, value] of Object.entries(profile.answers)) {
-    const label = labelByKey.get(key);
-    if (!label) continue;
-    if (value === 'si' && !si.includes(label)) si.push(label);
-    if (value === 'no' && !no.includes(label)) no.push(label);
-  }
-  const righe: string[] = [];
-  if (profile.size) righe.push(`Dimensione dichiarata: ${profile.size}.`);
-  if (si.length > 0) righe.push(`L'organizzazione ha dichiarato di rientrare fra: ${si.join('; ')}.`);
-  if (no.length > 0) righe.push(`L'organizzazione ha dichiarato di NON rientrare fra: ${no.join('; ')}.`);
-  if (righe.length === 0) return '';
-  return `Dichiarazioni rese dall'organizzazione all'avvio dell'analisi (valgono come i fatti scritti nei documenti, ma riguardano solo l'applicabilità degli obblighi, mai la loro attuazione):\n${righe.join('\n')}`;
-}
-
-// Frasi che non provano nulla: autodichiarazioni di conformità e impegni per il futuro.
-// Una citazione di questo tipo non può sostenere uno status diverso da "missing".
-const NON_EVIDENCE_PATTERNS: RegExp[] = [
-  /pienamente conform/i,
-  /(e|è|e')\s+conforme\s+(al|alla|ai|alle)\b/i,
-  /sono\s+conformi\s+(al|alla|ai|alle)\b/i,
-  /(adotta|adottiamo|applica|applichiamo)\s+tutte\s+le\s+misure/i,
-  /rispett(a|iamo)\s+tutti\s+gli\s+obblighi/i,
-  /in\s+corso\s+di\s+(redazione|definizione|adozione|implementazione|predisposizione|aggiornamento)/i,
-  /in\s+fase\s+di\s+(redazione|definizione|adozione|implementazione|predisposizione)/i,
-  /sar(a|à|a')\s+(completat|redatt|predispost|adottat|implementat|definit|aggiornat)/i,
-  /verr(a|à|a')\s+(completat|redatt|predispost|adottat|implementat|definit)/i,
-  /(prevediamo|intendiamo|ci\s+impegniamo)\s+(di|a)\b/i,
-  /non\s+ancora\s+(redatt|predispost|adottat|implementat|completat|formalizzat)/i,
-];
-
-function quoteIsSubstantive(quote: string): boolean {
-  return !NON_EVIDENCE_PATTERNS.some(p => p.test(quote));
-}
-
 // Stima se un testo è leggibile (documenti PDF/DOC non estratti correttamente producono rumore binario).
 // Restituisce la quota di parole "vere" (solo lettere) penalizzata dai caratteri tipici del rumore binario.
 // Testo italiano/inglese: 0.65-0.97; fogli di calcolo: ~0.45; PDF o DOC non estratti: < 0.05.
@@ -2351,10 +2081,11 @@ interface AnalysisState {
   documents_analyzed: string[];
 }
 
-async function saveState(supabase: any, assessmentId: string, state: AnalysisState) {
-  await supabase.from('compliance_assessments')
-    .update({ analysis_progress: state })
-    .eq('id', assessmentId);
+async function saveState(supabase: any, assessmentId: string, state: AnalysisState, token: string, checks: RequirementCheck[] = []) {
+  const { error } = await supabase.rpc('save_gap_analysis_progress', {
+    p_assessment_id: assessmentId, p_token: token, p_state: state, p_checks: checks,
+  });
+  if (error) throw error;
 }
 
 async function loadStagedChecks(supabase: any, assessmentId: string): Promise<RequirementCheck[]> {
@@ -2362,7 +2093,7 @@ async function loadStagedChecks(supabase: any, assessmentId: string): Promise<Re
   for (let from = 0; ; from += 500) {
     const { data, error } = await supabase
       .from('assessment_requirement_checks')
-      .select('check_payload')
+      .select('check_payload').order('requirement_id')
       .eq('assessment_id', assessmentId)
       .range(from, from + 499);
     if (error) throw error;
@@ -2407,9 +2138,13 @@ async function loadApplicableRequirements(supabase: any, regulations: string[]):
   let dbRows: any[] = [];
   // Il client Supabase non solleva eccezioni sugli errori di query: senza questo controllo
   // un errore transitorio passerebbe per "catalogo vuoto" e l'analisi userebbe l'elenco ridotto.
-  const { data, error } = await supabase.from('regulatory_requirements').select('*').eq('active', true);
-  if (error) throw error;
-  dbRows = data || [];
+  for (let from = 0; ; from += 500) {
+    const { data, error } = await supabase.from('regulatory_requirements').select('*')
+      .eq('active', true).order('requirement_id').range(from, from + 499);
+    if (error) throw error;
+    dbRows.push(...(data || []));
+    if (!data || data.length < 500) break;
+  }
   for (const reg of regulations) {
     const fromDb = dbRows.filter(r => String(r.regulation).toLowerCase() === reg.toLowerCase());
     if (fromDb.length > 0) {
@@ -2430,6 +2165,7 @@ denoServe(protect(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let releaseLease: (() => Promise<void>) | undefined;
   try {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) throw new Error('Missing authorization header');
@@ -2454,11 +2190,27 @@ denoServe(protect(async (req) => {
       return errorResponse(400, 'Invalid assessmentId format');
     }
 
-    const { data: assessment } = await supabase
+    const leaseToken = crypto.randomUUID();
+    const { data: acquired, error: leaseError } = await supabase.rpc('acquire_gap_analysis_lease', {
+      p_assessment_id: assessmentId, p_user_id: user.id, p_token: leaseToken,
+    });
+    if (leaseError) throw leaseError;
+    if (!acquired) return new Response(JSON.stringify({ success: true, status: 'in_progress', retryAfterMs: 5000 }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+    releaseLease = async () => {
+      const { error } = await supabase.from('gap_analysis_leases').delete().eq('assessment_id', assessmentId).eq('token', leaseToken);
+      if (error) console.error('Unable to release analysis lease:', error);
+    };
+    const { data: assessment, error: assessmentError } = await supabase
       .from('compliance_assessments')
       .select('id, annual_revenue_eur, scope_regulations, analysis_progress, status, applicability_profile')
       .eq('id', assessmentId).eq('user_id', user.id).maybeSingle();
+    if (assessmentError) throw assessmentError;
     if (!assessment) return errorResponse(404, 'Assessment not found');
+    if (isContinuation && assessment.status === 'completed') return new Response(JSON.stringify({
+      success: true, status: 'completed', progress: assessment.analysis_progress,
+    }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
     const { data: profile } = await supabase
       .from('profiles').select('*').eq('id', user.id).maybeSingle();
@@ -2479,9 +2231,10 @@ denoServe(protect(async (req) => {
       state = saved;
       normalizedRegulations = saved.regulations;
       normalizedLanguage = saved.language || 'it';
-      const { data: storedDocs } = await supabase
+      const { data: storedDocs, error: docsError } = await supabase
         .from('assessment_documents').select('name, type, content')
         .eq('assessment_id', assessmentId).order('name', { ascending: true });
+      if (docsError) throw docsError;
       normalizedDocuments = normalizeUserDocuments(storedDocs || []);
       if (normalizedDocuments.length === 0) return errorResponse(409, 'Documents of this assessment are no longer available');
       console.log(`Continuing gap analysis for ${assessmentId}: ${saved.pending.length} requirements pending`);
@@ -2507,7 +2260,8 @@ denoServe(protect(async (req) => {
           size: typeof raw.size === 'string' ? raw.size.substring(0, 120) : undefined,
           declared_at: new Date().toISOString(),
         };
-        await supabase.from('compliance_assessments').update({ applicability_profile: cleaned }).eq('id', assessmentId);
+        const { error: profileError } = await supabase.from('compliance_assessments').update({ applicability_profile: cleaned }).eq('id', assessmentId);
+        if (profileError) throw profileError;
         assessment.applicability_profile = cleaned;
       }
       normalizedLanguage = canonicalizeString(language || 'it').toLowerCase() || 'it';
@@ -2519,7 +2273,8 @@ denoServe(protect(async (req) => {
       console.log('Starting evidence-based gap analysis for assessment:', assessmentId);
 
       // I documenti restano disponibili per le chiamate successive e per i documenti generati
-      await supabase.from('assessment_documents').delete().eq('assessment_id', assessmentId);
+      const { error: deleteDocsError } = await supabase.from('assessment_documents').delete().eq('assessment_id', assessmentId);
+      if (deleteDocsError) throw deleteDocsError;
       const docRows = normalizedDocuments.map(d => ({
         assessment_id: assessmentId,
         user_id: user.id,
@@ -2546,22 +2301,9 @@ denoServe(protect(async (req) => {
     // Catalogo dei requisiti applicabili (validati sulla knowledge base)
     // ------------------------------------------------------------
     const catalog = await loadApplicableRequirements(supabase, normalizedRegulations);
-    // La validazione sulla knowledge base serve solo a comporre l'elenco iniziale:
-    // quando l'analisi prosegue, l'elenco è già in state.pending e si evita la scansione.
-    let applicableRequirements: RegulatoryRequirement[];
-    if (isContinuation && state) {
-      const wanted = new Set<string>(state.pending);
-      applicableRequirements = catalog.filter(r => wanted.has(r.id) || true);
-    } else {
-      const ragValidationCache = await buildRagValidationCache(supabase, normalizedRegulations);
-      applicableRequirements = catalog.filter(req => {
-        const regCache = ragValidationCache.get(req.regulation.toLowerCase());
-        if (!regCache || regCache.size === 0) return true; // normativa senza testo strutturato: catalogo integrato
-        const ok = req.rag_validation_keywords.some(kw => regCache.has(kw.toLowerCase()));
-        if (!ok) console.log(`Skipping ${req.id}: not found in RAG knowledge base for regulation ${req.regulation}`);
-        return ok;
-      });
-    }
+    // Catalogue membership and source availability are distinct: an unavailable source
+    // must never silently remove an obligation from the assessment denominator.
+    const applicableRequirements = catalog;
     const requirementById = new Map(applicableRequirements.map(r => [r.id, r]));
     console.log(`Applicable requirements: ${applicableRequirements.length} for regulations: ${normalizedRegulations.join(', ')}`);
 
@@ -2571,11 +2313,16 @@ denoServe(protect(async (req) => {
     const applicabilityProfile = (assessment?.applicability_profile || null) as ApplicabilityProfile | null;
     // Le dichiarazioni di applicabilità cambiano l'esito: entrano nella chiave della cache,
     // altrimenti un secondo profilo sugli stessi documenti riuserebbe il risultato del primo.
-    const cacheFingerprint = state?.cache_key || await generateCacheFingerprint(
+    const cacheFingerprint = await generateCacheFingerprint(
       normalizedRegulations, normalizedDocuments, normalizedLanguage, profile, assessment?.annual_revenue_eur,
-      applicableRequirements.map(r => r.id),
+      applicableRequirements,
       applicabilityProfile,
+      getAIModel(),
     );
+
+    if (state && state.cache_key !== cacheFingerprint) {
+      return errorResponse(409, 'Documenti, profilo o catalogo modificati: avviare una nuova valutazione');
+    }
 
     if (!state) {
       const { data: cachedResult } = await supabase
@@ -2585,15 +2332,8 @@ denoServe(protect(async (req) => {
         ? cachedResult.result_payload.checks as RequirementCheck[]
         : null;
       const now = new Date().toISOString();
-      await supabase.from('assessment_requirement_checks').delete().eq('assessment_id', assessmentId);
-      if (cachedChecks) {
-        console.log('✅ CACHE HIT - reusing cached requirement checks');
-        for (let i = 0; i < cachedChecks.length; i += 100) {
-          await supabase.from('assessment_requirement_checks').insert(
-            cachedChecks.slice(i, i + 100).map(c => ({ assessment_id: assessmentId, requirement_id: c.requirement_id, check_payload: c })),
-          );
-        }
-      }
+      const { error: resetError } = await supabase.from('assessment_requirement_checks').delete().eq('assessment_id', assessmentId);
+      if (resetError) throw resetError;
       state = {
         version: CHECKS_VERSION,
         status: 'in_progress',
@@ -2608,11 +2348,7 @@ denoServe(protect(async (req) => {
         unreadable_documents: unreadableDocuments,
         documents_analyzed: readableDocuments.map(d => d.name),
       };
-      await supabase.from('compliance_assessments').update({
-        requirement_checks: null,
-        analysis_progress: state,
-        status: 'in_progress',
-      }).eq('id', assessmentId);
+      await saveState(supabase, assessmentId, state, leaseToken, cachedChecks || []);
     }
 
     // ------------------------------------------------------------
@@ -2626,14 +2362,8 @@ denoServe(protect(async (req) => {
     // non portata a termine su un elenco svuotato: chiuderla darebbe una percentuale falsa.
     if (state.pending.length > 0) {
       const unresolved = state.pending.filter(id => !requirementById.has(id));
-      if (unresolved.length === state.pending.length) {
-        console.error(`Catalogo non disponibile: nessuno dei ${state.pending.length} requisiti in coda è stato trovato`);
-        return errorResponse(503, 'Catalogo dei requisiti non disponibile in questo momento: riprovare tra qualche istante');
-      }
       if (unresolved.length > 0) {
-        console.warn(`${unresolved.length} requisiti non presenti nel catalogo, esclusi dal conteggio: ${unresolved.slice(0, 10).join(', ')}`);
-        state.pending = state.pending.filter(id => requirementById.has(id));
-        state.total = Math.max(state.done + state.pending.length, state.done);
+        return errorResponse(503, 'Il catalogo è cambiato o non è completo: ripristinare i requisiti prima di riprendere questa analisi');
       }
     }
 
@@ -2668,18 +2398,11 @@ denoServe(protect(async (req) => {
         });
       }
       if (risolti.length > 0) {
-        for (let i = 0; i < risolti.length; i += 100) {
-          const { error } = await supabase.from('assessment_requirement_checks').upsert(
-            risolti.slice(i, i + 100).map(c => ({ assessment_id: assessmentId, requirement_id: c.requirement_id, check_payload: c })),
-            { onConflict: 'assessment_id,requirement_id' },
-          );
-          if (error) throw error;
-        }
         const esclusi = new Set(risolti.map(c => c.requirement_id));
         state.pending = state.pending.filter(id => !esclusi.has(id));
         state.done += risolti.length;
         state.updated_at = new Date().toISOString();
-        await saveState(supabase, assessmentId, state);
+        await saveState(supabase, assessmentId, state, leaseToken, risolti);
         console.log(`🚫 ${risolti.length} requisiti esclusi dalle dichiarazioni di applicabilità, ${state.pending.length} restano da valutare`);
       }
     }
@@ -2688,7 +2411,6 @@ denoServe(protect(async (req) => {
       // Il nome del file non entra nel corpus: un documento chiamato "Registro dei trattamenti"
       // non deve produrre corrispondenze di parole chiave che il contenuto non giustifica.
       const userCorpus = buildDocumentCorpus(readableDocuments.map(d => d.content).join(' \n '));
-      const corpusNormalized = normalizeQuote(readableDocuments.map(d => d.content).join(' \n '));
       const geminiKey = Deno.env.get('GEMINI_API_KEY');
       const aiKey = getAIKey();
 
@@ -2798,6 +2520,7 @@ denoServe(protect(async (req) => {
         const groupIds = state.pending.slice(0, groupSize);
         const groupRequirements = groupIds.map(id => requirementById.get(id)).filter((r): r is RegulatoryRequirement => !!r);
         const tGroup = Date.now();
+        let groupChecks: RequirementCheck[] = [];
 
         if (groupRequirements.length > 0) {
           const keywordInfo = new Map<string, { covered: string[]; ratio: number }>();
@@ -2834,10 +2557,9 @@ denoServe(protect(async (req) => {
             }), LLM_CONCURRENCY);
             for (const map of results) for (const [k, v] of map) llmResults.set(k, v);
           } else if (processedInThisRun === 0) {
-            console.log('⚠️ AI key not available, using keyword rules only');
+            console.log('⚠️ AI unavailable; requirements will need verification');
           }
 
-          const allowedStatuses = new Set(['covered', 'partial', 'missing', 'not_applicable']);
           const newChecks: RequirementCheck[] = groupRequirements.map((req) => {
             const kw = keywordInfo.get(req.id) || { covered: [], ratio: 0 };
             const llm = llmResults.get(req.id);
@@ -2853,129 +2575,29 @@ denoServe(protect(async (req) => {
               keyword_coverage: Math.round(kw.ratio * 100) / 100,
             };
 
-            if (llm && allowedStatuses.has(String(llm.status))) {
-              let status = String(llm.status) as CheckStatus;
-              const rawEvidence: any[] = Array.isArray(llm.evidence) ? llm.evidence : [];
-              const evidence = rawEvidence
-                .filter(e => e && typeof e.quote === 'string')
-                .map(e => ({ document: String(e.document || '').substring(0, 200), quote: String(e.quote).substring(0, 300) }))
-                .filter(e => quoteIsVerified(e.quote, corpusNormalized))
-                .filter(e => quoteIsSubstantive(e.quote))
-                .slice(0, 5);
-              const declaredOnly = rawEvidence.length > 0 && evidence.length === 0;
-              // Una condizione dichiarata all'avvio vale più della deduzione del modello:
-              // se l'organizzazione ha detto che ricorre, il requisito è applicabile e la sua
-              // assenza è un gap vero, non una cosa da verificare.
-              const verdict = applicabilityVerdict(req, applicabilityProfile);
-              const applicability = verdict?.status === 'applicable'
-                ? 'si'
-                : verdict?.status === 'unknown'
-                ? 'non_determinabile'
-                : typeof llm.applicability === 'string' ? llm.applicability.toLowerCase() : '';
-              const missingElements: string[] = (Array.isArray(llm.missing_elements) ? llm.missing_elements : [])
-                .filter((m: any) => typeof m === 'string' && m.trim()).map((m: string) => m.trim().substring(0, 300)).slice(0, 8);
-              let actions: string[] = (Array.isArray(llm.recommended_actions) ? llm.recommended_actions : [])
-                .filter((a: any) => typeof a === 'string' && a.trim()).map((a: string) => a.trim().substring(0, 500)).slice(0, 3);
-              let assessmentText = typeof llm.assessment === 'string' ? llm.assessment.trim().substring(0, 1200) : '';
+            const modelCheck = normalizeModelCheck(req, llm, applicabilityProfile, readableDocuments, isIt, base);
+            if (modelCheck) return modelCheck;
 
-              // Senza prove testuali valide lo status non può restare "covered".
-              if (status === 'covered' && evidence.length === 0) {
-                status = 'partial';
-                missingElements.unshift(isIt
-                  ? (declaredOnly
-                    ? 'Le uniche frasi citate sono dichiarazioni generiche di conformità o impegni non ancora realizzati: manca la documentazione della misura adottata.'
-                    : 'Le evidenze indicate non sono state ritrovate testualmente nei documenti: verificare che il contenuto sia effettivamente presente.')
-                  : (declaredOnly
-                    ? 'The only quoted sentences are generic compliance claims or commitments not yet fulfilled: documentation of the implemented measure is missing.'
-                    : 'The cited evidence could not be found verbatim in the documents: verify that the content is actually present.'));
-              }
-              // Una documentazione "parziale" sostenuta solo da dichiarazioni di intenti è, nei fatti, assente.
-              if (status === 'partial' && evidence.length === 0 && declaredOnly) {
-                status = 'missing';
-                missingElements.unshift(isIt
-                  ? 'Nei documenti risulta solo una dichiarazione di conformità o un impegno per il futuro, non una misura documentata.'
-                  : 'The documents only contain a compliance claim or a future commitment, not a documented measure.');
-              }
-              if (status === 'not_applicable' && !req.conditional) status = 'missing';
-              // Un obbligo condizionale diventa un gap solo se risulta che la condizione ricorre davvero:
-              // altrimenti finisce tra i requisiti da verificare, non tra quelli mancanti.
-              if (req.conditional && (status === 'missing' || status === 'partial') && applicability !== 'si') {
-                if (evidence.length === 0 || applicability === 'non_determinabile') status = 'to_verify';
-              }
-              // Su un gap l'utente deve poter vedere perché l'obbligo lo riguarda.
-              if (verdict?.status === 'applicable' && (status === 'missing' || status === 'partial')
-                  && !assessmentText.includes('all\'avvio')) {
-                assessmentText = `${assessmentText} ${verdict.reason_it}`.trim().substring(0, 1200);
-              }
-
-              if (actions.length === 0 && (status === 'missing' || status === 'partial')) {
-                actions = [isIt ? req.recommended_action_it : req.recommended_action_en].filter(Boolean);
-              }
-              if (!assessmentText) {
-                assessmentText = status === 'missing'
-                  ? (isIt ? 'Nessuna documentazione pertinente individuata nei documenti caricati.' : 'No relevant documentation found in the uploaded documents.')
-                  : status === 'to_verify'
-                  ? (isIt ? 'Dalla documentazione non risulta se il requisito si applica all\'organizzazione.' : 'The documentation does not show whether the requirement applies to the organisation.')
-                  : '';
-              }
-              return {
-                ...base,
-                status,
-                risk_level: riskProfileFor(req.risk_level, status),
-                assessment: assessmentText,
-                evidence,
-                missing_elements: missingElements,
-                recommended_actions: actions,
-                confidence: typeof llm.confidence === 'number' ? Math.max(0, Math.min(1, llm.confidence)) : null,
-                applicability: applicability || null,
-                method: 'llm_evidence' as const,
-              };
-            }
-
-            // Fallback deterministico a parole chiave (solo se la valutazione con prove non è disponibile).
-            // Le parole chiave non dimostrano che il contenuto sia completo: non possono produrre un "covered".
-            const threshold = req.coverage_threshold || 0.10;
-            const minMatches = req.min_keyword_matches || 1;
-            const covered = kw.covered.length >= minMatches && kw.ratio >= threshold;
-            let status: CheckStatus = covered ? 'partial' : 'missing';
-            if (!covered && req.conditional && kw.covered.length === 0) status = 'to_verify';
+            // Technical failures are not evidence that the organisation lacks a measure.
             return {
-              ...base,
-              status,
-              risk_level: riskProfileFor(req.risk_level, status),
-              assessment: covered
-                ? (isIt
-                  ? `Nei documenti caricati compaiono riferimenti al tema (${kw.covered.slice(0, 5).join(', ')}). Verifica basata su parole chiave: controllare che il contenuto sia completo.`
-                  : `The uploaded documents refer to the topic (${kw.covered.slice(0, 5).join(', ')}). Keyword-based check: verify that the content is complete.`)
-                : kw.covered.length > 0
-                ? (isIt
-                  ? `Documentazione parziale: compaiono solo alcuni riferimenti (${kw.covered.join(', ')}).`
-                  : `Partial documentation: only some references appear (${kw.covered.join(', ')}).`)
-                : (isIt ? 'Nessuna documentazione pertinente individuata nei documenti caricati.' : 'No relevant documentation found in the uploaded documents.'),
-              evidence: [],
-              missing_elements: status === 'to_verify' ? [] : [isIt ? req.gap_description_it : req.gap_description_en].filter(Boolean),
-              recommended_actions: status === 'to_verify' ? [] : [isIt ? req.recommended_action_it : req.recommended_action_en].filter(Boolean),
-              confidence: null,
-              method: 'keyword' as const,
+              ...base, status: 'to_verify' as const, risk_level: null, evidence: [],
+              assessment: isIt
+                ? 'Verifica AI non disponibile o risposta non valida: ripetere la valutazione di questo requisito.'
+                : 'AI verification unavailable or invalid: repeat the assessment of this requirement.',
+              missing_elements: [], recommended_actions: [], confidence: null, method: 'keyword' as const,
             };
           });
 
-          const tStage = Date.now();
-          const { error: stageError } = await supabase.from('assessment_requirement_checks').upsert(
-            newChecks.map(c => ({ assessment_id: assessmentId, requirement_id: c.requirement_id, check_payload: c })),
-            { onConflict: 'assessment_id,requirement_id' },
-          );
-          if (stageError) throw stageError;
-          const stageMs = Date.now() - tStage;
+          groupChecks = newChecks;
           state.done += newChecks.length;
-          lastStageMs = stageMs;
+          lastStageMs = 0;
           processedInThisRun += newChecks.length;
         }
 
         state.pending = state.pending.slice(groupIds.length);
         state.updated_at = new Date().toISOString();
         const tSave = Date.now();
-        if (state.pending.length > 0) await saveState(supabase, assessmentId, state);
+        await saveState(supabase, assessmentId, state, leaseToken, groupChecks);
         console.log(`✓ ${groupRequirements.length} requisiti in ${Date.now() - tGroup}ms (salvataggio esiti ${lastStageMs}ms, stato ${Date.now() - tSave}ms) — ${state.done}/${state.total}`);
       }
     }
@@ -2983,7 +2605,7 @@ denoServe(protect(async (req) => {
     state.updated_at = new Date().toISOString();
 
     if (state.pending.length > 0) {
-      await saveState(supabase, assessmentId, state);
+      await saveState(supabase, assessmentId, state, leaseToken);
       console.log(`Invocazione conclusa: ${state.done}/${state.total} verificati, ${state.pending.length} rimanenti`);
       return new Response(JSON.stringify({
         success: true,
@@ -3001,12 +2623,12 @@ denoServe(protect(async (req) => {
       .sort((a, b) => `${a.regulation}|${a.reference}`.localeCompare(`${b.regulation}|${b.reference}`));
 
     // Chiudere l'analisi senza esiti produrrebbe "100% di conformità, nessun gap": meglio un errore.
-    if (checks.length === 0) {
+    if (checks.length === 0 || checks.length !== state.total) {
       console.error(`Finalizzazione senza esiti per ${assessmentId}: la tabella di appoggio è vuota`);
       return errorResponse(500, 'Nessun esito disponibile per questa analisi: rilanciarla dall\'inizio');
     }
 
-    await supabase.from('gap_analysis_cache').upsert({
+    if (checks.every(c => c.method !== 'keyword')) await supabase.from('gap_analysis_cache').upsert({
       user_id: user.id,
       cache_key: cacheFingerprint,
       input_fingerprint: cacheFingerprint,
@@ -3024,38 +2646,22 @@ denoServe(protect(async (req) => {
     const notApplicableCount = checks.filter(c => c.status === 'not_applicable').length;
     console.log(`Checks: ${coveredCount} covered, ${partialCount} partial, ${missingCount} missing, ${toVerifyCount} to verify, ${notApplicableCount} not applicable`);
 
-    let sourceChunks: Array<{ id: string; content: string; document_id: string }> = [];
+    let sourceChunks: RegulatorySource[] = [];
     try {
-      sourceChunks = await getRelevantRagChunkObjects(supabase, normalizedRegulations, 100);
+      sourceChunks = await loadRegulatorySources(supabase, normalizedRegulations);
     } catch (e) {
-      console.error('Failed to fetch source chunks for traceability:', e);
-    }
-
-    function findSourceChunk(requirementRef: string): { chunk_id: string | null; excerpt: string | null } {
-      if (!requirementRef || sourceChunks.length === 0) return { chunk_id: null, excerpt: null };
-      const refLower = requirementRef.toLowerCase();
-      const artMatch = refLower.match(/(?:articolo|articoli|art\.?|article)\s+(\d+)/i);
-      if (artMatch) {
-        const artNum = artMatch[1];
-        const patterns = [`articolo ${artNum}`, `art. ${artNum}`, `art ${artNum}`, `article ${artNum}`];
-        for (const chunk of sourceChunks) {
-          const contentLower = (chunk.content || '').toLowerCase();
-          if (patterns.some(p => contentLower.includes(p))) {
-            return { chunk_id: chunk.id, excerpt: chunk.content.substring(0, 300) };
-          }
-        }
-      }
-      return { chunk_id: null, excerpt: null };
+      console.error('Normative sources unavailable; no unverified links will be generated:', e);
     }
 
     const gapsToInsert = gapChecks.map((c) => {
       const rl = c.risk_level || 'medium';
       const re = (c.remediation_effort || 'medium').toLowerCase();
-      const sourceInfo = findSourceChunk(c.reference);
+      const sourceInfo = findRegulatorySource(c.reference, c.regulation, sourceChunks);
       const gapDescription = c.missing_elements.length > 0
         ? (isIt ? `Elementi mancanti: ${c.missing_elements.join('; ')}` : `Missing elements: ${c.missing_elements.join('; ')}`)
         : (isIt ? 'Nessuna documentazione pertinente individuata nei documenti caricati.' : 'No relevant documentation found in the uploaded documents.');
       return {
+        id: crypto.randomUUID(),
         assessment_id: assessmentId,
         requirement_reference: c.reference,
         requirement_description: c.description,
@@ -3079,16 +2685,7 @@ denoServe(protect(async (req) => {
       };
     });
 
-    await supabase.from('action_plans').delete().eq('assessment_id', assessmentId);
-    await supabase.from('identified_gaps').delete().eq('assessment_id', assessmentId);
-
-    let insertedGaps: any[] = [];
-    for (let i = 0; i < gapsToInsert.length; i += 25) {
-      const { data, error: gapsError } = await supabase
-        .from('identified_gaps').insert(gapsToInsert.slice(i, i + 25)).select();
-      if (gapsError) throw gapsError;
-      insertedGaps.push(...(data || []));
-    }
+    const insertedGaps = gapsToInsert;
 
     const applicableCount = coveredCount + partialCount + missingCount;
     // Senza nemmeno un requisito valutabile la percentuale non esiste: scriverne una (tanto meno 100)
@@ -3123,35 +2720,13 @@ denoServe(protect(async (req) => {
       checks,
     };
 
-    // Il blob completo viene scritto una sola volta, a fine analisi
-    await supabase.from('compliance_assessments').update({
-      overall_risk_score: overallRisk,
-      overall_compliance_percentage: overallCompliance,
-      requirement_checks: finalState,
-      analysis_progress: { ...state, status: 'completed', done: checks.length, total: checks.length, pending: [], updated_at: new Date().toISOString() },
-      status: 'completed',
-      completed_at: new Date().toISOString(),
-    }).eq('id', assessmentId);
-    await supabase.from('assessment_requirement_checks').delete().eq('assessment_id', assessmentId);
-
-    const actionPlans = insertedGaps
-      .filter((g: any) => g.priority <= 3)
-      .flatMap((gap: any) => {
-        const actions = Array.isArray(gap.recommended_actions) ? gap.recommended_actions : [];
-        return actions.slice(0, 3).map((action: any) => ({
-          assessment_id: assessmentId,
-          gap_id: gap.id,
-          title: gap.requirement_reference || '',
-          description: action?.action || gap.gap_description,
-          priority: gap.priority,
-          estimated_cost_eur: null,
-          estimated_hours: null,
-          status: 'pending',
-        }));
-      });
-    for (let i = 0; i < actionPlans.length; i += 50) {
-      await supabase.from('action_plans').insert(actionPlans.slice(i, i + 50));
-    }
+    const { error: finalizeError } = await supabase.rpc('finalize_gap_analysis', {
+      p_assessment_id: assessmentId, p_token: leaseToken,
+      p_final: finalState,
+      p_progress: { ...state, status: 'completed', done: checks.length, pending: [], updated_at: new Date().toISOString() },
+      p_gaps: gapsToInsert, p_risk: overallRisk, p_compliance: overallCompliance,
+    });
+    if (finalizeError) throw finalizeError;
 
     console.log(`Finalizzazione in ${Date.now() - tFinal}ms`);
     console.log(`Gap analysis completed: ${insertedGaps.length} gaps (${highCount} high, ${mediumCount} medium, ${lowCount} low), risk=${overallRisk}, compliance=${overallCompliance}%`);
@@ -3177,12 +2752,14 @@ denoServe(protect(async (req) => {
           analyzed: checks.filter(c => c.regulation.toLowerCase() === reg.toLowerCase()).length,
         })),
       },
-      method: 'evidence_checks_with_keyword_fallback',
+      method: 'verified_document_evidence',
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {
     console.error('Error in gap-analysis function:', error);
     return errorResponse(500, error instanceof Error ? error.message : 'Unknown error occurred');
+  } finally {
+    await releaseLease?.();
   }
 }, false, false));
 
@@ -3354,134 +2931,6 @@ function normalizeUserDocuments(userDocuments: any[]): Array<{ name: string; typ
     });
 }
 
-async function generateCacheFingerprint(
-  regulations: string[],
-  userDocuments: Array<{ name: string; type: string; content: string }>,
-  language: string,
-  profile: any,
-  annualRevenue: number | null | undefined,
-  requirementIds: string[] = [],
-  applicabilityProfile: ApplicabilityProfile | null = null,
-): Promise<string> {
-  const canonicalInput = JSON.stringify({
-    v: CHECKS_VERSION,
-    q: [...requirementIds].sort(),
-    a: Object.entries(applicabilityProfile?.answers || {}).sort(([x], [y]) => x.localeCompare(y)),
-    r: [...regulations].map(canonicalizeString).filter(Boolean).sort((a, b) => a.localeCompare(b)),
-    l: canonicalizeString(language).toLowerCase() || 'it',
-    p: {
-      j: canonicalizeString(profile?.jurisdiction || 'EU'),
-      s: canonicalizeString(profile?.sector || 'Technology'),
-      c: canonicalizeString(profile?.compliance_role || 'DPO'),
-    },
-    rev: Math.max(0, Number(annualRevenue || 5000000)),
-    d: userDocuments.map(d => ({ n: d.name, t: d.type, c: d.content })),
-  });
-  const data = new TextEncoder().encode(canonicalInput);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-// Build a set of lowercased keywords found in RAG chunks for the selected regulations
-async function buildRagValidationCache(supabase: any, regulations: string[]): Promise<Map<string, Set<string>>> {
-  const cache = new Map<string, Set<string>>();
-
-  const regulationDocPatterns: Record<string, string[]> = {
-    'GDPR': ['GDPR', 'General Data Protection', '2016/679'],
-    // NIS2 family: include Direttiva UE + recepimento italiano (D.Lgs. 138/2024) + Determinazioni ACN
-    'NIS2': ['NIS2', 'NIS 2', '2022/2555', 'D.Lgs. 138', '138/2024', 'Determinazione ACN', 'Piattaforma NIS', 'Decreto NIS'],
-    'DORA': ['DORA', 'Digital Operational Resilience', '2022/2554'],
-    'AI Act': ['AI Act', 'Artificial Intelligence', '2024/1689'],
-    'CRA': ['Cyber Resilience Act', 'CRA', '2024/2847'],
-    'Data Act': ['Data Act', '2023/2854'],
-    'ISO 27001': ['ISO 27001', 'ISO/IEC 27001', 'ISMS'],
-    'D.Lgs 81/08': ['81/08', 'sicurezza lavoro', 'D.Lgs 81'],
-    'Legge 124/2024 Albania': ['124/2024', 'protezione dati albania'],
-  };
-
-  for (const reg of regulations) {
-    const regSet = new Set<string>();
-    const patterns = regulationDocPatterns[reg] || [reg];
-    for (const pattern of patterns) {
-      const { data: docs } = await supabase
-        .from('documents').select('id, title')
-        .ilike('title', `%${pattern}%`).limit(10);
-      if (!docs || docs.length === 0) continue;
-
-      const docIds = docs.map((d: any) => d.id);
-      const { data: chunks } = await supabase
-        .from('chunks').select('content')
-        .in('document_id', docIds).limit(500);
-      if (!chunks) continue;
-
-      for (const chunk of chunks) {
-        const content = (chunk.content || '').toLowerCase();
-        const patterns_to_find = [
-          /(?:articolo|art\.?|article)\s+\d+/gi,
-          /clausola\s+\d+/gi,
-          /clause\s+\d+/gi,
-          /annex\s+a/gi,
-          /a\.\d+/gi,
-        ];
-        for (const pat of patterns_to_find) {
-          const matches = content.match(pat);
-          if (matches) {
-            for (const m of matches) {
-              regSet.add(m.toLowerCase().trim());
-            }
-          }
-        }
-      }
-    }
-    cache.set(reg.toLowerCase(), regSet);
-    console.log(`RAG cache for ${reg}: ${regSet.size} entries`);
-  }
-
-  return cache;
-}
-
-// ============================================================
-// REGULATORY SOURCE CHUNKS (traceability)
-// ============================================================
-
-async function getRelevantRagChunkObjects(supabase: any, regulations: string[], limit: number): Promise<Array<{ id: string; content: string; document_id: string }>> {
-  const regulationDocPatterns: Record<string, string[]> = {
-    'GDPR': ['GDPR', '2016/679'],
-    // NIS2 family: include Direttiva UE + recepimento italiano (D.Lgs. 138/2024) + Determinazioni ACN
-    'NIS2': ['NIS2', '2022/2555', 'D.Lgs. 138', '138/2024', 'Determinazione ACN', 'Piattaforma NIS'],
-    'DORA': ['DORA', '2022/2554'],
-    'AI Act': ['AI Act', '2024/1689'],
-    'CRA': ['Cyber Resilience Act', 'CRA'],
-    'Data Act': ['Data Act', '2023/2854'],
-    'ISO 27001': ['ISO 27001'],
-    'D.Lgs 81/08': ['81/08', 'sicurezza lavoro'],
-  };
-
-  const allChunks: Array<{ id: string; content: string; document_id: string }> = [];
-  for (const reg of regulations) {
-    const patterns = regulationDocPatterns[reg] || [reg];
-    for (const pattern of patterns) {
-      const { data: docs } = await supabase
-        .from('documents').select('id, title')
-        .ilike('title', `%${pattern}%`).limit(5);
-      if (!docs?.length) continue;
-
-      const { data: chunks } = await supabase
-        .from('chunks').select('id, content, document_id')
-        .in('document_id', docs.map((d: any) => d.id))
-        .limit(Math.ceil(limit / regulations.length));
-      if (chunks) {
-        allChunks.push(...chunks.map((c: any) => ({ id: c.id, content: c.content, document_id: c.document_id })));
-      }
-    }
-  }
-  return allChunks.slice(0, limit);
-}
-
-// ============================================================
-// SEMANTIC EMBEDDING HELPERS FOR GAP ANALYSIS
-// ============================================================
-
 function splitIntoSections(text: string, maxChars: number): string[] {
   const sections: string[] = [];
   const paragraphs = text.split(/\n\s*\n/);
@@ -3593,3 +3042,4 @@ async function generateBatchEmbeddingsForGap(apiKey: string, texts: string[]): P
 
   return results.flat();
 }
+

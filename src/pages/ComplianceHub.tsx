@@ -1,3 +1,4 @@
+import { formatComplianceScore } from '@/lib/compliance-score';
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -41,7 +42,7 @@ interface Assessment {
   title: string;
   assessment_type: string;
   overall_risk_score: number;
-  overall_compliance_percentage: number;
+  overall_compliance_percentage: number | null;
   status: string;
   created_at: string;
 }
@@ -408,7 +409,7 @@ export default function ComplianceHub() {
                         <div className="flex items-center gap-2">
                           <Progress value={assessment.overall_compliance_percentage || 0} className="flex-1" />
                           <span className="text-sm font-medium">
-                            {(assessment.overall_compliance_percentage || 0).toFixed(0)}%
+                            {formatComplianceScore(assessment.overall_compliance_percentage)}
                           </span>
                         </div>
                       </div>
@@ -436,3 +437,4 @@ export default function ComplianceHub() {
     </div>
   );
 }
+

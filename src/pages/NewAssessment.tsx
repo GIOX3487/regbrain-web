@@ -193,6 +193,7 @@ export default function NewAssessment() {
           err.httpStatus = response.status;
           throw err;
         }
+        if (data.retryAfterMs) await new Promise(r => setTimeout(r, data.retryAfterMs));
         return data as { status: 'in_progress' | 'completed'; progress?: { done: number; total: number }; unreadable_documents?: string[] };
       };
       // Limite di CPU, sovraccarico o errore momentaneo: l'avanzamento è salvato, si riprende da lì.
@@ -719,3 +720,4 @@ export default function NewAssessment() {
     </div>
   );
 }
+
