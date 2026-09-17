@@ -6,8 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 const CookiePolicy = () => {
   const navigate = useNavigate();
-  const lastUpdated = "29 Dicembre 2024";
-  const companyName = "RegBrain";
+  const lastUpdated = "17 settembre 2026";
   const companyEmail = "regbrain.contact@gmail.com";
 
   return (
@@ -38,16 +37,20 @@ const CookiePolicy = () => {
           <div className="text-center mb-12">
             <h1 className="text-3xl md:text-4xl font-bold mb-4">Cookie Policy</h1>
             <p className="text-muted-foreground mb-2">
-              Informativa sull'utilizzo dei cookie e tecnologie simili
+              Informativa sull'uso dei cookie e delle tecnologie di memorizzazione nel browser
             </p>
+            <p className="text-sm text-muted-foreground">Ultimo aggiornamento: {lastUpdated}</p>
           </div>
 
           {/* Intro */}
           <div className="bg-primary/5 border border-primary/20 rounded-lg p-6 mb-8">
             <p className="text-muted-foreground m-0">
-              La presente Cookie Policy spiega cosa sono i cookie, quali tipologie utilizziamo, 
-              come puoi gestire le tue preferenze e i tuoi diritti in merito. Questa policy integra 
-              la nostra Privacy Policy e si applica al sito web e alla piattaforma RegBrain.
+              <strong className="text-foreground">In breve: RegBrain non usa cookie.</strong> Il sito e la
+              piattaforma non installano alcun cookie sul tuo dispositivo, non usano strumenti di analisi del
+              traffico, non usano strumenti di profilazione pubblicitaria e non caricano contenuti di terze parti
+              nel browser. Usiamo solo la memoria locale del browser per le funzioni che chiedi tu, come restare
+              connesso dopo il login. Per questo non trovi un banner di consenso: non c'è niente per cui chiederlo.
+              Questa informativa integra la Privacy Policy e si applica al sito e alla piattaforma RegBrain.
             </p>
           </div>
 
@@ -57,40 +60,45 @@ const CookiePolicy = () => {
               <div className="p-2 rounded-lg bg-primary/10">
                 <Info className="h-5 w-5 text-primary" />
               </div>
-              <h2 className="text-2xl font-bold m-0">1. Cosa sono i Cookie</h2>
+              <h2 className="text-2xl font-bold m-0">1. Cookie e tecnologie equivalenti</h2>
             </div>
             <Separator className="mb-4" />
-            
+
             <p className="text-muted-foreground mb-4">
-              I cookie sono piccoli file di testo che vengono memorizzati sul tuo dispositivo (computer, tablet, smartphone) 
-              quando visiti un sito web. Servono a migliorare l'esperienza di navigazione, ricordare le tue preferenze 
-              e fornire informazioni ai proprietari del sito.
+              I cookie sono piccoli file di testo che un sito salva sul dispositivo di chi lo visita e che il
+              browser rimanda al sito a ogni richiesta successiva. La normativa non riguarda però solo i cookie in
+              senso stretto: l'articolo 122 del Codice privacy e le linee guida del Garante sui cookie e altri
+              strumenti di tracciamento si applicano a qualunque archiviazione di informazioni nel dispositivo
+              dell'utente, compresi il local storage e il session storage del browser.
             </p>
 
-            <h3 className="text-lg font-semibold mb-3">Tecnologie simili ai cookie</h3>
             <p className="text-muted-foreground">
-              Oltre ai cookie, utilizziamo tecnologie simili come:
+              Per questo motivo l'elenco della sezione 2 non riporta cookie, che non esistono, ma tutto ciò che
+              RegBrain effettivamente scrive nella memoria del tuo browser.
             </p>
-            <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
-              <li><strong>Local Storage:</strong> per memorizzare dati persistenti nel browser</li>
-              <li><strong>Session Storage:</strong> per dati temporanei della sessione</li>
-              <li><strong>Web Beacons:</strong> per tracciare l'apertura di email (solo con consenso)</li>
-            </ul>
           </section>
 
-          {/* Section 2 - Technical Cookies */}
+          {/* Section 2 - What we actually store */}
           <section className="mb-8">
             <div className="flex items-center gap-3 mb-4">
               <div className="p-2 rounded-lg bg-primary/10">
                 <Settings className="h-5 w-5 text-primary" />
               </div>
-              <h2 className="text-2xl font-bold m-0">2. Cookie Tecnici (Necessari)</h2>
+              <h2 className="text-2xl font-bold m-0">2. Cosa memorizziamo davvero</h2>
             </div>
             <Separator className="mb-4" />
-            
+
+            <div className="bg-muted/50 border border-border rounded-lg p-4 mb-6">
+              <p className="text-sm text-muted-foreground m-0">
+                <strong className="text-foreground">Cookie installati: nessuno.</strong> Aprendo il sito senza
+                effettuare il login, il browser non riceve alcun cookie, né di prima né di terza parte.
+              </p>
+            </div>
+
+            <h3 className="text-lg font-semibold mb-3">2.1 Memoria persistente (local storage)</h3>
             <p className="text-muted-foreground mb-4">
-              Questi cookie sono essenziali per il funzionamento del sito e non possono essere disattivati. 
-              Vengono impostati in risposta ad azioni dell'utente (login, compilazione form, preferenze privacy).
+              Resta nel browser finché non esci dall'account o non la cancelli tu. Non viene inviata
+              automaticamente a nessun server, a differenza dei cookie.
             </p>
 
             <Table>
@@ -99,45 +107,85 @@ const CookiePolicy = () => {
                   <TableHead>Nome</TableHead>
                   <TableHead>Scopo</TableHead>
                   <TableHead>Durata</TableHead>
-                  <TableHead>Tipo</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 <TableRow>
-                  <TableCell className="font-mono text-sm">sb-*-auth-token</TableCell>
-                  <TableCell>Autenticazione utente (Supabase)</TableCell>
-                  <TableCell>Sessione / 7 giorni</TableCell>
-                  <TableCell>First-party</TableCell>
+                  <TableCell className="font-mono text-sm">sb-&lt;progetto&gt;-auth-token</TableCell>
+                  <TableCell>
+                    Sessione di autenticazione, per non dover rifare il login a ogni pagina. Scritta solo dopo
+                    l'accesso.
+                  </TableCell>
+                  <TableCell>Fino al logout</TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell className="font-mono text-sm">cookie_consent</TableCell>
-                  <TableCell>Memorizza le preferenze cookie</TableCell>
-                  <TableCell>12 mesi</TableCell>
-                  <TableCell>First-party</TableCell>
+                  <TableCell className="font-mono text-sm">pendingAnalysis</TableCell>
+                  <TableCell>
+                    Conserva i dati di un'analisi avviata mentre completi un passaggio intermedio, per non
+                    perderli.
+                  </TableCell>
+                  <TableCell>Fino al completamento</TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell className="font-mono text-sm">theme</TableCell>
-                  <TableCell>Preferenza tema chiaro/scuro</TableCell>
-                  <TableCell>12 mesi</TableCell>
-                  <TableCell>First-party</TableCell>
+                  <TableCell className="font-mono text-sm">returnToAnalysis</TableCell>
+                  <TableCell>Ti riporta all'analisi da cui eri partito dopo una deviazione di percorso.</TableCell>
+                  <TableCell>Fino al rientro</TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell className="font-mono text-sm">language</TableCell>
-                  <TableCell>Preferenza lingua</TableCell>
-                  <TableCell>12 mesi</TableCell>
-                  <TableCell>First-party</TableCell>
+                  <TableCell className="font-mono text-sm">continueConversation</TableCell>
+                  <TableCell>Riprende una conversazione con l'assistente interrotta da un cambio pagina.</TableCell>
+                  <TableCell>Fino alla ripresa</TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+
+            <h3 className="text-lg font-semibold mb-3 mt-8">2.2 Memoria di sessione (session storage)</h3>
+            <p className="text-muted-foreground mb-4">
+              Viene cancellata dal browser quando chiudi la scheda. Non sopravvive alla sessione di navigazione.
+            </p>
+
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nome</TableHead>
+                  <TableHead>Scopo</TableHead>
+                  <TableHead>Durata</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow>
+                  <TableCell className="font-mono text-sm">site_auth_token</TableCell>
+                  <TableCell>
+                    Accesso al sito durante la fase ad accesso riservato, per non dover reinserire la password a
+                    ogni pagina.
+                  </TableCell>
+                  <TableCell>Chiusura della scheda</TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell className="font-mono text-sm">onboarding_complete</TableCell>
-                  <TableCell>Stato del wizard iniziale</TableCell>
-                  <TableCell>Persistente</TableCell>
-                  <TableCell>First-party</TableCell>
+                  <TableCell className="font-mono text-sm">auth_redirect</TableCell>
+                  <TableCell>Ricorda la pagina a cui tornare subito dopo il login.</TableCell>
+                  <TableCell>Chiusura della scheda</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="font-mono text-sm">chatState, chatReturn, restoreMessages</TableCell>
+                  <TableCell>
+                    Stato della conversazione con l'assistente e messaggi da ripristinare dopo un cambio pagina.
+                  </TableCell>
+                  <TableCell>Chiusura della scheda</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="font-mono text-sm">force_demo_onboarding</TableCell>
+                  <TableCell>Avvia la procedura guidata iniziale quando entri nella demo.</TableCell>
+                  <TableCell>Chiusura della scheda</TableCell>
                 </TableRow>
               </TableBody>
             </Table>
 
             <p className="text-sm text-muted-foreground mt-4 italic">
-              Base giuridica: Legittimo interesse (Art. 6.1.f GDPR) - necessari per il funzionamento del servizio.
+              Tutte queste voci sono tecniche, cioè strettamente necessarie a fornire il servizio che hai
+              richiesto. L'articolo 122 comma 1 del Codice privacy non richiede il consenso per questo tipo di
+              archiviazione. Il trattamento dei dati collegati è fondato sull'esecuzione del contratto
+              (art. 6.1.b GDPR).
             </p>
           </section>
 
@@ -147,43 +195,23 @@ const CookiePolicy = () => {
               <div className="p-2 rounded-lg bg-primary/10">
                 <BarChart3 className="h-5 w-5 text-primary" />
               </div>
-              <h2 className="text-2xl font-bold m-0">3. Cookie Analitici</h2>
+              <h2 className="text-2xl font-bold m-0">3. Cookie analitici</h2>
             </div>
             <Separator className="mb-4" />
-            
+
             <p className="text-muted-foreground mb-4">
-              Questi cookie ci aiutano a capire come i visitatori interagiscono con il sito, 
-              raccogliendo informazioni in forma aggregata e anonima.
+              <strong className="text-foreground">Non ne usiamo.</strong> Il sito non integra alcuno strumento di
+              analisi del traffico o del comportamento degli utenti: né Google Analytics, né Plausible, né
+              PostHog, né Matomo, né mappe di calore o registrazioni di sessione. Non misuriamo le visite.
             </p>
 
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Fornitore</TableHead>
-                  <TableHead>Cookie</TableHead>
-                  <TableHead>Scopo</TableHead>
-                  <TableHead>Durata</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                <TableRow>
-                  <TableCell className="font-medium">Plausible Analytics</TableCell>
-                  <TableCell className="font-mono text-sm">Nessun cookie</TableCell>
-                  <TableCell>Analytics privacy-friendly senza cookie</TableCell>
-                  <TableCell>N/A</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="font-medium">Posthog</TableCell>
-                  <TableCell className="font-mono text-sm">ph_*</TableCell>
-                  <TableCell>Product analytics e funnel</TableCell>
-                  <TableCell>12 mesi</TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-
-            <p className="text-sm text-muted-foreground mt-4 italic">
-              Base giuridica: Consenso (Art. 6.1.a GDPR). Puoi revocare il consenso in qualsiasi momento.
-            </p>
+            <div className="bg-muted/50 border border-border rounded-lg p-4">
+              <p className="text-sm text-muted-foreground m-0">
+                Se in futuro introdurremo uno strumento di misurazione, aggiorneremo questa pagina prima di
+                attivarlo e, se non sarà esente da consenso, chiederemo il tuo consenso preventivo con un banner
+                dedicato.
+              </p>
+            </div>
           </section>
 
           {/* Section 4 - Marketing */}
@@ -192,140 +220,129 @@ const CookiePolicy = () => {
               <div className="p-2 rounded-lg bg-primary/10">
                 <Target className="h-5 w-5 text-primary" />
               </div>
-              <h2 className="text-2xl font-bold m-0">4. Cookie di Marketing (Opzionali)</h2>
+              <h2 className="text-2xl font-bold m-0">4. Cookie di marketing e profilazione</h2>
             </div>
             <Separator className="mb-4" />
-            
-            <p className="text-muted-foreground mb-4">
-              Attualmente <strong>non utilizziamo cookie di marketing o profilazione</strong>. 
-              Se in futuro decidessimo di implementarli, aggiorneremo questa policy e richiederemo 
-              il tuo consenso esplicito prima di attivarli.
-            </p>
 
-            <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
-              <p className="text-sm text-muted-foreground m-0">
-                <strong>✓ Scelta privacy-first:</strong> RegBrain non vende né condivide i tuoi dati con terze parti 
-                per finalità pubblicitarie. Non utilizziamo Google Analytics né Facebook Pixel.
-              </p>
-            </div>
+            <p className="text-muted-foreground mb-4">
+              <strong className="text-foreground">Non ne usiamo.</strong> Nessun pixel pubblicitario, nessun
+              identificativo per il retargeting, nessuna piattaforma di advertising. RegBrain non vende e non
+              cede i tuoi dati a terzi per finalità pubblicitarie.
+            </p>
           </section>
 
           {/* Section 5 - Third Party */}
           <section className="mb-8">
-            <h2 className="text-2xl font-bold mb-4">5. Cookie di Terze Parti</h2>
+            <h2 className="text-2xl font-bold mb-4">5. Terze parti</h2>
             <Separator className="mb-4" />
-            
+
             <p className="text-muted-foreground mb-4">
-              Alcuni servizi integrati potrebbero impostare propri cookie:
+              Nessun servizio di terza parte viene caricato nel tuo browser mentre usi RegBrain. Le pagine non
+              richiamano font esterni, video incorporati, widget social, chat di supporto o script di fornitori
+              terzi: tutte le risorse arrivano dal dominio di RegBrain.
             </p>
 
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Servizio</TableHead>
-                  <TableHead>Scopo</TableHead>
-                  <TableHead>Privacy Policy</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                <TableRow>
-                  <TableCell className="font-medium">Stripe</TableCell>
-                  <TableCell>Elaborazione pagamenti sicuri</TableCell>
-                  <TableCell>
-                    <a href="https://stripe.com/privacy" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
-                      stripe.com/privacy
-                    </a>
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="font-medium">Intercom</TableCell>
-                  <TableCell>Chat di supporto (se attivo)</TableCell>
-                  <TableCell>
-                    <a href="https://www.intercom.com/legal/privacy" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
-                      intercom.com/legal/privacy
-                    </a>
-                  </TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
+            <p className="text-muted-foreground mb-4">
+              I fornitori che trattano dati per conto nostro lo fanno lato server, senza scrivere niente nel tuo
+              browser. Sono elencati nella Privacy Policy insieme alla loro funzione e alla base giuridica. Se in
+              futuro integreremo nel sito un servizio che imposta cookie propri, come un sistema di pagamento o
+              una chat di assistenza, questa sezione verrà aggiornata prima dell'attivazione.
+            </p>
           </section>
 
-          {/* Section 6 - Manage Cookies */}
+          {/* Section 6 - No banner */}
           <section className="mb-8">
-            <h2 className="text-2xl font-bold mb-4">6. Come Gestire i Cookie</h2>
+            <h2 className="text-2xl font-bold mb-4">6. Perché non c'è un banner di consenso</h2>
             <Separator className="mb-4" />
-            
-            <h3 className="text-lg font-semibold mb-3">6.1 Banner di Consenso</h3>
+
             <p className="text-muted-foreground mb-4">
-              Al primo accesso alla piattaforma, ti verrà mostrato un banner che ti permette di accettare 
-              o rifiutare i cookie non essenziali. Puoi modificare le tue preferenze in qualsiasi momento 
-              cliccando su "Impostazioni Cookie" nel footer del sito.
+              Il consenso preventivo serve per l'archiviazione non tecnica: analisi, profilazione, tracciamento
+              pubblicitario. RegBrain non ne fa nessuna, quindi un banner che chiede di accettare o rifiutare
+              categorie inesistenti non avrebbe alcun effetto reale, e le linee guida del Garante scoraggiano la
+              raccolta di consensi non necessari.
             </p>
 
-            <h3 className="text-lg font-semibold mb-3">6.2 Impostazioni del Browser</h3>
+            <p className="text-muted-foreground">
+              Se e quando introdurremo strumenti soggetti a consenso, il banner comparirà, con rifiuto altrettanto
+              facile dell'accettazione e possibilità di revoca in ogni momento.
+            </p>
+          </section>
+
+          {/* Section 7 - Manage */}
+          <section className="mb-8">
+            <h2 className="text-2xl font-bold mb-4">7. Come cancellare quello che memorizziamo</h2>
+            <Separator className="mb-4" />
+
             <p className="text-muted-foreground mb-4">
-              Puoi gestire i cookie direttamente dal tuo browser:
+              La memoria di sessione si svuota chiudendo la scheda. La memoria persistente si svuota uscendo
+              dall'account, oppure cancellando i dati del sito dal browser:
             </p>
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
               <li>
                 <strong>Chrome:</strong>{" "}
                 <a href="https://support.google.com/chrome/answer/95647" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
-                  Gestisci cookie in Chrome
+                  cancellare i dati dei siti in Chrome
                 </a>
               </li>
               <li>
                 <strong>Firefox:</strong>{" "}
-                <a href="https://support.mozilla.org/it/kb/protezione-antitracciamento-avanzata-firefox-desktop" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
-                  Gestisci cookie in Firefox
+                <a href="https://support.mozilla.org/it/kb/eliminare-i-cookie-e-i-dati-dei-siti-in-firefox" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
+                  cancellare i dati dei siti in Firefox
                 </a>
               </li>
               <li>
                 <strong>Safari:</strong>{" "}
                 <a href="https://support.apple.com/it-it/guide/safari/sfri11471/mac" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
-                  Gestisci cookie in Safari
+                  gestire i dati dei siti in Safari
                 </a>
               </li>
               <li>
                 <strong>Edge:</strong>{" "}
                 <a href="https://support.microsoft.com/it-it/microsoft-edge/eliminare-i-cookie-in-microsoft-edge-63947406-40ac-c3b8-57b9-2a946a29ae09" className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
-                  Gestisci cookie in Edge
+                  eliminare i dati di navigazione in Edge
                 </a>
               </li>
             </ul>
 
             <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4 mt-4">
               <p className="text-sm text-muted-foreground m-0">
-                <strong>Attenzione:</strong> La disattivazione dei cookie tecnici potrebbe compromettere 
-                il funzionamento del sito e impedirti di accedere ad alcune funzionalità.
+                <strong>Attenzione:</strong> cancellando questi dati esci dall'account e perdi le analisi avviate
+                ma non ancora completate. I documenti e i risultati già salvati restano nel tuo spazio di lavoro,
+                perché non sono conservati nel browser.
               </p>
             </div>
           </section>
 
-          {/* Section 7 - Rights */}
+          {/* Section 8 - Rights */}
           <section className="mb-8">
-            <h2 className="text-2xl font-bold mb-4">7. I Tuoi Diritti</h2>
+            <h2 className="text-2xl font-bold mb-4">8. I tuoi diritti</h2>
             <Separator className="mb-4" />
-            
+
             <p className="text-muted-foreground mb-4">
-              In relazione ai cookie e al trattamento dei dati, hai diritto di:
+              Sui dati personali trattati da RegBrain hai i diritti previsti dagli articoli da 15 a 22 del GDPR:
             </p>
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
-              <li>Revocare il consenso ai cookie opzionali in qualsiasi momento</li>
-              <li>Accedere ai dati raccolti tramite cookie</li>
-              <li>Richiedere la cancellazione dei dati</li>
-              <li>Opporti al trattamento basato sul legittimo interesse</li>
-              <li>Presentare reclamo al Garante Privacy</li>
+              <li>accedere ai dati che ti riguardano e ottenerne copia</li>
+              <li>chiederne la rettifica o la cancellazione</li>
+              <li>chiedere la limitazione del trattamento</li>
+              <li>ricevere i dati in formato strutturato e trasferirli ad altro titolare</li>
+              <li>opporti al trattamento nei casi previsti dall'articolo 21</li>
+              <li>presentare reclamo al Garante per la protezione dei dati personali</li>
             </ul>
+            <p className="text-muted-foreground mt-4">
+              Le modalità di esercizio e i tempi di risposta sono indicati nella Privacy Policy.
+            </p>
           </section>
 
-          {/* Section 8 - Updates */}
+          {/* Section 9 - Updates */}
           <section className="mb-8">
-            <h2 className="text-2xl font-bold mb-4">8. Aggiornamenti della Cookie Policy</h2>
+            <h2 className="text-2xl font-bold mb-4">9. Aggiornamenti</h2>
             <Separator className="mb-4" />
-            
+
             <p className="text-muted-foreground">
-              Questa policy potrebbe essere aggiornata periodicamente. Ti informeremo di modifiche 
-              significative tramite banner sul sito o comunicazione email.
+              Questa pagina viene aggiornata ogni volta che cambia ciò che il sito memorizza nel browser. La data
+              in alto indica l'ultima revisione. Se un aggiornamento introducesse strumenti soggetti a consenso,
+              te lo comunicheremo prima di attivarli.
             </p>
           </section>
 
@@ -336,7 +353,7 @@ const CookiePolicy = () => {
               <h2 className="text-xl font-bold m-0">Contatti</h2>
             </div>
             <p className="text-muted-foreground mb-2">
-              Per domande sulla Cookie Policy o per esercitare i tuoi diritti:
+              Per domande su questa informativa o per esercitare i tuoi diritti:
             </p>
             <p className="text-muted-foreground">
               Email: <a href={`mailto:${companyEmail}`} className="text-primary">{companyEmail}</a>
