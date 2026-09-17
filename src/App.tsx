@@ -4,7 +4,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { SitePasswordProtection } from "@/components/SitePasswordProtection";
-import CookieBanner from "@/components/CookieBanner";
 import Landing from "./pages/Landing";
 import Auth from "./pages/Auth";
 import Onboarding from "./pages/Onboarding";
@@ -123,7 +122,6 @@ const App = () => (
             <Route path="/cookie-policy" element={<CookiePolicy />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
-          <CookieBanner />
         </BrowserRouter>
       </SitePasswordProtection>
     </TooltipProvider>
