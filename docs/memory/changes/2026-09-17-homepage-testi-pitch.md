@@ -37,9 +37,12 @@ il dato 98%, e la sezione visione con una citazione generica. La sezione "cosa f
 slide indicate ma e' stata aggiunta perche' senza di essa la pagina non dice cosa fa il prodotto.
 
 Il 98% non e' stato sostituito da un altro numero di marketing ma dalle misurazioni del
-17 settembre (55 citazioni su 55 corrispondenti alla lettera, 50 esiti su 51 identici fra due
-esecuzioni, 254 obblighi a catalogo, 250 verifiche in 70 secondi), con il metodo dichiarato nella
-stessa sezione. Aggiornata anche la riga del footer, che ripeteva il posizionamento enterprise.
+17 settembre (55 citazioni su 55 corrispondenti alla lettera, 254 obblighi a catalogo, 250
+verifiche in 70 secondi), con il metodo dichiarato nella stessa sezione. Il dato di stabilita'
+(50 esiti su 51 identici fra due esecuzioni) e' stato tolto su richiesta del committente, che lo
+ritiene controproducente in chiave commerciale: letto da un investitore, "un esito su 51 cambia
+rilanciando la stessa analisi" pesa piu' del 98 per cento di riproducibilita' che esprime. Tolto
+anche dalle due slide del pitch che lo riportavano. Aggiornata anche la riga del footer, che ripeteva il posizionamento enterprise.
 
 ## Secondo giro di revisione (stessa PR)
 
@@ -49,7 +52,7 @@ Dopo la prima lettura della pagina, quattro correzioni richieste dal committente
   compliance: dove gli agenti fanno il lavoro e tu firmi.", che dice cosa vende il prodotto prima
   di dire come lavora;
 - tolta la virgola in "Cosa cambia, in concreto";
-- tolto il riquadro "Metodo." sotto i quattro numeri misurati. I numeri restano, la spiegazione del
+- tolto il riquadro "Metodo." sotto i numeri misurati. I numeri restano, la spiegazione del
   corpus di prova non e' piu' in pagina: chi contesta un numero lo chiede, e la dichiarazione
   completa resta nel registro e nel pitch;
 - tolto il banner cookie che compariva a ogni primo accesso. Rimosso l'uso di `CookieBanner` da
@@ -169,7 +172,7 @@ sull'anteprima del branch prima dell'integrazione.
 
 ## Rischi e limiti
 
-I testi contengono quattro numeri misurati che vanno mantenuti allineati al motore: se la qualita'
+I testi contengono tre numeri misurati che vanno mantenuti allineati al motore: se la qualita'
 cambia, la sezione va aggiornata o rimossa, altrimenti diventa un'affermazione non sostenuta come
 il 98% che ha sostituito. Le misurazioni sono su un corpus di prova, non su clienti reali, e la
 pagina lo dichiara.
