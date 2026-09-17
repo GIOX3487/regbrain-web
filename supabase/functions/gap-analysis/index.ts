@@ -1926,7 +1926,7 @@ interface RequirementCheck {
   keyword_coverage: number;
 }
 
-const CHECKS_VERSION = 'gap-analysis-v20-evidence-checks';
+const CHECKS_VERSION = 'gap-analysis-v21-evidence-checks';
 const SEVERITY_RANK: Record<string, number> = { critical: 3, high: 2, medium: 1, low: 0 };
 const RISK_SCORE_MAP: Record<string, number> = { high: 74, medium: 52, low: 28 };
 
@@ -2030,12 +2030,32 @@ const APPLICABILITY_RULES: Array<{ regulation: string; dimension: string; key: s
   { regulation: 'DORA', dimension: 'dora_size', key: 'dora_not_micro', pattern: /microimpres/, label_it: 'entità finanziaria diversa dalle microimprese' },
   { regulation: 'NIS2', dimension: 'nis2_subject', key: 'nis2_entity', pattern: /soggett[oi] essenzial|soggett[oi] important/, label_it: 'soggetto essenziale o importante' },
   { regulation: 'NIS2', dimension: 'nis2_subject', key: 'nis2_digital_provider', pattern: /dns|tld|nomi di dominio|cloud|data center|cdn|msp|mssp|marketplace/, label_it: 'fornitore di servizi digitali o infrastrutture digitali' },
-  { regulation: 'GDPR', dimension: 'gdpr_transfers', key: 'gdpr_transfers', pattern: /paes[ei] terz|trasferiment|organizzazioni internazionali/, label_it: 'trasferimenti di dati fuori dall\'Unione europea' },
-  { regulation: 'GDPR', dimension: 'gdpr_special', key: 'gdpr_special_categories', pattern: /categorie particolari|condanne penali/, label_it: 'trattamento di categorie particolari di dati o di dati giudiziari' },
-  { regulation: 'GDPR', dimension: 'gdpr_profiling', key: 'gdpr_profiling', pattern: /profilazion|decision[ei] automatizzat/, label_it: 'profilazione o decisioni automatizzate' },
-  { regulation: 'GDPR', dimension: 'org_religious', key: 'org_religious', pattern: /chiese|comunità religios|associazioni religios/, label_it: 'chiesa, associazione o comunità religiosa' },
-  { regulation: 'GDPR', dimension: 'org_outside_eu', key: 'org_outside_eu', pattern: /stabilit[ei] fuori dall|fuori dall'unione|non stabilit[ei] nell'unione/, label_it: 'organizzazione stabilita fuori dall\'Unione europea' },
 ];
+
+// Il GDPR non passa dalle espressioni regolari. Le sue note di applicabilità elencano spesso
+// condizioni alternative ("obbligatorio sopra i 250 dipendenti, oppure se il trattamento non è
+// occasionale, oppure se include categorie particolari"): trovarne una falsa non rende il
+// requisito inapplicabile. Qui stanno solo gli articoli che dipendono da una condizione unica,
+// indicati uno per uno. Tutto il resto lo decide la valutazione sulle prove, che riceve comunque
+// le dichiarazioni fra i fatti.
+const GDPR_SINGLE_CONDITION: Record<string, { dimension: string; key: string; label_it: string }> = {
+  ...Object.fromEntries([44, 45, 46, 47, 48, 49].map(n => [String(n), {
+    dimension: 'gdpr_transfers', key: 'gdpr_transfers',
+    label_it: 'trasferimenti di dati fuori dall\'Unione europea',
+  }])),
+  ...Object.fromEntries([9, 10].map(n => [String(n), {
+    dimension: 'gdpr_special', key: 'gdpr_special_categories',
+    label_it: 'trattamento di categorie particolari di dati o di dati giudiziari',
+  }])),
+  '22': { dimension: 'gdpr_profiling', key: 'gdpr_profiling', label_it: 'processi decisionali automatizzati o profilazione' },
+  '27': { dimension: 'org_outside_eu', key: 'org_outside_eu', label_it: 'organizzazione stabilita fuori dall\'Unione europea' },
+  '91': { dimension: 'org_religious', key: 'org_religious', label_it: 'chiesa, associazione o comunità religiosa' },
+};
+
+function gdprArticleNumber(reference: string): string | null {
+  const m = /articolo\s+(\d+)/i.exec(reference || '');
+  return m ? m[1] : null;
+}
 
 // Alcune normative si rivolgono per intero a una categoria di soggetti: se l'organizzazione
 // dichiara di non rientrarvi, non ha senso cercare gap nei loro obblighi, nemmeno in quelli
@@ -2062,22 +2082,39 @@ function regulationGateExcludes(regulation: string, profile: ApplicabilityProfil
 interface ApplicabilityVerdict {
   status: 'applicable' | 'not_applicable' | 'unknown';
   reason_it: string;
+  // 'gate': l'intera normativa non riguarda questo soggetto; 'condition': singola condizione.
+  kind?: 'gate' | 'condition';
 }
 
 function applicabilityVerdict(req: RegulatoryRequirement, profile: ApplicabilityProfile | null): ApplicabilityVerdict | null {
   if (!profile?.answers) return null;
   const gateReason = regulationGateExcludes(req.regulation, profile);
-  if (gateReason) return { status: 'not_applicable', reason_it: gateReason };
+  if (gateReason) return { status: 'not_applicable', reason_it: gateReason, kind: 'gate' };
   if (!req.conditional) return null;
-  const haystack = `${req.applicability_note_it || ''} § ${req.description_it || ''}`.toLowerCase();
+  // Si guarda SOLO la nota di applicabilità, mai la descrizione dell'obbligo: la descrizione
+  // nomina spesso un tema senza dipenderne (il registro dell'articolo 30 cita i trasferimenti
+  // fra i campi da compilare, ma esiste anche senza trasferimenti). Gli esempi fra parentesi
+  // o dopo "es." illustrano la condizione, non la esauriscono, e vengono ignorati.
+  const haystack = (req.applicability_note_it || '')
+    .toLowerCase()
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/\b(es\.|ad esempio|per esempio|tra cui|quali)\b[\s\S]*$/g, ' ');
   const byDimension = new Map<string, Array<{ key: string; label_it: string }>>();
-  for (const rule of APPLICABILITY_RULES) {
-    if (rule.regulation.toLowerCase() !== req.regulation.toLowerCase()) continue;
-    if (!rule.pattern.test(haystack)) continue;
-    if (!(rule.key in profile.answers)) continue;
-    const list = byDimension.get(rule.dimension) || [];
-    list.push({ key: rule.key, label_it: rule.label_it });
-    byDimension.set(rule.dimension, list);
+  if (req.regulation.toLowerCase() === 'gdpr') {
+    const art = gdprArticleNumber(req.reference);
+    const single = art ? GDPR_SINGLE_CONDITION[art] : null;
+    if (single && single.key in profile.answers) {
+      byDimension.set(single.dimension, [{ key: single.key, label_it: single.label_it }]);
+    }
+  } else {
+    for (const rule of APPLICABILITY_RULES) {
+      if (rule.regulation.toLowerCase() !== req.regulation.toLowerCase()) continue;
+      if (!rule.pattern.test(haystack)) continue;
+      if (!(rule.key in profile.answers)) continue;
+      const list = byDimension.get(rule.dimension) || [];
+      list.push({ key: rule.key, label_it: rule.label_it });
+      byDimension.set(rule.dimension, list);
+    }
   }
   if (byDimension.size === 0) return null;
 
@@ -2095,6 +2132,7 @@ function applicabilityVerdict(req: RegulatoryRequirement, profile: Applicability
   if (escluse.length > 0) {
     return {
       status: 'not_applicable',
+      kind: 'condition',
       reason_it: `Requisito non applicabile in base a quanto dichiarato all'avvio dell'analisi: l'organizzazione non rientra fra ${escluse.join('; ')}.`,
     };
   }
@@ -2621,6 +2659,10 @@ denoServe(protect(async (req) => {
     // solo se il budget si esaurisce prima della fine.
     const deadline = Date.now() + BUDGET_MS;
 
+    // Il nome del file non entra nel corpus: un documento chiamato "Registro dei trattamenti"
+    // non deve produrre corrispondenze di parole chiave che il contenuto non giustifica.
+    const userCorpus = buildDocumentCorpus(readableDocuments.map(d => d.content).join(' \n '));
+
     // I requisiti ancora in coda devono esistere nel catalogo caricato in questa invocazione.
     // Se il catalogo non si carica (errore transitorio sul database) l'analisi va interrotta,
     // non portata a termine su un elenco svuotato: chiuderla darebbe una percentuale falsa.
@@ -2646,6 +2688,17 @@ denoServe(protect(async (req) => {
         if (!req) continue;
         const verdict = applicabilityVerdict(req, applicabilityProfile);
         if (verdict?.status !== 'not_applicable') continue;
+        // Rete di sicurezza: se i documenti parlano diffusamente di questo requisito, escluderlo
+        // in base a una dichiarazione sarebbe un errore piuttosto che una semplificazione.
+        // Meglio farlo valutare sulle prove, che ricevono comunque le dichiarazioni fra i fatti.
+        const coperte = getCoveredKeywords(userCorpus, req.coverage_keywords);
+        const rapporto = coperte.length / Math.max(1, getUniqueKeywordCount(req.coverage_keywords));
+        // Non vale per l'esclusione dell'intera normativa: chi non è un'entità finanziaria non
+        // ricade in DORA nemmeno se la sua policy di sicurezza ne tocca gli stessi temi.
+        if (verdict.kind === 'condition' && rapporto >= 0.5) {
+          console.log(`↩︎ ${req.id} non escluso: i documenti lo coprono al ${Math.round(rapporto * 100)}%`);
+          continue;
+        }
         risolti.push({
           requirement_id: req.id,
           regulation: req.regulation,
@@ -2685,9 +2738,6 @@ denoServe(protect(async (req) => {
     }
 
     if (state.pending.length > 0) {
-      // Il nome del file non entra nel corpus: un documento chiamato "Registro dei trattamenti"
-      // non deve produrre corrispondenze di parole chiave che il contenuto non giustifica.
-      const userCorpus = buildDocumentCorpus(readableDocuments.map(d => d.content).join(' \n '));
       const corpusNormalized = normalizeQuote(readableDocuments.map(d => d.content).join(' \n '));
       const geminiKey = Deno.env.get('GEMINI_API_KEY');
       const aiKey = getAIKey();

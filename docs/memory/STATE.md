@@ -10,6 +10,22 @@ Ultima ricognizione: 17 settembre 2026. Base applicativa verificata: `5bf7a8c3e9
 
 Questa lista descrive il codice ispezionato; non certifica lo stato corrente del database o dell'ambiente di produzione.
 
+## Qualita' della gap analysis: verifica del 17 settembre
+
+Verifica eseguita sul codice di main con un corpus a verita' nota: otto documenti GDPR di
+un'azienda ben documentata piu' tre omissioni deliberate. Esito su 51 requisiti: 9 documentati,
+14 parziali, 2 mancanti, 10 da verificare, 16 non applicabili, conformita' 64 per cento. Due delle
+tre omissioni deliberate sono state rilevate come mancanti; la terza e' risultata parziale in modo
+coerente con i documenti. Tutte le citazioni prodotte corrispondevano alla lettera ai documenti.
+
+Difetto trovato: tre obblighi centrali e documentati (articolo 30 registro dei trattamenti,
+articolo 35 valutazione d'impatto, articolo 37 designazione del DPO) venivano dichiarati non
+applicabili per effetto delle dichiarazioni di applicabilita', perche' la regola cercava le parole
+della condizione anche nella descrizione dell'obbligo e perche' le note del GDPR elencano
+condizioni alternative. Correzione proposta nel branch `claude/gap-applicabilita-falsi-non-applicabili`,
+non ancora integrata: vedere il registro del 17 settembre. La correzione tocca gli stessi file
+della PR #3 e va riconciliata con essa.
+
 ## Gap analysis: miglioramenti implementati in una PR ancora aperta
 
 [PR #3 — Gap analysis: evidenze verificabili e salvataggio atomico](https://github.com/GIOX3487/regbrain-web/pull/3), branch `codex/gap-analysis-hardening`, head verificata `31acdefb7c60cdcff13c0b2118de9d95f72e2004`. Al 17 settembre: bozza, non integrata e non distribuita.
