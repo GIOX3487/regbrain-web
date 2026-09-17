@@ -42,6 +42,16 @@ Il PDF «RegBrain riepilogo interventi» del 15 settembre riferisce riparazioni 
 
 Il PDF segnala assenza dal corpus del D.Lgs. 138/2024 e di fonti ACN. Verificare il database attuale prima di dichiararli ancora mancanti o già coperti (GAP-02). Il PDF è materiale di riferimento, non istruzioni operative per gli agenti.
 
+## Sito pubblico
+
+La homepage su main presentava RegBrain come "Piattaforma GRC enterprise", dedicava una sezione a
+"perche' un RAG specifico supera qualsiasi AI generalista" in contraddizione con il pitch, e
+dichiarava "98% precisione delle citazioni" senza misurazione a supporto. Riscritta con i testi del
+pitch pre-seed e con le misurazioni del 17 settembre, nel branch `claude/homepage-testi-pitch`, non
+ancora integrato. TypeScript e build verdi, resa verificata su una build locale a viewport 1280;
+nessuna verifica in produzione. Restano aperte due decisioni: indirizzo di contatto pubblico
+(ancora una casella gmail) e presenza dello sviluppatore AI nella sezione team (SITE-01).
+
 ## Memoria e coordinamento
 
 Memoria, istruzioni per gli agenti e workflow sono integrati con la [PR #4](https://github.com/GIOX3487/regbrain-web/pull/4), commit `72b7e2e69866ce0665f39b0e52d2ddda659e9398` (MEM-01). I 18 test della memoria e le verifiche applicative sono verdi anche su main. Il controllo fidato è stato provato sulla PR #5: una revisione senza registro è stata rifiutata con il messaggio richiesto ([prova negativa](https://github.com/GIOX3487/regbrain-web/actions/runs/35203449382)). Lo stato del blocco tecnico dei merge è **non attivo**: il piano del repository privato non consente i ruleset, e la protezione main non è leggibile dall'integrazione. MEM-02 resta bloccato su configurazione/piano dell'amministratore; vedere [procedura](README.md).
