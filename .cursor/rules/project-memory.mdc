@@ -1,0 +1,6 @@
+---
+description: Memoria condivisa obbligatoria di RegBrain
+alwaysApply: true
+---
+
+Leggi e applica `AGENTS.md` nella radice del repository. Prima di lavorare leggi `docs/memory/STATE.md`, `roadmap.md` e `docs/memory/DECISIONS.md`. Ogni PR deve aggiungere un registro in `docs/memory/changes/`, secondo il template, e riesaminare stato e roadmap. Aggiorna la memoria insieme al codice, prima di dichiarare concluso il lavoro.
