@@ -1,3 +1,7 @@
+# RegBrain
+
+Prima di modificare il progetto, leggere le [istruzioni obbligatorie per persone e agenti](AGENTS.md), la [memoria condivisa](docs/memory/README.md) e la [roadmap](roadmap.md). Ogni pull request deve aggiornare la memoria insieme alla modifica. Questo vale anche per cambiamenti fatti tramite Lovable o editor web.
+
 # Welcome to your Lovable project
 
 ## Project info
@@ -71,3 +75,4 @@ Yes, you can!
 To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+
