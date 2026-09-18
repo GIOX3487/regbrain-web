@@ -6,7 +6,7 @@ state_review: updated
 state_reason: Lo stato registrava solo la verifica del 17 settembre sull'applicabilita'; va aggiunto l'esito della rilettura del 18 settembre e i tre difetti trovati sullo strato che assegna stati e priorita'.
 roadmap_review: updated
 roadmap_reason: Nessun ID copriva la priorita' dei gap: aggiunto GAP-06. Aggiornato GAP-03, la cui correzione risulta integrata su main dal 17 settembre.
-files: ["supabase/functions/gap-analysis/index.ts", "src/pages/AssessmentDetail.tsx", "docs/memory/STATE.md", "roadmap.md"]
+files: ["supabase/functions/gap-analysis/index.ts", "src/pages/AssessmentDetail.tsx", "src/pages/ComplianceHub.tsx", "docs/memory/STATE.md", "roadmap.md"]
 ---
 
 ## Richiesta e contesto
@@ -75,20 +75,50 @@ parziale con uno o due scende di due.
 `deno check` verde sulla funzione, `npx tsc -p tsconfig.app.json --noEmit` verde e `npm run build`
 verde.
 
-Ricalcolo deterministico delle due formule nuove sugli esiti reali gia' in archivio, che non
-richiede una nuova esecuzione del modello: la distribuzione delle gravita' passa da 12 alti, 4 medi
-e 1 basso a 9 alti, 6 medi e 2 bassi, e il punteggio di rischio passa da 95 a 49 su 28 obblighi
-valutabili. Il punteggio esce dalla saturazione e si colloca nella fascia media invece che alta.
+La funzione e' stata pubblicata sul progetto Supabase dal branch, con una esecuzione manuale del
+workflow di distribuzione, e il fascicolo di prova e' stato rieseguito per intero: 51 requisiti su
+51, una sola invocazione, nessun errore. Confronto fra la versione precedente e la v22 sullo stesso
+fascicolo e con le stesse dichiarazioni di applicabilita':
 
-Non verificata: la correzione sul parziale. Dipende dalla risposta del modello e non si puo'
-ricalcolare sugli esiti esistenti, quindi richiede una nuova esecuzione sullo stesso fascicolo di
-prova. Ci si attende che una parte dei 15 parziali torni documentata e che, di conseguenza, i gap
-alti scendano sotto i 9 misurati sopra, perche' meno elementi obbligatori mancanti significa
-un'attenuazione maggiore nella nuova regola di gravita'.
+| | v21 | v22 |
+|---|---|---|
+| Documentati | 11 | 16 |
+| Parziali | 15 | 10 |
+| Mancanti | 2 | 2 |
+| Da verificare | 10 | 10 |
+| Non applicabili | 13 | 13 |
+| Conformita' | 66 per cento | 75 per cento |
+| Punteggio di rischio | 95 | 26 |
+| Gap alti / medi / bassi | 12 / 4 / 1 | 1 / 8 / 3 |
 
-Nessuna verifica in produzione: la funzione non e' stata ridistribuita e `CHECKS_VERSION` passa a
-v22, quindi all'integrazione la cache dei risultati precedenti viene invalidata e le analisi gia'
-concluse vanno rieseguite per mostrare i nuovi valori.
+Il caso che aveva motivato la correzione si comporta come previsto. L'articolo 16 passa a
+documentato con l'esito "il requisito risulta soddisfatto", e le tre richieste che prima lo
+rendevano parziale (istruzioni operative sui singoli applicativi, log di modifica, modelli di
+riscontro) compaiono ora fra i miglioramenti, non fra le carenze. L'articolo 18 resta parziale,
+correttamente, perche' la procedura dell'organizzazione lo tratta davvero con una riga sola: due
+elementi obbligatori mancano ancora, mentre le istruzioni tecniche di segregazione sono passate fra
+i miglioramenti, e la gravita' scende da alta a media.
+
+Nessuna perdita di sensibilita': i mancanti restano due. Cambia quali sono, e in meglio. L'articolo
+19, omissione deliberata del fascicolo, resta mancante. L'articolo 20 passa da parziale a mancante
+perche' il motore riconosce dal registro che l'organizzazione svolge trattamenti automatizzati su
+consenso e contratto, quindi l'obbligo di portabilita' si applica, e nei documenti non c'e' nulla
+che lo disciplini: e' l'unico gap alto rimasto, ed e' quello giusto. Applicabilita' e da verificare
+restano identici, 13 e 10, a conferma che la correzione non ha toccato quello strato.
+
+Il campo nuovo raccoglie 29 miglioramenti su 28 requisiti, e 15 dei 16 requisiti documentati ne
+portano almeno uno: l'informazione non e' andata persa, e' stata riclassificata.
+
+Con la scala nuova le soglie del frontend non erano piu' tarate. Erano 66 per il profilo alto e 36
+per il medio, pensate per una formula che si saturava a 95 e che quindi stava quasi sempre sopra
+66. Sulla scala nuova un punteggio di 66 significherebbe che due terzi degli obblighi valutabili
+sono aperti alla gravita' piena, cioe' un caso estremo, e il fascicolo di prova a 26 sarebbe
+finito in fascia bassa pur avendo un obbligo applicabile del tutto scoperto. Le soglie sono state
+portate a 45 e 20 in `src/pages/ComplianceHub.tsx`: il fascicolo di prova risulta a profilo medio.
+Anche questa e' una taratura provvisoria, da rivedere su fascicoli reali.
+
+`deno check` verde sulla funzione, `tsc` e `npm run build` verdi, i 18 test della memoria condivisa
+verdi.
 
 ## Rischi e limiti
 
@@ -98,7 +128,18 @@ dichiarazione di tipo e' stata aggiunta in `AssessmentDetail.tsx` perche' il dat
 sconosciuto, ma la resa e' da fare.
 
 La soglia di tre elementi mancanti che separa l'attenuazione di un livello da quella di due e' una
-scelta, non una misura: va ritarata quando ci saranno fascicoli reali.
+scelta, non una misura, cosi' come le soglie 45 e 20 del profilo di rischio: vanno ritarate quando
+ci saranno fascicoli reali. La verifica e' su un fascicolo solo: dice che la correzione fa quello
+per cui e' stata scritta, non che la taratura sia giusta in generale.
+
+La funzione pubblicata sul progetto Supabase viene ora dal branch, non da main. Se questa PR non
+viene integrata, la produzione resta su codice non integrato: in quel caso va rilanciata la
+distribuzione da main.
+
+I numeri della slide del prodotto nel pitch (66 per cento, profilo alto, 11 documentati, 17 gap)
+descrivono l'esito della versione precedente sullo stesso fascicolo e non corrispondono piu' a
+quello che la piattaforma produce oggi. Vanno aggiornati a 75 per cento, profilo medio, 16
+documentati e 12 gap, oppure rifatti da una schermata nuova.
 
 Restano aperti due difetti segnalati e non corretti qui, entrambi da trattare dopo la riesecuzione:
 le voci di catalogo degli articoli 29 e 32 paragrafo 4 descrivono lo stesso obbligo, con lo stesso
@@ -109,5 +150,6 @@ l'origine dei dati o se il recupero non abbia portato le righe giuste a quel req
 
 ## Prossimo passo
 
-Rieseguire il fascicolo di prova con la v22 e confrontare stati, gravita' e punteggio con i valori
-di questo registro, prima di integrare (GAP-06).
+Integrare, poi ripulire le due voci di catalogo sovrapposte (articoli 29 e 32 paragrafo 4) e
+accertare se l'articolo 14 finisca fra i da verificare per una dichiarazione assente nel registro o
+per un buco di recupero (GAP-06).
