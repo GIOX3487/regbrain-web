@@ -1927,7 +1927,7 @@ interface RequirementCheck {
   keyword_coverage: number;
 }
 
-const CHECKS_VERSION = 'gap-analysis-v22-obbligatorio-vs-prassi';
+const CHECKS_VERSION = 'gap-analysis-v23-base-di-calcolo-e-stabilita';
 const SEVERITY_RANK: Record<string, number> = { critical: 3, high: 2, medium: 1, low: 0 };
 const RISK_SCORE_MAP: Record<string, number> = { high: 74, medium: 52, low: 28 };
 
@@ -2268,7 +2268,7 @@ Rispondi SOLO con un oggetto JSON valido con questa forma:
 {"checks":[{"requirement_id":"...","status":"covered|partial|missing|not_applicable","applicability":"si|no|non_determinabile","assessment":"...","evidence":[{"document":"nome del file","quote":"citazione testuale"}],"missing_elements":["..."],"improvement_suggestions":["..."],"recommended_actions":["..."],"confidence":0.0}]}
 
 Distinzione obbligatoria, da applicare prima di scegliere lo status:
-- "missing_elements": SOLO gli elementi che la norma impone espressamente per questo requisito, presi da "Cosa deve risultare dalla documentazione" o dal testo dell'obbligo. Se un elemento non è imposto dalla norma, non va qui, qualunque sia la sua utilità.
+- "missing_elements": SOLO gli elementi che la norma impone espressamente per questo requisito. Ogni voce deve corrispondere a un elemento elencato in "Cosa deve risultare dalla documentazione", riportato con le stesse parole di quell'elenco. Se ciò che manca non compare in quell'elenco, non è una carenza: va in improvement_suggestions. Non aggiungere voci nuove e non spezzare un elemento in più voci.
 - "improvement_suggestions": tutto ciò che migliorerebbe la documentazione ma che la norma non impone: dettagli operativi, modulistica, log applicativi, formati, procedure di maggior dettaglio, buone prassi di settore. Questi non sono carenze e NON influiscono sullo status.
 Sbaglia chi mette fra le carenze ciò che sarebbe opportuno avere: il requisito misura la conformità all'obbligo, non la distanza da una documentazione ideale.
 
@@ -2972,7 +2972,11 @@ denoServe(protect(async (req) => {
               // Un obbligo condizionale diventa un gap solo se risulta che la condizione ricorre davvero:
               // altrimenti finisce tra i requisiti da verificare, non tra quelli mancanti.
               if (req.conditional && (status === 'missing' || status === 'partial') && applicability !== 'si') {
-                if (evidence.length === 0 || applicability === 'non_determinabile') status = 'to_verify';
+                // Una citazione verificata che descrive la misura dimostra da sola che
+                // l'organizzazione e' toccata dall'obbligo: parcheggiarlo fra i "da verificare"
+                // nascondeva un gap reale e faceva oscillare l'esito fra un'esecuzione e l'altra,
+                // perche' dipendeva dal giudizio del modello sull'applicabilita' invece che dalle prove.
+                if (evidence.length === 0) status = 'to_verify';
               }
               // Su un gap l'utente deve poter vedere perché l'obbligo lo riguarda.
               if (verdict?.status === 'applicable' && (status === 'missing' || status === 'partial')
@@ -3197,6 +3201,21 @@ denoServe(protect(async (req) => {
       unreadable_documents: unreadableDocuments,
       documents_analyzed: readableDocuments.map(d => d.name),
       counts: { covered: coveredCount, partial: partialCount, missing: missingCount, to_verify: toVerifyCount, not_applicable: notApplicableCount },
+      // Su quanti obblighi poggia davvero la percentuale. Senza questo dato una conformita'
+      // calcolata su 4 obblighi su 74 si legge come un punteggio, e non lo e'.
+      coverage_basis: {
+        evaluated: applicableCount,
+        to_verify: toVerifyCount,
+        not_applicable: notApplicableCount,
+        // quota di obblighi che riguardano l'organizzazione e che siamo riusciti a valutare
+        evaluated_share: applicableCount + toVerifyCount === 0
+          ? 1
+          : Math.round((applicableCount / (applicableCount + toVerifyCount)) * 100) / 100,
+        reliable: applicableCount + toVerifyCount === 0
+          ? true
+          : applicableCount / (applicableCount + toVerifyCount) >= 0.4,
+        declarations_provided: !!(applicabilityProfile?.answers && Object.keys(applicabilityProfile.answers).length > 0),
+      },
       checks,
     };
 

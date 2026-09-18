@@ -79,6 +79,14 @@ interface RequirementChecksPayload {
   unreadable_documents?: string[];
   documents_analyzed?: string[];
   counts?: Record<string, number>;
+  coverage_basis?: {
+    evaluated: number;
+    to_verify: number;
+    not_applicable: number;
+    evaluated_share: number;
+    reliable: boolean;
+    declarations_provided: boolean;
+  };
   checks?: RequirementCheck[];
 }
 
@@ -1130,6 +1138,13 @@ export default function AssessmentDetail() {
       const pdfToVerify = pdfChecks.filter(c => c.status === 'to_verify');
       const pdfNotApplicable = pdfChecks.filter(c => c.status === 'not_applicable');
       const pdfUnreadable: string[] = (assessment.requirement_checks as RequirementChecksPayload | null)?.unreadable_documents || [];
+      const pdfBasis = (assessment.requirement_checks as RequirementChecksPayload | null)?.coverage_basis || null;
+      const pdfBasisIt = pdfBasis
+        ? ` La percentuale è calcolata su ${pdfBasis.evaluated} obblighi effettivamente valutati${pdfBasis.to_verify > 0 ? `, mentre ${pdfBasis.to_verify} restano da verificare perché non è stato possibile stabilire se le condizioni di applicabilità ricorrano` : ''}.${!pdfBasis.reliable ? ' Su questa base la percentuale non è rappresentativa della conformità complessiva.' : ''}${!pdfBasis.declarations_provided ? ' Il questionario di applicabilità non è stato compilato.' : ''}`
+        : '';
+      const pdfBasisEn = pdfBasis
+        ? ` The percentage is computed on ${pdfBasis.evaluated} requirements actually assessed${pdfBasis.to_verify > 0 ? `, while ${pdfBasis.to_verify} remain to be verified because it was not possible to establish whether the applicability conditions apply` : ''}.${!pdfBasis.reliable ? ' On this basis the percentage is not representative of overall compliance.' : ''}${!pdfBasis.declarations_provided ? ' The applicability questionnaire was not completed.' : ''}`
+        : '';
       const highGaps = gaps.filter(g => riskProfileOf(g.risk_level) === 'high').length;
       const mediumGaps = gaps.filter(g => riskProfileOf(g.risk_level) === 'medium').length;
       const lowGaps = gaps.filter(g => riskProfileOf(g.risk_level) === 'low').length;
@@ -1169,8 +1184,8 @@ export default function AssessmentDetail() {
       const checksSentenceEn = pdfChecks.length > 0
         ? ` ${pdfChecks.length} requirements were checked: ${pdfCovered.length} are documented, ${gaps.length} show gaps${pdfToVerify.length > 0 ? `, ${pdfToVerify.length} need an applicability check` : ''}${pdfNotApplicable.length > 0 ? `, ${pdfNotApplicable.length} are not applicable` : ''}.` : '';
       const summaryText = selectedLanguage === 'it' 
-        ? `L'analisi ha confrontato la documentazione caricata con i requisiti di ${assessment.scope_regulations?.join(', ') || 'le normative selezionate'}.${checksSentenceIt} Il livello di conformità documentale è del ${assessment.overall_compliance_percentage ?? 0}% (${complianceLevel}) e il profilo di rischio complessivo è ${pdfProfileLabel[pdfProfile].toLowerCase()} (${riskCountsText}). Il piano d'azione elenca, per ciascun gap, le azioni per colmarlo. L'analisi valuta ciò che risulta dai documenti, non l'effettiva applicazione delle misure, e non sostituisce il parere di un legale o del DPO.${pdfUnreadable.length > 0 ? ` Documenti esclusi perché non leggibili: ${pdfUnreadable.join(', ')}.` : ''}`
-        : `The analysis compared the uploaded documentation with the requirements of ${assessment.scope_regulations?.join(', ') || 'the selected regulations'}.${checksSentenceEn} Documentary compliance is ${assessment.overall_compliance_percentage ?? 0}% (${complianceLevel}) and the overall risk profile is ${pdfProfileLabel[pdfProfile].toLowerCase()} (${riskCountsText}). The action plan lists, for each gap, the actions to close it. The analysis assesses what the documents show, not the actual application of measures, and does not replace legal or DPO advice.${pdfUnreadable.length > 0 ? ` Documents excluded as unreadable: ${pdfUnreadable.join(', ')}.` : ''}`;
+        ? `L'analisi ha confrontato la documentazione caricata con i requisiti di ${assessment.scope_regulations?.join(', ') || 'le normative selezionate'}.${checksSentenceIt} Il livello di conformità documentale è del ${assessment.overall_compliance_percentage ?? 0}% (${complianceLevel}) e il profilo di rischio complessivo è ${pdfProfileLabel[pdfProfile].toLowerCase()} (${riskCountsText}).${pdfBasisIt} Il piano d'azione elenca, per ciascun gap, le azioni per colmarlo. L'analisi valuta ciò che risulta dai documenti, non l'effettiva applicazione delle misure, e non sostituisce il parere di un legale o del DPO.${pdfUnreadable.length > 0 ? ` Documenti esclusi perché non leggibili: ${pdfUnreadable.join(', ')}.` : ''}`
+        : `The analysis compared the uploaded documentation with the requirements of ${assessment.scope_regulations?.join(', ') || 'the selected regulations'}.${checksSentenceEn} Documentary compliance is ${assessment.overall_compliance_percentage ?? 0}% (${complianceLevel}) and the overall risk profile is ${pdfProfileLabel[pdfProfile].toLowerCase()} (${riskCountsText}).${pdfBasisEn} The action plan lists, for each gap, the actions to close it. The analysis assesses what the documents show, not the actual application of measures, and does not replace legal or DPO advice.${pdfUnreadable.length > 0 ? ` Documents excluded as unreadable: ${pdfUnreadable.join(', ')}.` : ''}`;
       
       doc.setFontSize(9);
       doc.setFont('helvetica', 'normal');
@@ -1666,6 +1681,7 @@ export default function AssessmentDetail() {
   const coveredChecks = checks.filter(c => c.status === 'covered');
   const toVerifyChecks = checks.filter(c => c.status === 'to_verify');
   const notApplicableChecks = checks.filter(c => c.status === 'not_applicable');
+  const coverageBasis = checksPayload?.coverage_basis || null;
   const unreadableDocuments = checksPayload?.unreadable_documents || [];
   const documentsAnalyzed = checksPayload?.documents_analyzed || [];
   const highGaps = gaps.filter(g => riskProfileOf(g.risk_level) === 'high').length;
@@ -1787,6 +1803,21 @@ export default function AssessmentDetail() {
                 {(assessment.overall_compliance_percentage ?? 0).toFixed(0)}%
               </div>
               <Progress value={assessment.overall_compliance_percentage ?? 0} />
+              {coverageBasis && (
+                <div className="mt-2 text-xs text-muted-foreground">
+                  su {coverageBasis.evaluated} obblighi valutati
+                  {coverageBasis.to_verify > 0 ? `, ${coverageBasis.to_verify} da verificare` : ''}
+                </div>
+              )}
+              {coverageBasis && !coverageBasis.reliable && (
+                <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400">
+                  Percentuale poco rappresentativa: è stato possibile valutare solo {coverageBasis.evaluated} obblighi
+                  su {coverageBasis.evaluated + coverageBasis.to_verify} che riguardano l'organizzazione.
+                  {!coverageBasis.declarations_provided
+                    ? ' Il questionario di applicabilità non è stato compilato: compilarlo permette di stabilire quali obblighi si applicano.'
+                    : ' I documenti caricati non dicono se le condizioni di applicabilità ricorrano.'}
+                </div>
+              )}
               {(() => {
                 const pct = assessment.overall_compliance_percentage ?? 0;
                 if (pct >= 90) return (

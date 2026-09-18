@@ -515,6 +515,19 @@ export default function NewAssessment() {
                     Puoi saltare: l'analisi verificherà tutto, con una nota nel report.
                   </p>
 
+                  {answeredCount < applicabilityQuestions.length && (
+                    <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400">
+                      <strong>{applicabilityQuestions.length - answeredCount} domande senza risposta.</strong>{' '}
+                      Gli obblighi che dipendono da quelle condizioni finiranno fra i "da verificare" e resteranno
+                      fuori dal calcolo della conformità.
+                      {formData.scope_regulations.some(r => r !== 'GDPR') && (
+                        <> Su normative diverse dal GDPR l'effetto è marcato: in una prova interna,
+                        lasciando senza risposta le due domande sull'AI Act, 64 obblighi su 70 sono rimasti
+                        da verificare e la percentuale di conformità è stata calcolata su quattro soli obblighi.</>
+                      )}
+                    </div>
+                  )}
+
                   <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
                     <div className="space-y-2">
                       <Label htmlFor="org-size" className="text-sm font-medium">
