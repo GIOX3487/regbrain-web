@@ -157,8 +157,12 @@ export default function ComplianceHub() {
   const lowGaps = gaps.filter(g => riskProfileOf(g.risk_level) === 'low').length;
   const hubProfile = overallRiskProfile(gaps);
   const hubProfileLabel: Record<RiskProfile, string> = { high: 'Alto', medium: 'Medio', low: 'Basso', none: 'Nessuno' };
+  // Soglie tarate sulla scala nuova del punteggio di rischio (quota di peso dei gap sul
+  // massimo teorico). Con la formula precedente, che si saturava a 95, servivano soglie alte;
+  // ora un punteggio sopra 45 significa che quasi meta' degli obblighi valutabili e' aperta
+  // con gravita' piena. Taratura provvisoria, da rivedere su fascicoli reali.
   const profileOfScore = (score: number | null | undefined): RiskProfile =>
-    !score || score <= 0 ? 'none' : score >= 66 ? 'high' : score >= 36 ? 'medium' : 'low';
+    !score || score <= 0 ? 'none' : score >= 45 ? 'high' : score >= 20 ? 'medium' : 'low';
   // Solo le valutazioni concluse hanno una percentuale: includere le altre come zero
   // farebbe crollare la media nel momento stesso in cui si avvia una nuova analisi.
   const completedWithScore = assessments.filter(

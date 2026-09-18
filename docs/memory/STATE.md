@@ -24,7 +24,32 @@ applicabili per effetto delle dichiarazioni di applicabilita', perche' la regola
 della condizione anche nella descrizione dell'obbligo e perche' le note del GDPR elencano
 condizioni alternative. Correzione proposta nel branch `claude/gap-applicabilita-falsi-non-applicabili`,
 non ancora integrata: vedere il registro del 17 settembre. La correzione tocca gli stessi file
-della PR #3 e va riconciliata con essa.
+della PR #3 e va riconciliata con essa. La correzione e' stata integrata su main il 17 settembre
+con la PR #6 ed e' confermata in produzione: sulla stessa azienda di prova gli articoli 30, 35 e 37
+tornano documentati con due citazioni ciascuno.
+
+## Qualita' della gap analysis: verifica del 18 settembre
+
+Riletti tutti e 51 gli esiti dell'ultima analisi reale e il codice che li produce. La lettura dei
+documenti e la verifica delle citazioni reggono; lo strato che traduce la lettura in stati e
+priorita' no. Tre difetti trovati, tutti corretti nel branch
+`claude/gap-analysis-priorita-e-parziali`, non ancora integrato:
+
+- il parziale veniva usato anche per cio' che la norma non impone. Sull'articolo 16 il motore
+  chiedeva istruzioni operative sui singoli applicativi, log di modifica e modelli di riscontro:
+  nessuno dei tre e' richiesto dall'articolo. Effetto: 15 parziali su 28 valutabili e una
+  conformita' sottostimata;
+- il punteggio di rischio si saturava. La formula era 70 piu' cinque punti per gap alto con tetto a
+  95: da cinque gap alti in su qualunque organizzazione otteneva 95 e il punteggio non distingueva
+  piu' niente. L'azienda di prova era a 95;
+- la gravita' del gap veniva solo dal catalogo: un parziale su articolo critico diventava sempre un
+  gap alto. Sul GDPR il 53 per cento del catalogo e' critico, quindi 12 gap su 17 risultavano alti e
+  l'elenco non si poteva ordinare.
+
+Difetti segnalati e non corretti: due voci di catalogo descrivono lo stesso obbligo (articolo 29 e
+articolo 32 paragrafo 4, istruzioni al personale autorizzato), e l'articolo 14 finisce fra i da
+verificare senza che sia chiaro se il registro dei trattamenti non dichiari l'origine dei dati o se
+il recupero non lo abbia portato al requisito.
 
 ## Gap analysis: miglioramenti implementati in una PR ancora aperta
 

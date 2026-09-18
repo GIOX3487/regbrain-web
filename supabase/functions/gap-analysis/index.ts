@@ -1919,6 +1919,7 @@ interface RequirementCheck {
   assessment: string;
   evidence: Array<{ document: string; quote: string }>;
   missing_elements: string[];
+  improvement_suggestions: string[];
   recommended_actions: string[];
   confidence: number | null;
   applicability?: string | null;
@@ -1926,14 +1927,20 @@ interface RequirementCheck {
   keyword_coverage: number;
 }
 
-const CHECKS_VERSION = 'gap-analysis-v21-evidence-checks';
+const CHECKS_VERSION = 'gap-analysis-v22-obbligatorio-vs-prassi';
 const SEVERITY_RANK: Record<string, number> = { critical: 3, high: 2, medium: 1, low: 0 };
 const RISK_SCORE_MAP: Record<string, number> = { high: 74, medium: 52, low: 28 };
 
-function riskProfileFor(severity: string, status: CheckStatus): RiskProfile | null {
+// La gravita' del catalogo dice quanto pesa l'articolo, non quanto e' grande il buco.
+// Un obbligo del tutto scoperto vale la gravita' piena; uno documentato ma incompleto
+// vale meno, e tanto meno quanti meno elementi obbligatori mancano davvero.
+// Senza questa distinzione ogni "parziale" su un articolo critico diventava un gap alto,
+// e su normative dove meta' del catalogo e' critico l'elenco dei gap non si poteva ordinare.
+function riskProfileFor(severity: string, status: CheckStatus, mandatoryGaps = 0): RiskProfile | null {
   if (status !== 'missing' && status !== 'partial') return null;
   const base = SEVERITY_RANK[severity] ?? 1;
-  const rank = status === 'partial' ? Math.max(0, base - 1) : base;
+  const penalty = status === 'missing' ? 0 : mandatoryGaps >= 3 ? 1 : 2;
+  const rank = Math.max(0, base - penalty);
   return rank >= 2 ? 'high' : rank === 1 ? 'medium' : 'low';
 }
 
@@ -2258,11 +2265,16 @@ async function assessRequirementBatchWithLLM(
 Settore dell'organizzazione: ${profile?.sector || 'non indicato'}. Giurisdizione: ${profile?.jurisdiction || 'IT'}.
 
 Rispondi SOLO con un oggetto JSON valido con questa forma:
-{"checks":[{"requirement_id":"...","status":"covered|partial|missing|not_applicable","applicability":"si|no|non_determinabile","assessment":"...","evidence":[{"document":"nome del file","quote":"citazione testuale"}],"missing_elements":["..."],"recommended_actions":["..."],"confidence":0.0}]}
+{"checks":[{"requirement_id":"...","status":"covered|partial|missing|not_applicable","applicability":"si|no|non_determinabile","assessment":"...","evidence":[{"document":"nome del file","quote":"citazione testuale"}],"missing_elements":["..."],"improvement_suggestions":["..."],"recommended_actions":["..."],"confidence":0.0}]}
+
+Distinzione obbligatoria, da applicare prima di scegliere lo status:
+- "missing_elements": SOLO gli elementi che la norma impone espressamente per questo requisito, presi da "Cosa deve risultare dalla documentazione" o dal testo dell'obbligo. Se un elemento non è imposto dalla norma, non va qui, qualunque sia la sua utilità.
+- "improvement_suggestions": tutto ciò che migliorerebbe la documentazione ma che la norma non impone: dettagli operativi, modulistica, log applicativi, formati, procedure di maggior dettaglio, buone prassi di settore. Questi non sono carenze e NON influiscono sullo status.
+Sbaglia chi mette fra le carenze ciò che sarebbe opportuno avere: il requisito misura la conformità all'obbligo, non la distanza da una documentazione ideale.
 
 Criteri per status:
-- "covered": gli estratti dimostrano che il requisito è soddisfatto nella sostanza: esiste il documento atteso e contiene gli elementi obbligatori indicati.
-- "partial": esiste documentazione pertinente ma mancano elementi obbligatori, oppure è generica, o copre solo una parte del requisito. Elenca in missing_elements cosa manca, in modo specifico.
+- "covered": gli estratti dimostrano che il requisito è soddisfatto nella sostanza, cioè risultano tutti gli elementi che la norma impone. Resta "covered" anche se la documentazione è migliorabile: in quel caso missing_elements è vuoto e i miglioramenti vanno in improvement_suggestions.
+- "partial": esiste documentazione pertinente ma manca almeno un elemento che la norma impone, oppure ciò che risulta è talmente generico da non dimostrare l'adempimento. Elenca in missing_elements cosa manca, in modo specifico. Se missing_elements risulta vuoto lo status non può essere "partial".
 - "missing": nessun estratto pertinente al requisito.
 - "not_applicable": SOLO per requisiti marcati come condizionali e SOLO se gli estratti dichiarano esplicitamente che la condizione non ricorre (es. "non si effettuano trasferimenti extra UE"). L'assenza di informazioni NON rende un requisito non applicabile: in quel caso usa "missing".
 
@@ -2280,7 +2292,8 @@ Regole sulle prove:
 
 Regole sul testo:
 - "assessment": 2 o 3 frasi in ${isIt ? 'italiano' : 'inglese'}, in terza persona, che dicono cosa risulta documentato (citando il nome del documento) e cosa manca. Niente frasi generiche, niente riferimenti ad articoli diversi da quello del requisito.
-- "recommended_actions": da 1 a 3 azioni concrete e specifiche per colmare esattamente ciò che manca (es. "Integrare il registro con i termini di conservazione per ciascun trattamento"). Nessuna stima di ore o costi. Se lo status è "covered", al massimo un'azione di mantenimento o nessuna.
+- "recommended_actions": da 1 a 3 azioni concrete e specifiche per colmare esattamente ciò che manca fra gli elementi obbligatori (es. "Integrare il registro con i termini di conservazione per ciascun trattamento"). Nessuna stima di ore o costi. Se lo status è "covered", al massimo un'azione di mantenimento o nessuna.
+- "assessment": quando lo status è "covered" ma esistono miglioramenti possibili, dillo in modo esplicito ("il requisito risulta soddisfatto; resta migliorabile su ..."), senza trasformare il miglioramento in una carenza.
 - "confidence": da 0 a 1, quanto sei sicuro del giudizio dati gli estratti.
 Non inventare contenuti assenti dagli estratti. Restituisci un elemento per ogni requisito ricevuto, nello stesso ordine.`;
 
@@ -2713,6 +2726,7 @@ denoServe(protect(async (req) => {
           assessment: verdict.reason_it,
           evidence: [],
           missing_elements: [],
+          improvement_suggestions: [],
           recommended_actions: [],
           confidence: null,
           applicability: 'no',
@@ -2924,6 +2938,8 @@ denoServe(protect(async (req) => {
                 : typeof llm.applicability === 'string' ? llm.applicability.toLowerCase() : '';
               const missingElements: string[] = (Array.isArray(llm.missing_elements) ? llm.missing_elements : [])
                 .filter((m: any) => typeof m === 'string' && m.trim()).map((m: string) => m.trim().substring(0, 300)).slice(0, 8);
+              const improvements: string[] = (Array.isArray(llm.improvement_suggestions) ? llm.improvement_suggestions : [])
+                .filter((m: any) => typeof m === 'string' && m.trim()).map((m: string) => m.trim().substring(0, 300)).slice(0, 5);
               let actions: string[] = (Array.isArray(llm.recommended_actions) ? llm.recommended_actions : [])
                 .filter((a: any) => typeof a === 'string' && a.trim()).map((a: string) => a.trim().substring(0, 500)).slice(0, 3);
               let assessmentText = typeof llm.assessment === 'string' ? llm.assessment.trim().substring(0, 1200) : '';
@@ -2945,6 +2961,12 @@ denoServe(protect(async (req) => {
                 missingElements.unshift(isIt
                   ? 'Nei documenti risulta solo una dichiarazione di conformità o un impegno per il futuro, non una misura documentata.'
                   : 'The documents only contain a compliance claim or a future commitment, not a documented measure.');
+              }
+              // Se il modello dichiara "parziale" ma non indica nessun elemento imposto dalla norma,
+              // sta misurando la distanza da una documentazione ideale, non una non conformita'.
+              // Con una prova testuale valida il requisito e' soddisfatto: i miglioramenti restano a parte.
+              if (status === 'partial' && missingElements.length === 0 && evidence.length > 0) {
+                status = 'covered';
               }
               if (status === 'not_applicable' && !req.conditional) status = 'missing';
               // Un obbligo condizionale diventa un gap solo se risulta che la condizione ricorre davvero:
@@ -2971,10 +2993,11 @@ denoServe(protect(async (req) => {
               return {
                 ...base,
                 status,
-                risk_level: riskProfileFor(req.risk_level, status),
+                risk_level: riskProfileFor(req.risk_level, status, missingElements.length),
                 assessment: assessmentText,
                 evidence,
                 missing_elements: missingElements,
+                improvement_suggestions: improvements,
                 recommended_actions: actions,
                 confidence: typeof llm.confidence === 'number' ? Math.max(0, Math.min(1, llm.confidence)) : null,
                 applicability: applicability || null,
@@ -2992,7 +3015,7 @@ denoServe(protect(async (req) => {
             return {
               ...base,
               status,
-              risk_level: riskProfileFor(req.risk_level, status),
+              risk_level: riskProfileFor(req.risk_level, status, status === 'partial' ? 3 : 0),
               assessment: covered
                 ? (isIt
                   ? `Nei documenti caricati compaiono riferimenti al tema (${kw.covered.slice(0, 5).join(', ')}). Verifica basata su parole chiave: controllare che il contenuto sia completo.`
@@ -3004,6 +3027,7 @@ denoServe(protect(async (req) => {
                 : (isIt ? 'Nessuna documentazione pertinente individuata nei documenti caricati.' : 'No relevant documentation found in the uploaded documents.'),
               evidence: [],
               missing_elements: status === 'to_verify' ? [] : [isIt ? req.gap_description_it : req.gap_description_en].filter(Boolean),
+              improvement_suggestions: [],
               recommended_actions: status === 'to_verify' ? [] : [isIt ? req.recommended_action_it : req.recommended_action_en].filter(Boolean),
               confidence: null,
               method: 'keyword' as const,
@@ -3146,16 +3170,19 @@ denoServe(protect(async (req) => {
     const overallCompliance = applicableCount === 0
       ? null
       : Math.max(0, Math.min(100, Math.round(((coveredCount + 0.5 * partialCount) / applicableCount) * 100)));
+    // Il punteggio di rischio e' la quota di peso dei gap sul massimo teorico, cioe'
+    // tutti gli obblighi valutabili aperti al livello piu' alto. La formula precedente
+    // (70 + gap alti x 5, con tetto a 95) si saturava a cinque gap alti: qualunque
+    // organizzazione reale finiva a 95 e il punteggio non distingueva piu' niente,
+    // ne' teneva conto di quanti obblighi risultassero coperti.
     const highCount = gapsToInsert.filter(g => g.risk_level === 'high').length;
     const mediumCount = gapsToInsert.filter(g => g.risk_level === 'medium').length;
     const lowCount = gapsToInsert.filter(g => g.risk_level === 'low').length;
-    const overallRisk = highCount > 0
-      ? Math.min(95, 70 + highCount * 5)
-      : mediumCount > 0
-      ? Math.min(65, 40 + mediumCount * 4)
-      : lowCount > 0
-      ? Math.min(35, 15 + lowCount * 3)
-      : 0;
+    const GAP_WEIGHT: Record<string, number> = { high: 3, medium: 2, low: 1 };
+    const gapWeight = gapsToInsert.reduce((sum, g) => sum + (GAP_WEIGHT[g.risk_level] ?? 2), 0);
+    const overallRisk = applicableCount === 0
+      ? null
+      : Math.max(0, Math.min(100, Math.round((gapWeight / (applicableCount * 3)) * 100)));
 
     const finalState = {
       version: CHECKS_VERSION,

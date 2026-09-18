@@ -63,6 +63,7 @@ interface RequirementCheck {
   assessment: string;
   evidence: Array<{ document: string; quote: string }>;
   missing_elements: string[];
+  improvement_suggestions?: string[];
   recommended_actions: string[];
   confidence: number | null;
   method: string;
