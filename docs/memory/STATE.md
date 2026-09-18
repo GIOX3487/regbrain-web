@@ -88,6 +88,33 @@ Su richiesta, rimossi dal prodotto Perplexity e la sezione aggiornamenti normati
 `/aggiornamenti`, pagine, componenti, rotta admin di popolamento e quattro edge function non
 pubblicate). La tabella `news_updates` resta nel database, la sezione puo' essere reintrodotta.
 
+## Qualita' della gap analysis: verifica del 18 settembre, secondo giro
+
+Dopo l'integrazione della v22 (PR #9) la verifica e' proseguita su cio' che non era stato ancora
+guardato. La v22 e' confermata in produzione sul fascicolo di prova: 14 documentati, 13 parziali,
+1 mancante, 10 da verificare, 13 non applicabili, conformita' 73 per cento, rischio 36.
+
+Tre esiti nuovi:
+
+- la riproducibilita' e' 47 esiti identici su 51 fra due esecuzioni dello stesso fascicolo, con la
+  conformita' che oscilla di tre punti. Il confine fra documentato e parziale e' il punto mobile,
+  e l'articolo 34 si e' spostato di due caselle fra un'esecuzione e l'altra. Due tentativi di
+  correzione (vincolare le carenze all'elenco degli elementi attesi; non parcheggiare fra i da
+  verificare un obbligo condizionale con prova verificata) sono stati misurati, non hanno
+  migliorato nulla e sono stati annullati. Il rimedio vero e' un elenco esplicito di elementi per
+  obbligo, con lo stato calcolato dal conteggio: lo split meccanico del testo esistente non basta,
+  perche' meta' del catalogo avrebbe un elemento solo e il parziale sparirebbe (GAP-07);
+- il questionario di applicabilita' funziona meglio di quanto temuto: sull'AI Act, rispondendo alle
+  due domande, i requisiti da verificare scendono da 64 su 70 a 2. Senza risposte invece il 91 per
+  cento del catalogo resta parcheggiato e la conformita' viene calcolata su quattro obblighi soli;
+- la percentuale di conformita' non diceva su quanti obblighi poggiasse. Ora lo stato finale porta
+  una base di calcolo e l'interfaccia avvisa quando la quota valutata scende sotto il 40 per cento.
+
+Difetti noti e non corretti: le voci di catalogo degli articoli 29 e 32 paragrafo 4 descrivono lo
+stesso obbligo; il secchio dei da verificare puo' contenere gap che i documenti lasciano intuire
+(articolo 14, dove il registro cita referenti tecnici di clienti persone giuridiche senza che il
+motore ne deduca la raccolta indiretta).
+
 ## Memoria e coordinamento
 
 Memoria, istruzioni per gli agenti e workflow sono integrati con la [PR #4](https://github.com/GIOX3487/regbrain-web/pull/4), commit `72b7e2e69866ce0665f39b0e52d2ddda659e9398` (MEM-01). I 18 test della memoria e le verifiche applicative sono verdi anche su main. Il controllo fidato è stato provato sulla PR #5: una revisione senza registro è stata rifiutata con il messaggio richiesto ([prova negativa](https://github.com/GIOX3487/regbrain-web/actions/runs/35203449382)). Lo stato del blocco tecnico dei merge è **non attivo**: il piano del repository privato non consente i ruleset, e la protezione main non è leggibile dall'integrazione. MEM-02 resta bloccato su configurazione/piano dell'amministratore; vedere [procedura](README.md).

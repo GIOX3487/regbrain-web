@@ -1927,7 +1927,7 @@ interface RequirementCheck {
   keyword_coverage: number;
 }
 
-const CHECKS_VERSION = 'gap-analysis-v22-obbligatorio-vs-prassi';
+const CHECKS_VERSION = 'gap-analysis-v23-base-di-calcolo-e-stabilita';
 const SEVERITY_RANK: Record<string, number> = { critical: 3, high: 2, medium: 1, low: 0 };
 const RISK_SCORE_MAP: Record<string, number> = { high: 74, medium: 52, low: 28 };
 
@@ -3197,6 +3197,21 @@ denoServe(protect(async (req) => {
       unreadable_documents: unreadableDocuments,
       documents_analyzed: readableDocuments.map(d => d.name),
       counts: { covered: coveredCount, partial: partialCount, missing: missingCount, to_verify: toVerifyCount, not_applicable: notApplicableCount },
+      // Su quanti obblighi poggia davvero la percentuale. Senza questo dato una conformita'
+      // calcolata su 4 obblighi su 74 si legge come un punteggio, e non lo e'.
+      coverage_basis: {
+        evaluated: applicableCount,
+        to_verify: toVerifyCount,
+        not_applicable: notApplicableCount,
+        // quota di obblighi che riguardano l'organizzazione e che siamo riusciti a valutare
+        evaluated_share: applicableCount + toVerifyCount === 0
+          ? 1
+          : Math.round((applicableCount / (applicableCount + toVerifyCount)) * 100) / 100,
+        reliable: applicableCount + toVerifyCount === 0
+          ? true
+          : applicableCount / (applicableCount + toVerifyCount) >= 0.4,
+        declarations_provided: !!(applicabilityProfile?.answers && Object.keys(applicabilityProfile.answers).length > 0),
+      },
       checks,
     };
 
