@@ -2972,11 +2972,7 @@ denoServe(protect(async (req) => {
               // Un obbligo condizionale diventa un gap solo se risulta che la condizione ricorre davvero:
               // altrimenti finisce tra i requisiti da verificare, non tra quelli mancanti.
               if (req.conditional && (status === 'missing' || status === 'partial') && applicability !== 'si') {
-                // Una citazione verificata che descrive la misura dimostra da sola che
-                // l'organizzazione e' toccata dall'obbligo: parcheggiarlo fra i "da verificare"
-                // nascondeva un gap reale e faceva oscillare l'esito fra un'esecuzione e l'altra,
-                // perche' dipendeva dal giudizio del modello sull'applicabilita' invece che dalle prove.
-                if (evidence.length === 0) status = 'to_verify';
+                if (evidence.length === 0 || applicability === 'non_determinabile') status = 'to_verify';
               }
               // Su un gap l'utente deve poter vedere perché l'obbligo lo riguarda.
               if (verdict?.status === 'applicable' && (status === 'missing' || status === 'partial')
