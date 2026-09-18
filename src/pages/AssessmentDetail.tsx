@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { supabase, supabaseHttpUrl } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -163,6 +163,7 @@ function CoverageScopeDisclaimer({ regulations, checks, unreadableDocuments, doc
 export default function AssessmentDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
   const [assessment, setAssessment] = useState<Assessment | null>(null);
   const [gaps, setGaps] = useState<Gap[]>([]);
@@ -697,7 +698,7 @@ export default function AssessmentDetail() {
   // (ultimo aggiornamento più vecchio di 45 secondi) la riprende da qui.
   const [resuming, setResuming] = useState(false);
   const resumingRef = useRef(false);
-  const resumeFailuresRef = useRef(0);
+  const resumeFailuresRef = useRef(location.state?.providerUnavailable ? 3 : 0);
   // La callback dell'intervallo vive quanto l'effetto: senza questo riferimento leggerebbe
   // sempre lo stato della prima render e crederebbe ferma un'analisi che sta avanzando.
   const assessmentRef = useRef<Assessment | null>(null);
@@ -732,6 +733,11 @@ export default function AssessmentDetail() {
           body: JSON.stringify({ assessmentId: id, continue: true }),
         });
         const data = await response.json().catch(() => ({}));
+        if (data?.code === 'AI_ANALYSIS_UNAVAILABLE') {
+          // Stop background retries during a provider outage; manual resume remains available.
+          resumeFailuresRef.current = 2;
+          throw new Error(data.error || 'Servizio IA temporaneamente non disponibile. Riprendi più tardi.');
+        }
         if (response.status === 409) {
           resumeFailuresRef.current = 3;
           throw new Error('Questa analisi non può più essere ripresa: rilanciala dalla pagina della nuova gap analysis.');

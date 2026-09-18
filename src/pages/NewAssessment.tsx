@@ -189,14 +189,16 @@ export default function NewAssessment() {
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
-          const err = new Error(data?.error || `Errore ${response.status}`) as Error & { httpStatus?: number };
+          const err = new Error(data?.error || `Errore ${response.status}`) as Error & { httpStatus?: number; code?: string };
           err.httpStatus = response.status;
+          err.code = data?.code;
           throw err;
         }
         return data as { status: 'in_progress' | 'completed'; progress?: { done: number; total: number }; unreadable_documents?: string[] };
       };
       // Limite di CPU, sovraccarico o errore momentaneo: l'avanzamento è salvato, si riprende da lì.
       const isTransient = (e: unknown) => {
+        if ((e as { code?: string })?.code === 'AI_ANALYSIS_UNAVAILABLE') return false;
         const s = (e as { httpStatus?: number })?.httpStatus;
         return s === 546 || s === 429 || (typeof s === 'number' && s >= 500);
       };
@@ -278,7 +280,8 @@ export default function NewAssessment() {
         variant: "destructive",
       });
       if (createdAssessmentId) {
-        setTimeout(() => navigate(`/compliance/assessment/${createdAssessmentId}`), 1500);
+        const providerUnavailable = (error as { code?: string })?.code === 'AI_ANALYSIS_UNAVAILABLE';
+        setTimeout(() => navigate(`/compliance/assessment/${createdAssessmentId}`, { state: { providerUnavailable } }), 1500);
       }
     } finally {
       setLoading(false);

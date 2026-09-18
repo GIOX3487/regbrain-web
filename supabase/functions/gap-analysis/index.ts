@@ -1,3 +1,4 @@
+import { GapAIUnavailable, providerFailure, validateBatchResults, evaluateBatches, unavailableResponse } from '../_shared/gap-ai-batch.ts';
 import { protect } from '../_shared/access.ts';
 import { aiFetch as fetch, getAIKey, getAIModel } from '../_shared/ai.ts';
 import { serve as denoServe } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -1927,7 +1928,7 @@ interface RequirementCheck {
   keyword_coverage: number;
 }
 
-const CHECKS_VERSION = 'gap-analysis-v22-obbligatorio-vs-prassi';
+const CHECKS_VERSION = 'gap-analysis-v23-resumable-provider-errors';
 const SEVERITY_RANK: Record<string, number> = { critical: 3, high: 2, medium: 1, low: 0 };
 const RISK_SCORE_MAP: Record<string, number> = { high: 74, medium: 52, low: 28 };
 
@@ -2333,8 +2334,8 @@ ${userParts.join('\n\n==========\n\n')}`;
   });
 
   if (!response.ok) {
-    const errText = await response.text().catch(() => '');
-    throw new Error(`LLM assessment API error ${response.status}: ${errText.substring(0, 300)}`);
+    await response.body?.cancel();
+    throw providerFailure(response.status);
   }
   const data = await response.json();
   const content = data.choices?.[0]?.message?.content || '';
@@ -2344,11 +2345,8 @@ ${userParts.join('\n\n==========\n\n')}`;
   for (const item of list) {
     if (item && typeof item.requirement_id === 'string') map.set(item.requirement_id, item);
   }
-  // Fallback positional matching when the model omits ids
-  if (map.size === 0 && list.length === batch.length) {
-    list.forEach((item, i) => map.set(batch[i].req.id, item));
-  }
-  return map;
+  if (list.length !== batch.length) throw new GapAIUnavailable('invalid_response');
+  return validateBatchResults(batch.map(item => item.req.id), map);
 }
 
 async function runWithConcurrency<T>(tasks: Array<() => Promise<T>>, limit: number): Promise<T[]> {
@@ -2378,9 +2376,9 @@ const BUDGET_MS = 70000;
 // MAX_PER_INVOCATION deve restare un multiplo di GROUP_SIZE: così ogni gruppo è pieno
 // e nessun requisito viene valutato senza il proprio vettore.
 const MAX_PER_INVOCATION = 108;
-const GROUP_SIZE = 54;
+const GROUP_SIZE = 6;
 const LLM_BATCH_SIZE = 3;
-const LLM_CONCURRENCY = 18;
+const LLM_CONCURRENCY = 2;
 const EVIDENCE_CHARS = 4200;
 const SECTION_CHARS = 1100;
 
@@ -2882,23 +2880,12 @@ denoServe(protect(async (req) => {
               })));
             }
             const documentNames = readableDocuments.map(d => d.name);
-            const results = await runWithConcurrency(batches.map((batch) => async () => {
-              for (let attempt = 1; attempt <= 3; attempt++) {
-                try {
-                  const map = await assessRequirementBatchWithLLM(aiKey, batch, normalizedLanguage, profile, documentNames, declaredFacts);
-                  if (map.size > 0) return map;
-                  console.warn(`LLM batch returned no checks (attempt ${attempt})`);
-                } catch (e) {
-                  const message = e instanceof Error ? e.message : String(e);
-                  console.error(`LLM batch failed (attempt ${attempt}):`, message);
-                  if (/ 429|rate limit/i.test(message)) await new Promise(r => setTimeout(r, 900 * attempt));
-                }
-              }
-              return new Map<string, any>();
-            }), LLM_CONCURRENCY);
+            const results = await evaluateBatches(batches, (batch) =>
+              assessRequirementBatchWithLLM(aiKey, batch, normalizedLanguage, profile, documentNames, declaredFacts),
+              LLM_CONCURRENCY);
             for (const map of results) for (const [k, v] of map) llmResults.set(k, v);
-          } else if (processedInThisRun === 0) {
-            console.log('⚠️ AI key not available, using keyword rules only');
+          } else {
+            throw new GapAIUnavailable('not_configured');
           }
 
           const allowedStatuses = new Set(['covered', 'partial', 'missing', 'not_applicable']);
@@ -3258,6 +3245,10 @@ denoServe(protect(async (req) => {
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {
+    if (error instanceof GapAIUnavailable) {
+      console.warn('Gap analysis paused', { reason: error.reason, providerStatus: error.providerStatus });
+      return unavailableResponse(error, corsHeaders);
+    }
     console.error('Error in gap-analysis function:', error);
     return errorResponse(500, error instanceof Error ? error.message : 'Unknown error occurred');
   }

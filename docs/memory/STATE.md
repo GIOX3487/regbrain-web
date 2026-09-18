@@ -1,5 +1,9 @@
 # Stato condiviso di RegBrain
 
+## Diagnosi provider e ripresa del 18 settembre
+
+Gemini ha restituito HTTP 503 per domanda elevata su tre richieste diagnostiche, anche senza JSON. La proposta `codex/gap-provider-recovery`, basata su main dopo PR #9, conserva i gruppi pendenti e interrompe i tentativi automatici durante l'indisponibilità. Prova reale su staging v7: 12 esclusioni conservate, 39 requisiti pendenti, zero fallback e conformità null. Il benchmark di accuratezza resta bloccato dal provider. Lo staging v7 conserva la base riconciliata PR #3/#6; l'allineamento della classificazione PR #9 è ancora da fare. Nessun rilascio in produzione in questa sessione. Dettagli e limiti nel [registro](changes/2026-09-18-gap-provider-recovery.md).
+
 Ultima ricognizione: 17 settembre 2026. Base applicativa verificata: `5bf7a8c3e970765423dda429cb124f185a393a39`. Questo documento distingue codice su main, proposte aperte e ambiente live non verificato.
 
 ## Già presente nel codice su main
