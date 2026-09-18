@@ -2268,7 +2268,7 @@ Rispondi SOLO con un oggetto JSON valido con questa forma:
 {"checks":[{"requirement_id":"...","status":"covered|partial|missing|not_applicable","applicability":"si|no|non_determinabile","assessment":"...","evidence":[{"document":"nome del file","quote":"citazione testuale"}],"missing_elements":["..."],"improvement_suggestions":["..."],"recommended_actions":["..."],"confidence":0.0}]}
 
 Distinzione obbligatoria, da applicare prima di scegliere lo status:
-- "missing_elements": SOLO gli elementi che la norma impone espressamente per questo requisito. Ogni voce deve corrispondere a un elemento elencato in "Cosa deve risultare dalla documentazione", riportato con le stesse parole di quell'elenco. Se ciò che manca non compare in quell'elenco, non è una carenza: va in improvement_suggestions. Non aggiungere voci nuove e non spezzare un elemento in più voci.
+- "missing_elements": SOLO gli elementi che la norma impone espressamente per questo requisito, presi da "Cosa deve risultare dalla documentazione" o dal testo dell'obbligo. Se un elemento non è imposto dalla norma, non va qui, qualunque sia la sua utilità.
 - "improvement_suggestions": tutto ciò che migliorerebbe la documentazione ma che la norma non impone: dettagli operativi, modulistica, log applicativi, formati, procedure di maggior dettaglio, buone prassi di settore. Questi non sono carenze e NON influiscono sullo status.
 Sbaglia chi mette fra le carenze ciò che sarebbe opportuno avere: il requisito misura la conformità all'obbligo, non la distanza da una documentazione ideale.
 
