@@ -61,7 +61,7 @@ interface RequirementCheck {
   status: 'covered' | 'partial' | 'missing' | 'to_verify' | 'not_applicable';
   risk_level: 'high' | 'medium' | 'low' | null;
   assessment: string;
-  evidence: Array<{ document: string; quote: string }>;
+  evidence: Array<{ document: string; quote: string; shared_with?: number }>;
   missing_elements: string[];
   improvement_suggestions?: string[];
   recommended_actions: string[];
@@ -2087,6 +2087,11 @@ export default function AssessmentDetail() {
                             <div key={i} className="rounded-md border border-green-200 bg-green-50 dark:bg-green-950/30 dark:border-green-900 p-3">
                               <p className="text-xs font-medium text-green-800 dark:text-green-200 mb-1">{e.document}</p>
                               <p className="text-xs italic">“{e.quote}”</p>
+                              {typeof e.shared_with === 'number' && e.shared_with > 0 && (
+                                <p className="mt-1 text-[11px] text-muted-foreground">
+                                  Questa stessa frase sostiene anche {e.shared_with} {e.shared_with === 1 ? 'altro obbligo' : 'altri obblighi'}: la carenza documentale è una sola.
+                                </p>
+                              )}
                             </div>
                           ))}
                         </CollapsibleContent>

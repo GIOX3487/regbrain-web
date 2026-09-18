@@ -1917,7 +1917,7 @@ interface RequirementCheck {
   status: CheckStatus;
   risk_level: RiskProfile | null;
   assessment: string;
-  evidence: Array<{ document: string; quote: string }>;
+  evidence: Array<{ document: string; quote: string; shared_with?: number }>;
   missing_elements: string[];
   improvement_suggestions: string[];
   recommended_actions: string[];
@@ -1927,7 +1927,7 @@ interface RequirementCheck {
   keyword_coverage: number;
 }
 
-const CHECKS_VERSION = 'gap-analysis-v23-base-di-calcolo-e-stabilita';
+const CHECKS_VERSION = 'gap-analysis-v24-prove-condivise';
 const SEVERITY_RANK: Record<string, number> = { critical: 3, high: 2, medium: 1, low: 0 };
 const RISK_SCORE_MAP: Record<string, number> = { high: 74, medium: 52, low: 28 };
 
@@ -3089,6 +3089,27 @@ denoServe(protect(async (req) => {
       documents_count: normalizedDocuments.length,
       result_payload: { version: CHECKS_VERSION, checks, unreadable_documents: unreadableDocuments },
     }, { onConflict: 'user_id,cache_key' });
+
+    // Una stessa frase puo' sostenere piu' obblighi: sul fascicolo di prova una riga
+    // della procedura diritti reggeva quattro constatazioni diverse. Presentarle come
+    // quattro esiti indipendenti gonfia il conteggio dei gap e rende il referto ripetitivo,
+    // quindi ogni citazione dichiara su quanti altri obblighi e' usata.
+    const quoteUsage = new Map<string, Set<string>>();
+    for (const c of checks) {
+      for (const e of c.evidence || []) {
+        const key = normalizeQuote(e.quote);
+        if (!key) continue;
+        if (!quoteUsage.has(key)) quoteUsage.set(key, new Set());
+        quoteUsage.get(key)!.add(c.requirement_id);
+      }
+    }
+    for (const c of checks) {
+      for (const e of c.evidence || []) {
+        const key = normalizeQuote(e.quote);
+        const others = key ? (quoteUsage.get(key)?.size || 1) - 1 : 0;
+        if (others > 0) e.shared_with = others;
+      }
+    }
 
     const gapChecks = checks.filter(c => c.status === 'missing' || c.status === 'partial');
     const coveredCount = checks.filter(c => c.status === 'covered').length;
