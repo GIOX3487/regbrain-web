@@ -115,6 +115,27 @@ stesso obbligo; il secchio dei da verificare puo' contenere gap che i documenti 
 (articolo 14, dove il registro cita referenti tecnici di clienti persone giuridiche senza che il
 motore ne deduca la raccolta indiretta).
 
+## Qualita' della gap analysis: verifica del 18 settembre, terzo giro
+
+Verifica sulla fedelta' delle citazioni, che e' la promessa centrale del prodotto, eseguita sugli
+esiti reali della versione in produzione. Su 60 citazioni prodotte, tutti i 61 segmenti (le
+citazioni con elisione marcata [...] contano un segmento per parte) risultano presenti alla lettera
+nel file citato, con attribuzione corretta. Nessuna citazione inventata, nessuna attribuita al file
+sbagliato. Qualita' delle prove: lunghezza media 154 caratteri, nessun requisito documentato che
+poggi su una citazione sotto gli 80 caratteri, 2 su 14 documentati con una prova sola.
+
+Difetto trovato e corretto: 5 frasi sostenevano piu' di un obbligo, una di esse quattro. Il referto
+le presentava come constatazioni indipendenti, gonfiando il conteggio dei gap quando la carenza
+documentale e' una sola. Ogni citazione dichiara ora su quanti altri obblighi e' usata e il
+dettaglio del requisito lo dice (v24, branch `claude/gap-analysis-prove-condivise`).
+
+Stato del fascicolo di prova con la v24: 17 documentati, 10 parziali, 1 mancante, 10 da verificare,
+13 non applicabili, conformita' 79 per cento, rischio 27, quota valutata 0,74. Su 59 citazioni, 65
+segmenti su 65 verbatim e 15 citazioni marcate come condivise.
+
+Resta aperto GAP-07, la riproducibilita'. Resta da decidere GAP-08, le due voci di catalogo
+sovrapposte.
+
 ## Memoria e coordinamento
 
 Memoria, istruzioni per gli agenti e workflow sono integrati con la [PR #4](https://github.com/GIOX3487/regbrain-web/pull/4), commit `72b7e2e69866ce0665f39b0e52d2ddda659e9398` (MEM-01). I 18 test della memoria e le verifiche applicative sono verdi anche su main. Il controllo fidato è stato provato sulla PR #5: una revisione senza registro è stata rifiutata con il messaggio richiesto ([prova negativa](https://github.com/GIOX3487/regbrain-web/actions/runs/35203449382)). Lo stato del blocco tecnico dei merge è **non attivo**: il piano del repository privato non consente i ruleset, e la protezione main non è leggibile dall'integrazione. MEM-02 resta bloccato su configurazione/piano dell'amministratore; vedere [procedura](README.md).
