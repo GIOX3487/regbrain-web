@@ -26,6 +26,7 @@ import {
   Languages
 } from "lucide-react";
 import { RiskScoreExplanation, RISK_STYLE, riskProfileOf, overallRiskProfile, type RiskProfile } from "@/components/compliance/RiskScoreExplanation";
+import { MetricExplainer, type MetricNumbers } from "@/components/compliance/MetricExplainer";
 import { DocumentConfigDialog, type ConfigDocumentType, type DocumentConfig } from "@/components/DocumentConfigDialog";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -263,6 +264,9 @@ export default function AssessmentDetail() {
       riskCounts: '{h} alti, {m} medi, {l} bassi',
       requirementsChecked: 'Requisiti verificati',
       documentedCount: '{n} documentati',
+      withGapsCount: '{n} con lacune',
+      notApplicableCount: '{n} non applicabili',
+      notApplicableTab: 'Non applicabili',
       toVerifyCount: '{n} da verificare',
       coveredTab: 'Requisiti documentati',
       toVerifyTab: 'Da verificare',
@@ -355,6 +359,9 @@ export default function AssessmentDetail() {
       riskCounts: '{h} high, {m} medium, {l} low',
       requirementsChecked: 'Requirements checked',
       documentedCount: '{n} documented',
+      withGapsCount: '{n} with gaps',
+      notApplicableCount: '{n} not applicable',
+      notApplicableTab: 'Not applicable',
       toVerifyCount: '{n} to verify',
       coveredTab: 'Documented requirements',
       toVerifyTab: 'To verify',
@@ -447,6 +454,9 @@ export default function AssessmentDetail() {
       riskCounts: '{h} altos, {m} medios, {l} bajos',
       requirementsChecked: 'Requisitos verificados',
       documentedCount: '{n} documentados',
+      withGapsCount: '{n} con carencias',
+      notApplicableCount: '{n} no aplicables',
+      notApplicableTab: 'No aplicables',
       toVerifyCount: '{n} por verificar',
       coveredTab: 'Requisitos documentados',
       toVerifyTab: 'Por verificar',
@@ -539,6 +549,9 @@ export default function AssessmentDetail() {
       riskCounts: '{h} élevés, {m} moyens, {l} faibles',
       requirementsChecked: 'Exigences vérifiées',
       documentedCount: '{n} documentées',
+      withGapsCount: '{n} avec des lacunes',
+      notApplicableCount: '{n} non applicables',
+      notApplicableTab: 'Non applicables',
       toVerifyCount: '{n} à vérifier',
       coveredTab: 'Exigences documentées',
       toVerifyTab: 'À vérifier',
@@ -631,6 +644,9 @@ export default function AssessmentDetail() {
       riskCounts: '{h} hoch, {m} mittel, {l} gering',
       requirementsChecked: 'Geprüfte Anforderungen',
       documentedCount: '{n} dokumentiert',
+      withGapsCount: '{n} mit Lücken',
+      notApplicableCount: '{n} nicht anwendbar',
+      notApplicableTab: 'Nicht anwendbar',
       toVerifyCount: '{n} zu prüfen',
       coveredTab: 'Dokumentierte Anforderungen',
       toVerifyTab: 'Zu prüfen',
@@ -1681,6 +1697,15 @@ export default function AssessmentDetail() {
     );
   }
 
+  const complianceLabelOf = (pct: number | null) => {
+    if (pct === null) return '';
+    if (pct >= 90) return t.complianceExcellent;
+    if (pct >= 75) return t.complianceGood;
+    if (pct >= 60) return t.complianceSufficient;
+    if (pct >= 40) return t.complianceInsufficient;
+    return t.complianceCritical;
+  };
+
   const checksPayload = (assessment.requirement_checks || null) as RequirementChecksPayload | null;
   const checks: RequirementCheck[] = Array.isArray(checksPayload?.checks) ? checksPayload!.checks! : [];
   const coveredChecks = checks.filter(c => c.status === 'covered');
@@ -1695,6 +1720,28 @@ export default function AssessmentDetail() {
   const lowGaps = gaps.filter(g => riskProfileOf(g.risk_level) === 'low').length;
   const overallProfile: RiskProfile = overallRiskProfile(gaps);
   const profileLabel: Record<RiskProfile, string> = { high: t.riskHigh, medium: t.riskMedium, low: t.riskLow, none: t.riskNone };
+  // Gli stessi numeri che compaiono nelle schede alimentano le spiegazioni: se la
+  // spiegazione rifacesse il conto per conto suo, prima o poi direbbe un'altra cosa.
+  const partialChecks = checks.filter(c => c.status === 'partial').length;
+  const missingChecks = checks.filter(c => c.status === 'missing').length;
+  const evaluatedCount = coverageBasis?.evaluated ?? (coveredChecks.length + partialChecks + missingChecks);
+  const metricNumbers: MetricNumbers = {
+    covered: coveredChecks.length,
+    partial: partialChecks,
+    missing: missingChecks,
+    toVerify: toVerifyChecks.length,
+    notApplicable: notApplicableChecks.length,
+    evaluated: evaluatedCount,
+    total: checks.length,
+    gaps: gaps.length,
+    compliance: assessment.overall_compliance_percentage ?? null,
+    complianceLabel: complianceLabelOf(assessment.overall_compliance_percentage ?? null),
+    risk: assessment.overall_risk_score ?? null,
+    riskLabel: profileLabel[overallProfile],
+    high: highGaps,
+    medium: mediumGaps,
+    low: lowGaps,
+  };
   const analysisInProgress = assessment.status !== 'completed';
   const progressDone = assessment.analysis_progress?.done ?? checks.length;
   const progressTotal = assessment.analysis_progress?.total ?? checksPayload?.total ?? 0;
@@ -1791,7 +1838,12 @@ export default function AssessmentDetail() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">{t.compliance}</CardTitle>
+              <CardTitle className="text-sm font-medium flex items-center gap-1.5">
+                {t.compliance}
+                {assessment.status === 'completed' && assessment.overall_compliance_percentage !== null && (
+                  <MetricExplainer kind="compliance" numbers={metricNumbers} language={selectedLanguage} />
+                )}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               {assessment.status !== 'completed' || assessment.overall_compliance_percentage === null ? (
@@ -1866,7 +1918,12 @@ export default function AssessmentDetail() {
 
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">{t.riskProfile}</CardTitle>
+              <CardTitle className="text-sm font-medium flex items-center gap-1.5">
+                {t.riskProfile}
+                {gaps.length > 0 && (
+                  <MetricExplainer kind="risk" numbers={metricNumbers} language={selectedLanguage} />
+                )}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <div className={`flex items-center gap-2 text-2xl font-bold mb-2 ${RISK_STYLE[overallProfile].text}`}>
@@ -1904,14 +1961,21 @@ export default function AssessmentDetail() {
 
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">{t.requirementsChecked}</CardTitle>
+              <CardTitle className="text-sm font-medium flex items-center gap-1.5">
+                {t.requirementsChecked}
+                {checks.length > 0 && (
+                  <MetricExplainer kind="requirements" numbers={metricNumbers} language={selectedLanguage} />
+                )}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold mb-2">{checks.length > 0 ? checks.length : gaps.length}</div>
               {checks.length > 0 && (
                 <p className="text-sm text-muted-foreground">
                   <span className="text-green-700 dark:text-green-400">{t.documentedCount.replace('{n}', String(coveredChecks.length))}</span>
+                  {gaps.length > 0 && <>, {t.withGapsCount.replace('{n}', String(gaps.length))}</>}
                   {toVerifyChecks.length > 0 && <>, {t.toVerifyCount.replace('{n}', String(toVerifyChecks.length))}</>}
+                  {notApplicableChecks.length > 0 && <>, {t.notApplicableCount.replace('{n}', String(notApplicableChecks.length))}</>}
                 </p>
               )}
             </CardContent>
@@ -1944,10 +2008,11 @@ export default function AssessmentDetail() {
             {checks.length > 0 && (
               <TabsTrigger value="covered">{t.coveredTab} ({coveredChecks.length})</TabsTrigger>
             )}
-            {(toVerifyChecks.length > 0 || notApplicableChecks.length > 0) && (
-              <TabsTrigger value="verify">
-                {t.toVerifyTab} ({toVerifyChecks.length + notApplicableChecks.length})
-              </TabsTrigger>
+            {toVerifyChecks.length > 0 && (
+              <TabsTrigger value="verify">{t.toVerifyTab} ({toVerifyChecks.length})</TabsTrigger>
+            )}
+            {notApplicableChecks.length > 0 && (
+              <TabsTrigger value="notapplicable">{t.notApplicableTab} ({notApplicableChecks.length})</TabsTrigger>
             )}
             <TabsTrigger value="actions">{t.actionPlanTab} ({actionPlans.length})</TabsTrigger>
             <TabsTrigger value="documents">{t.documentsTab}</TabsTrigger>
@@ -2155,8 +2220,11 @@ export default function AssessmentDetail() {
                 )}
               </Card>
             ))}
+          </TabsContent>
+
+          <TabsContent value="notapplicable" className="space-y-3">
             {notApplicableChecks.length > 0 && (
-              <div className="pt-4">
+              <div>
                 <p className="text-sm text-muted-foreground mb-2">{t.notApplicableIntro}</p>
                 <div className="space-y-2">
                   {(() => {
