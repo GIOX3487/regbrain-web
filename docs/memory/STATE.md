@@ -263,6 +263,22 @@ verificabile da qui), accordo di validazione firmato con un'azienda cliente (Go 
 citato sul sito), e la firma che resta a chi risponde. Nulla e' stato scritto su UniDPO, che non ha
 un accordo firmato (SITE-07, branch `claude/homepage-rag-e-dpo`).
 
+## Homepage: tolte le affermazioni non verificabili, 19 settembre
+
+Poche ore dopo averle aggiunte sono state rimosse due delle tre prove della fascia sotto il primo
+pulsante: i 32 professionisti fra DPO e CISO (dato che veniva dal pitch e non era verificabile dal
+prodotto, e che avevo segnalato come tale gia' nel consegnarlo) e l'accordo di validazione firmato
+con un'azienda cliente.
+
+Restava una sola affermazione, quindi la griglia da tre e' diventata un riquadro solo, e il titolo
+e' passato da "Costruito con i DPO, per i DPO" a "Pensato per chi firma": il titolo precedente
+rivendicava una validazione esterna le cui prove non erano piu' sulla pagina. Quello nuovo dice una
+cosa che il prodotto dimostra da solo, cioe' che prepara istruttoria e prova e lascia valutazione e
+responsabilita' a chi firma.
+
+La homepage non rivendica ora nessuna validazione esterna (SITE-07, branch
+`claude/via-32-professionisti`).
+
 ## Memoria e coordinamento
 
 Memoria, istruzioni per gli agenti e workflow sono integrati con la [PR #4](https://github.com/GIOX3487/regbrain-web/pull/4), commit `72b7e2e69866ce0665f39b0e52d2ddda659e9398` (MEM-01). I 18 test della memoria e le verifiche applicative sono verdi anche su main. Il controllo fidato è stato provato sulla PR #5: una revisione senza registro è stata rifiutata con il messaggio richiesto ([prova negativa](https://github.com/GIOX3487/regbrain-web/actions/runs/35203449382)). Lo stato del blocco tecnico dei merge è **non attivo**: il piano del repository privato non consente i ruleset, e la protezione main non è leggibile dall'integrazione. MEM-02 resta bloccato su configurazione/piano dell'amministratore; vedere [procedura](README.md).
