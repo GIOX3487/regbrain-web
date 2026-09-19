@@ -6,7 +6,7 @@ state_review: updated
 state_reason: Diagnosi reale del provider e verifica del comportamento in staging.
 roadmap_review: updated
 roadmap_reason: Ambiente staging disponibile; collaudo di accuratezza bloccato dall'indisponibilità IA.
-files: ["supabase/functions/gap-analysis/index.ts", "supabase/functions/_shared/gap-ai-batch.ts", "src/pages/NewAssessment.tsx", "src/pages/AssessmentDetail.tsx", "deployment/gap-ai-batch.test.mjs", "package.json", "docs/memory/STATE.md", "roadmap.md", "docs/memory/changes/2026-09-18-gap-provider-recovery.md"]
+files: ["supabase/functions/gap-analysis/index.ts", "supabase/functions/_shared/gap-ai-batch.ts", "src/pages/NewAssessment.tsx", "src/pages/AssessmentDetail.tsx", "deployment/gap-ai-batch.test.mjs", "package.json", "docs/memory/STATE.md", "roadmap.md"]
 ---
 
 ## Richiesta e contesto
@@ -26,6 +26,8 @@ Il 18 settembre il provider Gemini configurato nello staging ha restituito HTTP 
 - Test inclusi nel comando backend già usato dalla CI. Nessun nuovo blocco per la memoria o il deploy.
 
 ## Verifiche ed esiti
+
+Aggiornamento 19 settembre: la CI applicativa GitHub del commit c791f04 è verde (controlli Edge, test backend, TypeScript e build). Il controllo memoria aveva rilevato il registro stesso nel campo files: rimossa l'autocitazione. Tre richieste diagnostiche brevi oggi rispondono 200, ma la ripresa dell'analisi reale riceve ancora 503 overloaded; la disponibilità resta intermittente.
 
 - 7 test del nuovo modulo passati: concorrenza, ordine, arresto coda, attesa chiamate attive, timeout/503/429, ID/stati incompleti, risposta sicura e ripresa simulata.
 - 18 test esistenti del candidato staging passati su evidenze, cache, fonti e applicabilità.
