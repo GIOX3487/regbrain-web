@@ -227,6 +227,15 @@ nei file caricati: estratti, non inventati. Nessun importo di sanzione in euro i
 Corretta anche l'etichetta del pulsante LIA, che diceva "Legitimacy Impact Assessment (AI Act)",
 sbagliata sul nome e sulla normativa (DOC-01, branch `claude/documenti-audit-dpia`).
 
+## Gap Report rimosso, 19 settembre
+
+Il quarto documento generabile duplicava il referto gia' scaricabile con Esporta PDF, che contiene
+gia' executive summary, percentuale, profilo di rischio, base di calcolo, piano d'azione ed elenchi
+dei requisiti con le citazioni. Nella prova i numeri del Gap Report coincidevano esattamente con
+quelli del referto: non aggiungeva informazione, solo un secondo modo di dirla, con il rischio che
+le due versioni divergano nel tempo. I documenti generabili restano tre: DPIA, LIA e Analisi Rischi
+art. 24 (DOC-01, branch `claude/via-gap-report`).
+
 ## Memoria e coordinamento
 
 Memoria, istruzioni per gli agenti e workflow sono integrati con la [PR #4](https://github.com/GIOX3487/regbrain-web/pull/4), commit `72b7e2e69866ce0665f39b0e52d2ddda659e9398` (MEM-01). I 18 test della memoria e le verifiche applicative sono verdi anche su main. Il controllo fidato è stato provato sulla PR #5: una revisione senza registro è stata rifiutata con il messaggio richiesto ([prova negativa](https://github.com/GIOX3487/regbrain-web/actions/runs/35203449382)). Lo stato del blocco tecnico dei merge è **non attivo**: il piano del repository privato non consente i ruleset, e la protezione main non è leggibile dall'integrazione. MEM-02 resta bloccato su configurazione/piano dell'amministratore; vedere [procedura](README.md).
