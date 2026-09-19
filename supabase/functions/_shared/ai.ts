@@ -61,10 +61,12 @@ export async function aiFetch(input: RequestInfo | URL, init?: RequestInit): Pro
   body.model=config.model;
   if(body.stream) return json({error:'Streaming is not supported by this adapter'},400);
   if(config.provider==='anthropic') {
-    const response=await globalThis.fetch(config.baseUrl+'/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':config.key!,'anthropic-version':'2023-06-01'},body:JSON.stringify(toClaude(body,config.model)),signal:AbortSignal.timeout(60000)});
+    const response=await globalThis.fetch(config.baseUrl+'/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':config.key!,'anthropic-version':'2023-06-01'},body:JSON.stringify(toClaude(body,config.model)),signal:init?.signal ?? AbortSignal.timeout(60000)});
     if(!response.ok) return response;
     return json(fromClaude(await response.json()));
   }
   if(config.provider==='openai' && /^(gpt-5|o[1-9])/.test(config.model)) {delete body.temperature;body.max_completion_tokens=body.max_tokens;delete body.max_tokens;}
-  return globalThis.fetch(config.baseUrl+'/chat/completions',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+config.key},body:JSON.stringify(body),signal:AbortSignal.timeout(60000)});
+  // Il chiamante puo' passare un proprio segnale quando la generazione richiede piu' tempo
+  // del solito (documenti lunghi); senza, resta il limite di un minuto.
+  return globalThis.fetch(config.baseUrl+'/chat/completions',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+config.key},body:JSON.stringify(body),signal:init?.signal ?? AbortSignal.timeout(60000)});
 }

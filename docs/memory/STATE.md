@@ -207,6 +207,26 @@ tab sotto diceva "Da verificare (19)" perche' vi sommava i non applicabili. Ora 
 distinti e la scheda dei requisiti mostra tutte e quattro le voci (SITE-05, branch
 `claude/spiegazione-metriche`).
 
+## Documenti audit-ready, prima prova reale del 19 settembre
+
+La tabella `generated_documents` era vuota: la funzione non era mai stata provata end to end. Prova
+fatta sul fascicolo reale Infoteam copiato su un utente temporaneo, poi rimosso.
+
+La DPIA falliva sempre, non per caso: `aiFetch` imponeva 60 secondi a ogni chiamata AI senza che il
+chiamante potesse chiedere di piu', e una DPIA standard vale 25-30 pagine. Dopo la correzione
+(segnale passabile dal chiamante, 140 secondi per i documenti) la DPIA si genera in 65 secondi, 66
+mila caratteri, undici sezioni, con la consultazione preventiva ex art. 36 correttamente legata al
+rischio residuo alto.
+
+Gli altri tre sono risultati corretti. Il Gap Report riproduce esattamente i numeri dell'analisi; la
+LIA usa la base giuridica giusta (art. 6.1.f, considerando 47 e 49, WP217) con i tre test richiesti;
+l'Analisi Rischi dichiara metodologia ISO 31000 ed ENISA con la catena inerente-misure-residuo. I
+dati aziendali nella LIA (ragione sociale, indirizzo, partita IVA) sono stati verificati uno per uno
+nei file caricati: estratti, non inventati. Nessun importo di sanzione in euro in nessuno dei quattro.
+
+Corretta anche l'etichetta del pulsante LIA, che diceva "Legitimacy Impact Assessment (AI Act)",
+sbagliata sul nome e sulla normativa (DOC-01, branch `claude/documenti-audit-dpia`).
+
 ## Memoria e coordinamento
 
 Memoria, istruzioni per gli agenti e workflow sono integrati con la [PR #4](https://github.com/GIOX3487/regbrain-web/pull/4), commit `72b7e2e69866ce0665f39b0e52d2ddda659e9398` (MEM-01). I 18 test della memoria e le verifiche applicative sono verdi anche su main. Il controllo fidato è stato provato sulla PR #5: una revisione senza registro è stata rifiutata con il messaggio richiesto ([prova negativa](https://github.com/GIOX3487/regbrain-web/actions/runs/35203449382)). Lo stato del blocco tecnico dei merge è **non attivo**: il piano del repository privato non consente i ruleset, e la protezione main non è leggibile dall'integrazione. MEM-02 resta bloccato su configurazione/piano dell'amministratore; vedere [procedura](README.md).
