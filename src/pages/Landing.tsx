@@ -144,11 +144,11 @@ const Landing = () => {
         <div className="absolute bottom-0 right-0 w-48 h-48 sm:w-96 sm:h-96 bg-secondary/20 rounded-full blur-3xl -z-10 animate-pulse" />
       </section>
 
-      {/* Pensato per chi firma */}
+      {/* Costruito con i DPO */}
       <section className="px-4 sm:px-6 py-10 sm:py-12 border-y border-border bg-muted/30">
         <div className="max-w-5xl mx-auto text-center space-y-6">
           <div className="space-y-2">
-            <h2 className="text-2xl sm:text-3xl font-bold">Pensato per chi firma</h2>
+            <h2 className="text-2xl sm:text-3xl font-bold">Costruito con i DPO, per i DPO</h2>
             <p className="text-muted-foreground max-w-2xl mx-auto">
               Non è una scrivania di sviluppatori che immagina come si fa compliance: il prodotto è costruito
               attorno al lavoro di chi la responsabilità se la prende davvero.
