@@ -329,23 +329,21 @@ export default function NewAssessment() {
                 <div className="space-y-2">
                   <h4 className="font-semibold text-sm">Cos'è la Gap Analysis?</h4>
                   <p className="text-sm text-muted-foreground">
-                    La <strong>Gap Analysis</strong> è un'analisi <strong>puntuale</strong> che identifica i gap specifici 
-                    tra la tua documentazione aziendale e i requisiti normativi. Ti dice <strong>dove sei non conforme oggi</strong> 
-                    e quali azioni correttive intraprendere.
+                    La <strong>Gap Analysis</strong> è un'analisi <strong>puntuale</strong> che identifica i gap
+                    specifici tra la tua documentazione aziendale e i requisiti normativi. Ti dice{' '}
+                    <strong>dove non sei conforme oggi</strong> e quali azioni correttive intraprendere.
                   </p>
                   <div className="text-sm text-muted-foreground">
-                    <strong>Come funziona:</strong> ogni requisito della normativa viene confrontato con i tuoi documenti; per ciascuno ottieni l'esito (documentato, parziale, mancante), le evidenze trovate, cosa manca e le azioni per rimediare, con un profilo di rischio a colori.
+                    <strong>Come funziona:</strong> ogni requisito della normativa viene confrontato con i tuoi
+                    documenti; per ciascuno ottieni l'esito (documentato, parziale, mancante), le evidenze trovate,
+                    cosa manca e le azioni per rimediare, con un profilo di rischio a colori.
                   </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    💡 <em>Dopo aver creato almeno 3 assessment, potrai accedere alla <strong>Predictive Analytics</strong> 
-                    per vedere come evolverà il tuo rischio nel tempo e pianificare investimenti futuri.</em>
-                  </p>
                 </div>
               </div>
             </div>
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-2">
-                <Label htmlFor="title">Titolo Valutazione</Label>
+                <Label htmlFor="title">Titolo della valutazione</Label>
                 <Input
                   id="title"
                   value={formData.title}
@@ -620,7 +618,7 @@ export default function NewAssessment() {
               )}
 
               <div className="space-y-2">
-                <Label>Carica Documenti aziendali per Gap Analysis</Label>
+                <Label>Carica i documenti aziendali da analizzare</Label>
                 <div className="mb-3 p-4 bg-muted/50 rounded-lg border-l-4 border-primary">
                   <p className="text-sm font-semibold mb-2">📋 Documenti necessari per l'analisi:</p>
                   <div className="space-y-2 text-xs text-muted-foreground">
