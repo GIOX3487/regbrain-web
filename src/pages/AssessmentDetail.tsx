@@ -87,6 +87,11 @@ interface RequirementChecksPayload {
     reliable: boolean;
     declarations_provided: boolean;
   };
+  evaluation_quality?: {
+    by_ai: number;
+    by_keyword: number;
+    complete: boolean;
+  };
   checks?: RequirementCheck[];
 }
 
@@ -1682,6 +1687,7 @@ export default function AssessmentDetail() {
   const toVerifyChecks = checks.filter(c => c.status === 'to_verify');
   const notApplicableChecks = checks.filter(c => c.status === 'not_applicable');
   const coverageBasis = checksPayload?.coverage_basis || null;
+  const evaluationQuality = checksPayload?.evaluation_quality || null;
   const unreadableDocuments = checksPayload?.unreadable_documents || [];
   const documentsAnalyzed = checksPayload?.documents_analyzed || [];
   const highGaps = gaps.filter(g => riskProfileOf(g.risk_level) === 'high').length;
@@ -1816,6 +1822,14 @@ export default function AssessmentDetail() {
                   {!coverageBasis.declarations_provided
                     ? ' Il questionario di applicabilità non è stato compilato: compilarlo permette di stabilire quali obblighi si applicano.'
                     : ' I documenti caricati non dicono se le condizioni di applicabilità ricorrano.'}
+                </div>
+              )}
+              {evaluationQuality && !evaluationQuality.complete && (
+                <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400">
+                  {evaluationQuality.by_keyword} obblighi su {evaluationQuality.by_ai + evaluationQuality.by_keyword} non
+                  sono stati verificati sul testo dei documenti: il servizio di analisi non ha risposto e per quegli
+                  obblighi l'esito deriva dalla sola ricerca di parole chiave, senza citazioni. Rilanciare l'analisi
+                  per ottenere una verifica completa.
                 </div>
               )}
               {(() => {
