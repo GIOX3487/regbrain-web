@@ -2374,7 +2374,7 @@ export default function AssessmentDetail() {
                     <div className="text-left">
                       <div className="font-semibold">LIA</div>
                       <div className="text-xs text-muted-foreground">
-                        Legitimacy Impact Assessment (AI Act)
+                        Valutazione del legittimo interesse (art. 6.1.f GDPR)
                       </div>
                     </div>
                   </Button>
