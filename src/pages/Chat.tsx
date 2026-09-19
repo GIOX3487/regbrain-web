@@ -5,9 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { Send, Menu, LogOut, FileText, History, Settings, Paperclip, X, Upload, Shield, Lightbulb, Database } from "lucide-react";
+import { Send, Menu, LogOut, FileText, Settings, Paperclip, X, Upload, Shield, Lightbulb, Database, Plus, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { MobileNav } from "@/components/MobileNav";
 import { GroupedCitations } from "@/components/chat/GroupedCitations";
@@ -275,17 +280,9 @@ const Chat = () => {
       </Card>
 
       <nav className="space-y-2">
-        <Button variant="ghost" className="w-full justify-start" onClick={() => { navigate('/chat'); setSidebarOpen(false); }}>
-          <Send className="w-4 h-4 mr-2" />
-          Chat
-        </Button>
         <Button variant="default" className="w-full justify-start bg-gradient-to-r from-blue-600 to-purple-600" onClick={() => { navigate('/compliance'); setSidebarOpen(false); }}>
           <Shield className="w-4 h-4 mr-2" />
           Compliance Hub
-        </Button>
-        <Button variant="ghost" className="w-full justify-start" onClick={() => { navigate('/audit'); setSidebarOpen(false); }}>
-          <History className="w-4 h-4 mr-2" />
-          Audit Log
         </Button>
         {isAdmin && (
           <>
@@ -302,27 +299,58 @@ const Chat = () => {
       </nav>
 
       <div className="space-y-1">
-        <Button variant="outline" size="sm" className="w-full justify-start mb-2" onClick={startNewConversation}>
-          <Send className="w-4 h-4 mr-2" />
-          Nuova conversazione
-        </Button>
-        <p className="px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Conversazioni recenti</p>
+        {/* Il piu' sta sull'intestazione dell'elenco che riempie: e' li' che l'occhio lo cerca
+            quando vuole una conversazione in piu', e non ruba una riga alla navigazione. */}
+        <div className="flex items-center justify-between px-3 mb-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Conversazioni recenti</p>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                onClick={startNewConversation}
+                aria-label="Nuova conversazione"
+              >
+                <Plus className="w-4 h-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right">Nuova conversazione</TooltipContent>
+          </Tooltip>
+        </div>
         {recentChats.length === 0 ? (
-          <p className="px-3 text-xs text-muted-foreground">Le domande che fai vengono salvate qui e nell'Audit Log.</p>
+          <p className="px-3 text-xs text-muted-foreground">Le domande che fai vengono salvate qui.</p>
         ) : (
           recentChats.map((chat) => (
-            <button
-              key={chat.id}
-              type="button"
-              onClick={() => openRecentChat(chat)}
-              className="w-full rounded-md px-3 py-2 text-left text-sm hover:bg-muted transition-colors"
-              title={chat.question}
-            >
-              <span className="block truncate">{chat.question}</span>
-              <span className="block text-[11px] text-muted-foreground">
-                {new Date(chat.created_at).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-              </span>
-            </button>
+            <div key={chat.id} className="group relative">
+              <button
+                type="button"
+                onClick={() => openRecentChat(chat)}
+                className="w-full rounded-md px-3 py-2 pr-9 text-left text-sm hover:bg-muted transition-colors"
+                title={chat.question}
+              >
+                <span className="block truncate">{chat.question}</span>
+                <span className="block text-[11px] text-muted-foreground">
+                  {new Date(chat.created_at).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </button>
+              {/* Il cestino compare sulla riga che elimina, non in un menu a parte: resta
+                  impossibile cancellare la conversazione sbagliata. */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 hover:text-destructive"
+                    onClick={() => setChatToDelete(chat)}
+                    aria-label="Elimina conversazione"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">Elimina conversazione</TooltipContent>
+              </Tooltip>
+            </div>
           ))
         )}
       </div>
@@ -438,6 +466,8 @@ const Chat = () => {
     await handleSendMessage(text, nextContext);
   };
   const [recentChats, setRecentChats] = useState<RecentChat[]>([]);
+  const [chatToDelete, setChatToDelete] = useState<RecentChat | null>(null);
+  const [deletingChat, setDeletingChat] = useState(false);
 
   const loadRecentChats = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -458,6 +488,22 @@ const Chat = () => {
   useEffect(() => {
     loadRecentChats();
   }, []);
+
+  const deleteRecentChat = async () => {
+    if (!chatToDelete) return;
+    setDeletingChat(true);
+    const { error } = await supabase.from('query_log').delete().eq('id', chatToDelete.id);
+    setDeletingChat(false);
+    if (error) {
+      toast({ title: 'Eliminazione non riuscita', description: error.message, variant: 'destructive' });
+      return;
+    }
+    // Se la conversazione aperta e' quella eliminata, la schermata non puo' continuare a mostrarla.
+    if (messages.length > 0 && messages[0]?.content === chatToDelete.question) startNewConversation();
+    setRecentChats((prev) => prev.filter((c) => c.id !== chatToDelete.id));
+    setChatToDelete(null);
+    toast({ title: 'Conversazione eliminata' });
+  };
 
   const openRecentChat = (chat: RecentChat) => {
     setGoal(null);
@@ -990,6 +1036,30 @@ const Chat = () => {
           </div>
         </div>
       </main>
+
+      <AlertDialog open={!!chatToDelete} onOpenChange={(open) => { if (!open) setChatToDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminare questa conversazione?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {chatToDelete?.question}
+              <span className="mt-2 block">
+                La domanda e la risposta vengono rimosse definitivamente dal tuo storico. L'operazione non si annulla.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingChat}>Annulla</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); deleteRecentChat(); }}
+              disabled={deletingChat}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deletingChat ? 'Eliminazione...' : 'Elimina'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
