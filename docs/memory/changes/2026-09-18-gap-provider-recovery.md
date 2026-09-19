@@ -27,7 +27,7 @@ Il 18 settembre il provider Gemini configurato nello staging ha restituito HTTP 
 
 ## Verifiche ed esiti
 
-Aggiornamento 19 settembre: la CI applicativa GitHub del commit c791f04 è verde (controlli Edge, test backend, TypeScript e build). Il controllo memoria aveva rilevato il registro stesso nel campo files: rimossa l'autocitazione. Tre richieste diagnostiche brevi oggi rispondono 200, ma la ripresa dell'analisi reale riceve ancora 503 overloaded; la disponibilità resta intermittente.
+Aggiornamento 19 settembre: la CI applicativa GitHub del commit c791f04 è verde (controlli Edge, test backend, TypeScript e build). Il controllo memoria aveva rilevato il registro stesso nel campo files: rimossa l'autocitazione. Il validatore locale della memoria passa dopo la correzione. Tre richieste diagnostiche brevi oggi rispondono 200, ma due tentativi separati di ripresa dell'analisi reale ricevono ancora 503 overloaded; la disponibilità resta intermittente. La lettura SQL conferma 12 esclusioni conservate, 39 requisiti pendenti e conformità null. Non risultano esecuzioni CI associate al successivo commit solo documentale 9d49f4b tramite il connettore.
 
 - 7 test del nuovo modulo passati: concorrenza, ordine, arresto coda, attesa chiamate attive, timeout/503/429, ID/stati incompleti, risposta sicura e ripresa simulata.
 - 18 test esistenti del candidato staging passati su evidenze, cache, fonti e applicabilità.
@@ -35,6 +35,10 @@ Aggiornamento 19 settembre: la CI applicativa GitHub del commit c791f04 è verde
 - Staging `brdmsjoowawnvhvgendl`: gap-analysis v7 attiva, sopra la base riconciliata v6 (PR #3 e correzione applicabilità PR #6). Questo candidato staging non include ancora la nuova classificazione della PR #9; la proposta GitHub invece parte dalla PR #9.
 - Prova reale con gli stessi otto documenti sintetici mixed del 17 settembre: HTTP 503, reason overloaded dopo circa 65 secondi; stato DB in_progress, 12 esclusioni dichiarate conservate, 39 requisiti pendenti, zero fallback keyword, conformità null. Il test ha verificato questi valori tramite API e lettura SQL.
 - Nessuna migrazione e nessun deploy in produzione effettuati in questa sessione.
+
+## Candidato successivo preparato il 19 settembre
+
+Preparato localmente l'allineamento della base staging v7 con PR #9: miglioramenti facoltativi separati dalle carenze obbligatorie, gravità proporzionata alle carenze, rischio normalizzato. Le protezioni sulle citazioni restano attive. Passano 21 test su evidenze, applicabilità e classificazione, oltre ai controlli sintattici. Il candidato non è distribuito e non fa parte del codice di questa PR: cambierebbe la versione dei risultati, impedendo di usare l'analisi v7 pendente come prova di ripresa. Prima completare quella prova; poi distribuire il candidato riconciliato e avviare nuove analisi con le etichette attese già congelate.
 
 ## Rischi e limiti
 
