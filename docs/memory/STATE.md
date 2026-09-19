@@ -270,11 +270,11 @@ pulsante: i 32 professionisti fra DPO e CISO (dato che veniva dal pitch e non er
 prodotto, e che avevo segnalato come tale gia' nel consegnarlo) e l'accordo di validazione firmato
 con un'azienda cliente.
 
-Restava una sola affermazione, quindi la griglia da tre e' diventata un riquadro solo, e il titolo
-e' passato da "Costruito con i DPO, per i DPO" a "Pensato per chi firma": il titolo precedente
-rivendicava una validazione esterna le cui prove non erano piu' sulla pagina. Quello nuovo dice una
-cosa che il prodotto dimostra da solo, cioe' che prepara istruttoria e prova e lascia valutazione e
-responsabilita' a chi firma.
+Restava una sola affermazione, quindi la griglia da tre e' diventata un riquadro solo, Il titolo
+era stato cambiato da me in "Pensato per chi firma" ed e' stato poi rimesso su richiesta a
+"Costruito con i DPO, per i DPO": la richiesta era togliere le due affermazioni, non il titolo. Il
+sottotitolo resta quello riscritto, che parla di come il prodotto e' costruito senza affermare una
+validazione esterna.
 
 La homepage non rivendica ora nessuna validazione esterna (SITE-07, branch
 `claude/via-32-professionisti`).
