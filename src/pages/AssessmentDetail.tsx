@@ -2393,19 +2393,6 @@ export default function AssessmentDetail() {
                     </div>
                   </Button>
 
-                  <Button 
-                    variant="outline" 
-                    className="justify-start h-auto py-4"
-                    onClick={() => generateDocument('gap_report')}
-                  >
-                    <Download className="mr-2 h-5 w-5" />
-                    <div className="text-left">
-                      <div className="font-semibold">Gap Report</div>
-                      <div className="text-xs text-muted-foreground">
-                        Executive Gap Analysis Report
-                      </div>
-                    </div>
-                  </Button>
                 </div>
               </CardContent>
             </Card>
