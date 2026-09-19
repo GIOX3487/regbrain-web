@@ -22,7 +22,7 @@ Il 18 settembre il provider Gemini configurato nello staging ha restituito HTTP 
 - Errori HTTP, timeout e risposte incomplete/non attribuibili agli ID richiesti interrompono il gruppo prima di creare esiti o avanzare la coda. I gruppi salvati restano disponibili alla ripresa.
 - Risposta 503 riconoscibile come AI_ANALYSIS_UNAVAILABLE, motivo sintetico, Retry-After, nessun contenuto del provider o segreto nei log. Nessun punteggio finale viene calcolato in questo percorso.
 - Le schermate fermano i tentativi automatici su questo errore; resta la ripresa manuale. Il passaggio dalla creazione al dettaglio conserva lo stato di pausa.
-- Versione risultati v23 per non riusare cache prodotte dal vecchio fallback. Le analisi v22 incomplete richiedono riavvio controllato al rilascio.
+- Versione risultati finale v26 dopo la riconciliazione con main v25, per non riusare cache prodotte dal vecchio fallback. Le analisi incomplete di versioni precedenti richiedono riavvio controllato al rilascio.
 - Test inclusi nel comando backend già usato dalla CI. Nessun nuovo blocco per la memoria o il deploy.
 
 ## Verifiche ed esiti
@@ -54,6 +54,18 @@ Il collaudo browser ha riprodotto un difetto: dopo l'interruzione la pagina most
 Verificato nel browser integrato con il componente applicativo reale e API/autenticazione simulate solo su localhost: errore 503, conservazione 12/51, riapertura senza nuove chiamate automatiche, ripresa manuale riuscita, scomparsa dell'avviso e riabilitazione PDF. TypeScript del frontend verificato localmente. Il valore 80% del caso UI è un dato simulato e non è una misurazione di accuratezza o un risultato dello staging. La prova non certifica il flusso hosted completo né l'autenticazione reale.
 
 La funzione diagnostica staging-payload-check è limitata allo staging e agli account con app_metadata.staging_test; usa un payload sintetico fisso e non restituisce chiavi. Nessun cambio del modello e nessuna modifica della produzione.
+
+## Allineamento con il lavoro parallelo del socio
+
+Prima dell'aggiornamento finale è stato letto il vero ref main, ora 0f6e9c4f60e5384e87cc5f0ee900e3b912ea95cd. I metadati della PR riportavano ancora la base precedente; main nel frattempo aveva integrato PR #11–#15. Eseguita riconciliazione a tre vie: preservati base di calcolo, citazioni condivise, avvisi sulla qualità, azzeramento delle carenze per applicabilità incerta, caricamento multiplo e pulizia chat. Sostituito il ramo di quattro tentativi/fallback con l'interruzione riprendibile già verificata; le metriche sui metodi restano compatibili con gli esiti storici. Versione risultati v26. Il candidato staging v7 non è sostituito da questa riconciliazione.
+
+Dopo la riconciliazione: 26 test backend superati, 28 file Edge controllati senza errori sintattici, TypeScript frontend e build superati localmente. Restano gli avvisi preesistenti sulle dimensioni dei bundle e sulle dipendenze.
+
+Il registro del socio del 19 settembre riferisce prove di carico riuscite in produzione e una severità eccessiva del catalogo sul fascicolo Infoteam (GAP-07/GAP-09). Sono misure riferite dal socio, non riprodotte in questa sessione; il problema di disponibilità osservato qui riguarda lo staging. La priorità sulla qualità del giudizio resta distinguere obblighi minimi da documentazione ideale con una revisione del catalogo. Né conformità né riproducibilità equivalgono ad accuratezza.
+
+## Aggiornamento del 20 settembre
+
+Prima di pubblicare la riconciliazione il ref main è avanzato ancora a 0dfc984 (PR #16–#22). Integrati anche spiegazioni delle metriche, testi della nuova analisi, rimozione del Gap Report duplicato e supporto al timeout specifico per generazione documenti. Preservate le modifiche alla homepage e tutti i registri del socio. Le spiegazioni del rischio conclusivo restano nascoste durante un'analisi incompleta. Il motore di gap analysis su main non è cambiato in questo secondo allineamento.
 
 ## Rischi e limiti
 

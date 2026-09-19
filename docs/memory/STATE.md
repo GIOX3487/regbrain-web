@@ -2,7 +2,7 @@
 
 ## Collaudo del 19 settembre: pausa visibile e limiti della misura
 
-La PR #10 corregge anche la schermata dell'analisi interrotta: avviso di pausa persistente nella scheda, nessun rischio conclusivo prima della fine, PDF disponibile solo dopo completamento. Il percorso pausa/riapertura/ripresa riuscita è stato provato nel browser con API e autenticazione simulate localmente; non equivale al collaudo hosted completo. Una nuova ripresa reale e prove rappresentative su entrambi gli endpoint Gemini continuano a restituire 503; accuratezza ancora non misurabile. L'allineamento PR #9 nello staging è preparato localmente e testato, non distribuito. Dettagli nel [registro](changes/2026-09-18-gap-provider-recovery.md).
+La PR #10 è riconciliata con main 0dfc984 (PR #11–#22), conserva i miglioramenti del socio e usa versione risultati v26. Corregge anche la schermata dell'analisi interrotta: avviso di pausa persistente nella scheda, nessun rischio conclusivo prima della fine, PDF disponibile solo dopo completamento. Il percorso pausa/riapertura/ripresa riuscita è stato provato nel browser con API e autenticazione simulate localmente; non equivale al collaudo hosted completo. Una nuova ripresa reale e prove rappresentative su entrambi gli endpoint Gemini continuano a restituire 503; accuratezza ancora non misurabile. L'allineamento PR #9 nello staging è preparato localmente e testato, non distribuito. Dettagli nel [registro](changes/2026-09-18-gap-provider-recovery.md).
 
 ## Diagnosi provider e ripresa del 18 settembre
 
@@ -95,6 +95,197 @@ rivista da un legale (SITE-02).
 Su richiesta, rimossi dal prodotto Perplexity e la sezione aggiornamenti normativi (rotta
 `/aggiornamenti`, pagine, componenti, rotta admin di popolamento e quattro edge function non
 pubblicate). La tabella `news_updates` resta nel database, la sezione puo' essere reintrodotta.
+
+## Qualita' della gap analysis: verifica del 18 settembre, secondo giro
+
+Dopo l'integrazione della v22 (PR #9) la verifica e' proseguita su cio' che non era stato ancora
+guardato. La v22 e' confermata in produzione sul fascicolo di prova: 14 documentati, 13 parziali,
+1 mancante, 10 da verificare, 13 non applicabili, conformita' 73 per cento, rischio 36.
+
+Tre esiti nuovi:
+
+- la riproducibilita' e' 47 esiti identici su 51 fra due esecuzioni dello stesso fascicolo, con la
+  conformita' che oscilla di tre punti. Il confine fra documentato e parziale e' il punto mobile,
+  e l'articolo 34 si e' spostato di due caselle fra un'esecuzione e l'altra. Due tentativi di
+  correzione (vincolare le carenze all'elenco degli elementi attesi; non parcheggiare fra i da
+  verificare un obbligo condizionale con prova verificata) sono stati misurati, non hanno
+  migliorato nulla e sono stati annullati. Il rimedio vero e' un elenco esplicito di elementi per
+  obbligo, con lo stato calcolato dal conteggio: lo split meccanico del testo esistente non basta,
+  perche' meta' del catalogo avrebbe un elemento solo e il parziale sparirebbe (GAP-07);
+- il questionario di applicabilita' funziona meglio di quanto temuto: sull'AI Act, rispondendo alle
+  due domande, i requisiti da verificare scendono da 64 su 70 a 2. Senza risposte invece il 91 per
+  cento del catalogo resta parcheggiato e la conformita' viene calcolata su quattro obblighi soli;
+- la percentuale di conformita' non diceva su quanti obblighi poggiasse. Ora lo stato finale porta
+  una base di calcolo e l'interfaccia avvisa quando la quota valutata scende sotto il 40 per cento.
+
+Difetti noti e non corretti: le voci di catalogo degli articoli 29 e 32 paragrafo 4 descrivono lo
+stesso obbligo; il secchio dei da verificare puo' contenere gap che i documenti lasciano intuire
+(articolo 14, dove il registro cita referenti tecnici di clienti persone giuridiche senza che il
+motore ne deduca la raccolta indiretta).
+
+## Qualita' della gap analysis: verifica del 18 settembre, terzo giro
+
+Verifica sulla fedelta' delle citazioni, che e' la promessa centrale del prodotto, eseguita sugli
+esiti reali della versione in produzione. Su 60 citazioni prodotte, tutti i 61 segmenti (le
+citazioni con elisione marcata [...] contano un segmento per parte) risultano presenti alla lettera
+nel file citato, con attribuzione corretta. Nessuna citazione inventata, nessuna attribuita al file
+sbagliato. Qualita' delle prove: lunghezza media 154 caratteri, nessun requisito documentato che
+poggi su una citazione sotto gli 80 caratteri, 2 su 14 documentati con una prova sola.
+
+Difetto trovato e corretto: 5 frasi sostenevano piu' di un obbligo, una di esse quattro. Il referto
+le presentava come constatazioni indipendenti, gonfiando il conteggio dei gap quando la carenza
+documentale e' una sola. Ogni citazione dichiara ora su quanti altri obblighi e' usata e il
+dettaglio del requisito lo dice (v24, branch `claude/gap-analysis-prove-condivise`).
+
+Stato del fascicolo di prova con la v24: 17 documentati, 10 parziali, 1 mancante, 10 da verificare,
+13 non applicabili, conformita' 79 per cento, rischio 27, quota valutata 0,74. Su 59 citazioni, 65
+segmenti su 65 verbatim e 15 citazioni marcate come condivise.
+
+Resta aperto GAP-07, la riproducibilita'. Resta da decidere GAP-08, le due voci di catalogo
+sovrapposte.
+
+## Qualita' e carico della gap analysis: verifica del 19 settembre
+
+Verifica richiesta dopo una segnalazione di Giovanni su un carico di richieste troppo alto. Il
+problema non si e' riprodotto. Tre analisi GDPR in parallelo su utenti distinti: 9,8, 16,2 e 13,5
+secondi, esiti 20, 20 e 21 per cento. Catalogo intero, 250 obblighi su sei normative, in tre
+invocazioni: 45 secondi da sola, 61 e 65 secondi con due analisi contemporanee. Su circa 600
+chiamate al modello nessuna fallita, nessun 429 nei log, nessuna ricaduta a parole chiave.
+
+Corretta comunque la fragilita' che rendeva invisibile un guasto: quando una chiamata AI falliva
+tre volte il requisito ricadeva in silenzio sulla verifica a parole chiave, che produce un esito
+senza citazioni dall'aspetto identico a una verifica sulle prove. I tentativi passano a quattro con
+attesa progressiva (1,5, 5 e 12 secondi) applicata solo sui limiti di frequenza, lo stato finale
+porta `evaluation_quality` con il conteggio per metodo e il dettaglio dell'assessment mostra un
+avviso quando la valutazione non e' completa. Corretta anche la contraddizione degli obblighi da
+verificare, che dichiaravano l'applicabilita' non determinabile ed elencavano comunque elementi
+mancanti (v25, branch `claude/gap-analysis-ricadute-visibili`).
+
+Accuratezza misurata sul fascicolo reale di Infoteam, sei documenti GDPR veri. Citazioni oneste: 36
+segmenti su 36 presenti alla lettera nel documento indicato, nessuna attribuzione sbagliata,
+lunghezza media 158 caratteri. Giudizio sistematicamente severo: zero o un obbligo coperto su 51,
+conformita' fra 20 e 23 per cento su quattro giri. L'articolo 37 risulta parziale pur essendoci la
+comunicazione al Garante dei dati di contatto del DPO; gli articoli 29 e 32 par. 4 risultano
+parziali pur essendoci le istruzioni scritte al personale. Causa misurata: 56 elementi su 109
+dichiarati mancanti sono copiati alla lettera dalla documentazione attesa del catalogo (GAP-09,
+dipendente da GAP-07).
+
+Sul catalogo intero 166 obblighi su 250 finiscono in `to_verify` perche' il questionario di
+applicabilita' copre bene solo il GDPR: il paracadute della v23 marca il risultato come non
+affidabile, ma la percentuale mostrata poggia su 70 obblighi.
+
+## Barra laterale della chat, 19 settembre
+
+Ripulita la barra laterale di `/chat`. Tolto il tasto Audit Log, che ripeteva come voce di
+navigazione lo storico gia' elencato sotto con domanda e data; la rotta `/audit` resta attiva.
+Tolto il tasto Chat, che portava sempre alla pagina in cui l'utente si trovava, dato che quella
+barra esiste solo dentro `Chat.tsx`. Il tasto Nuova conversazione diventa un piu' nell'intestazione
+dell'elenco delle conversazioni recenti, con descrizione al passaggio del cursore. Ogni
+conversazione ha ora un cestino con conferma esplicita che cancella la riga da `query_log`,
+appoggiandosi alla politica di riga gia' esistente. Nessuna modifica al database o alle rotte
+(SITE-03, branch `claude/chat-sidebar-pulizia`).
+
+
+## Caricamento dei documenti nella gap analysis, 19 settembre
+
+Segnalato che i documenti si potevano caricare uno alla volta. L'attributo `multiple` era gia'
+presente nel pacchetto servito in produzione, quindi la selezione multipla era tecnicamente
+possibile: mancava il modo di capirlo. L'area tratteggiata dichiarava "Trascina qui i tuoi
+documenti o clicca per selezionarli" senza gestire ne' il rilascio ne' il clic, e l'unica via
+d'ingresso era il campo di sistema, da cui la finestra di macOS sembra a selezione singola.
+
+L'area accetta ora il rilascio, si evidenzia durante il trascinamento e apre la selezione al clic;
+la lavorazione dei file passa da un'unica funzione condivisa fra trascinamento e selezione
+manuale, cosi' limiti, scarti e messaggi restano identici. Il campo di sistema diventa invisibile
+ma raggiungibile da tastiera, sostituito da un pulsante, e il testo spiega come prendere piu' file
+insieme (SITE-04, branch `claude/caricamento-documenti-multiplo`).
+
+## Metriche del referto spiegate, 19 settembre
+
+Le tre schede in cima al referto mostravano percentuale di conformita', profilo di rischio e
+conteggio dei requisiti senza dire come nascono. Ogni scheda ha ora un punto interrogativo che apre
+una spiegazione breve con i numeri di quella analisi dentro il testo: la percentuale e' documentati
+piu' meta' dei parziali sugli obblighi valutabili, con da verificare e non applicabili fuori dal
+denominatore; il profilo prende il livello del gap piu' grave e non la media, mentre il punteggio
+numerico e' il peso dei gap sul massimo teorico; da verificare significa obbligo condizionale la cui
+condizione non risulta dai documenti, non documento mancante.
+
+Corretta una contraddizione fra le due parti della pagina: la scheda diceva "9 da verificare" e il
+tab sotto diceva "Da verificare (19)" perche' vi sommava i non applicabili. Ora sono due tab
+distinti e la scheda dei requisiti mostra tutte e quattro le voci (SITE-05, branch
+`claude/spiegazione-metriche`).
+
+## Documenti audit-ready, prima prova reale del 19 settembre
+
+La tabella `generated_documents` era vuota: la funzione non era mai stata provata end to end. Prova
+fatta sul fascicolo reale Infoteam copiato su un utente temporaneo, poi rimosso.
+
+La DPIA falliva sempre, non per caso: `aiFetch` imponeva 60 secondi a ogni chiamata AI senza che il
+chiamante potesse chiedere di piu', e una DPIA standard vale 25-30 pagine. Dopo la correzione
+(segnale passabile dal chiamante, 140 secondi per i documenti) la DPIA si genera in 65 secondi, 66
+mila caratteri, undici sezioni, con la consultazione preventiva ex art. 36 correttamente legata al
+rischio residuo alto.
+
+Gli altri tre sono risultati corretti. Il Gap Report riproduce esattamente i numeri dell'analisi; la
+LIA usa la base giuridica giusta (art. 6.1.f, considerando 47 e 49, WP217) con i tre test richiesti;
+l'Analisi Rischi dichiara metodologia ISO 31000 ed ENISA con la catena inerente-misure-residuo. I
+dati aziendali nella LIA (ragione sociale, indirizzo, partita IVA) sono stati verificati uno per uno
+nei file caricati: estratti, non inventati. Nessun importo di sanzione in euro in nessuno dei quattro.
+
+Corretta anche l'etichetta del pulsante LIA, che diceva "Legitimacy Impact Assessment (AI Act)",
+sbagliata sul nome e sulla normativa (DOC-01, branch `claude/documenti-audit-dpia`).
+
+## Gap Report rimosso, 19 settembre
+
+Il quarto documento generabile duplicava il referto gia' scaricabile con Esporta PDF, che contiene
+gia' executive summary, percentuale, profilo di rischio, base di calcolo, piano d'azione ed elenchi
+dei requisiti con le citazioni. Nella prova i numeri del Gap Report coincidevano esattamente con
+quelli del referto: non aggiungeva informazione, solo un secondo modo di dirla, con il rischio che
+le due versioni divergano nel tempo. I documenti generabili restano tre: DPIA, LIA e Analisi Rischi
+art. 24 (DOC-01, branch `claude/via-gap-report`).
+
+## Testi della nuova valutazione, 19 settembre
+
+Le parole attaccate nella scheda introduttiva ("oggie quali", "Analyticsper vedere") non erano
+refusi: JSX elimina lo spazio finale di una riga quando un tag chiude li' e la frase continua sulla
+riga dopo. Lo spazio e' ora esplicito con `{' '}` e le frasi sono riavvolte. Corretto anche l'ordine
+delle parole in "dove sei non conforme oggi", rimossa la nota sulla Predictive Analytics come
+richiesto e sistemate due etichette con la maiuscola a meta' frase. Cercato lo stesso schema in
+tutta la schermata: nessun altro caso. Resta da cercarlo nelle altre pagine (SITE-06, branch
+`claude/testi-nuova-valutazione`).
+
+## Homepage: numeri, confronto e posizionamento DPO, 19 settembre
+
+I tre numeri hanno ora un'etichetta sopra la cifra (Fedelta' delle citazioni, Copertura normativa,
+Tempo di analisi): prima "55 su 55" non diceva a cosa si riferisse senza leggere la didascalia.
+Tolta l'incoerenza fra la scheda che diceva 254 obblighi a catalogo e quella che diceva "per
+verificare 250 obblighi".
+
+Aggiunta sotto i numeri una tabella di cinque righe che confronta il prodotto con un'AI generalista
+su comportamenti osservabili: da dove viene la risposta, come si verifica, cosa succede quando non
+sa, come si aggiorna, cosa si ottiene.
+
+Aggiunta sotto il primo pulsante la fascia "Costruito con i DPO, per i DPO" con tre prove: 32
+professionisti fra DPO e CISO nella validazione iniziale (dato che viene dal pitch e non e'
+verificabile da qui), accordo di validazione firmato con un'azienda cliente (Go Infoteam, nome non
+citato sul sito), e la firma che resta a chi risponde. Nulla e' stato scritto su UniDPO, che non ha
+un accordo firmato (SITE-07, branch `claude/homepage-rag-e-dpo`).
+
+## Homepage: tolte le affermazioni non verificabili, 19 settembre
+
+Poche ore dopo averle aggiunte sono state rimosse due delle tre prove della fascia sotto il primo
+pulsante: i 32 professionisti fra DPO e CISO (dato che veniva dal pitch e non era verificabile dal
+prodotto, e che avevo segnalato come tale gia' nel consegnarlo) e l'accordo di validazione firmato
+con un'azienda cliente.
+
+Restava una sola affermazione, quindi la griglia da tre e' diventata un riquadro solo, Il titolo
+era stato cambiato da me in "Pensato per chi firma" ed e' stato poi rimesso su richiesta a
+"Costruito con i DPO, per i DPO": la richiesta era togliere le due affermazioni, non il titolo. Il
+sottotitolo resta quello riscritto, che parla di come il prodotto e' costruito senza affermare una
+validazione esterna.
+
+La homepage non rivendica ora nessuna validazione esterna (SITE-07, branch
+`claude/via-32-professionisti`).
 
 ## Memoria e coordinamento
 

@@ -1918,7 +1918,7 @@ interface RequirementCheck {
   status: CheckStatus;
   risk_level: RiskProfile | null;
   assessment: string;
-  evidence: Array<{ document: string; quote: string }>;
+  evidence: Array<{ document: string; quote: string; shared_with?: number }>;
   missing_elements: string[];
   improvement_suggestions: string[];
   recommended_actions: string[];
@@ -1928,7 +1928,7 @@ interface RequirementCheck {
   keyword_coverage: number;
 }
 
-const CHECKS_VERSION = 'gap-analysis-v23-resumable-provider-errors';
+const CHECKS_VERSION = 'gap-analysis-v26-resumable-provider-errors';
 const SEVERITY_RANK: Record<string, number> = { critical: 3, high: 2, medium: 1, low: 0 };
 const RISK_SCORE_MAP: Record<string, number> = { high: 74, medium: 52, low: 28 };
 
@@ -2852,6 +2852,8 @@ denoServe(protect(async (req) => {
       const declaredFacts = profileFactsForPrompt(applicabilityProfile);
       let processedInThisRun = 0;
       let lastStageMs = 0;
+      // Quante chiamate AI hanno incontrato il limite di frequenza e quante si sono arrese:
+      // senza questi numeri una valutazione degradata e' indistinguibile da una riuscita.
       while (state.pending.length > 0 && Date.now() < deadline && processedInThisRun < MAX_PER_INVOCATION) {
         // Il gruppo non può sconfinare oltre MAX_PER_INVOCATION: gli embedding dei requisiti
         // sono stati calcolati esattamente per i primi MAX_PER_INVOCATION in coda, e valutare
@@ -2977,6 +2979,13 @@ denoServe(protect(async (req) => {
                   ? (isIt ? 'Dalla documentazione non risulta se il requisito si applica all\'organizzazione.' : 'The documentation does not show whether the requirement applies to the organisation.')
                   : '';
               }
+              // Applicabilita' non determinabile e carenze non possono stare insieme: dire che
+              // manca un documento presuppone di sapere che quel documento e' dovuto. Finche' non
+              // sappiamo se l'obbligo riguarda l'organizzazione, non c'e' nulla da dichiarare mancante.
+              if (status === 'to_verify') {
+                missingElements.length = 0;
+                actions = [];
+              }
               return {
                 ...base,
                 status,
@@ -2992,33 +3001,7 @@ denoServe(protect(async (req) => {
               };
             }
 
-            // Fallback deterministico a parole chiave (solo se la valutazione con prove non è disponibile).
-            // Le parole chiave non dimostrano che il contenuto sia completo: non possono produrre un "covered".
-            const threshold = req.coverage_threshold || 0.10;
-            const minMatches = req.min_keyword_matches || 1;
-            const covered = kw.covered.length >= minMatches && kw.ratio >= threshold;
-            let status: CheckStatus = covered ? 'partial' : 'missing';
-            if (!covered && req.conditional && kw.covered.length === 0) status = 'to_verify';
-            return {
-              ...base,
-              status,
-              risk_level: riskProfileFor(req.risk_level, status, status === 'partial' ? 3 : 0),
-              assessment: covered
-                ? (isIt
-                  ? `Nei documenti caricati compaiono riferimenti al tema (${kw.covered.slice(0, 5).join(', ')}). Verifica basata su parole chiave: controllare che il contenuto sia completo.`
-                  : `The uploaded documents refer to the topic (${kw.covered.slice(0, 5).join(', ')}). Keyword-based check: verify that the content is complete.`)
-                : kw.covered.length > 0
-                ? (isIt
-                  ? `Documentazione parziale: compaiono solo alcuni riferimenti (${kw.covered.join(', ')}).`
-                  : `Partial documentation: only some references appear (${kw.covered.join(', ')}).`)
-                : (isIt ? 'Nessuna documentazione pertinente individuata nei documenti caricati.' : 'No relevant documentation found in the uploaded documents.'),
-              evidence: [],
-              missing_elements: status === 'to_verify' ? [] : [isIt ? req.gap_description_it : req.gap_description_en].filter(Boolean),
-              improvement_suggestions: [],
-              recommended_actions: status === 'to_verify' ? [] : [isIt ? req.recommended_action_it : req.recommended_action_en].filter(Boolean),
-              confidence: null,
-              method: 'keyword' as const,
-            };
+            throw new GapAIUnavailable('invalid_response');
           });
 
           const tStage = Date.now();
@@ -3038,6 +3021,7 @@ denoServe(protect(async (req) => {
         const tSave = Date.now();
         if (state.pending.length > 0) await saveState(supabase, assessmentId, state);
         console.log(`✓ ${groupRequirements.length} requisiti in ${Date.now() - tGroup}ms (salvataggio esiti ${lastStageMs}ms, stato ${Date.now() - tSave}ms) — ${state.done}/${state.total}`);
+
       }
     }
 
@@ -3077,13 +3061,39 @@ denoServe(protect(async (req) => {
       result_payload: { version: CHECKS_VERSION, checks, unreadable_documents: unreadableDocuments },
     }, { onConflict: 'user_id,cache_key' });
 
+    // Una stessa frase puo' sostenere piu' obblighi: sul fascicolo di prova una riga
+    // della procedura diritti reggeva quattro constatazioni diverse. Presentarle come
+    // quattro esiti indipendenti gonfia il conteggio dei gap e rende il referto ripetitivo,
+    // quindi ogni citazione dichiara su quanti altri obblighi e' usata.
+    const quoteUsage = new Map<string, Set<string>>();
+    for (const c of checks) {
+      for (const e of c.evidence || []) {
+        const key = normalizeQuote(e.quote);
+        if (!key) continue;
+        if (!quoteUsage.has(key)) quoteUsage.set(key, new Set());
+        quoteUsage.get(key)!.add(c.requirement_id);
+      }
+    }
+    for (const c of checks) {
+      for (const e of c.evidence || []) {
+        const key = normalizeQuote(e.quote);
+        const others = key ? (quoteUsage.get(key)?.size || 1) - 1 : 0;
+        if (others > 0) e.shared_with = others;
+      }
+    }
+
     const gapChecks = checks.filter(c => c.status === 'missing' || c.status === 'partial');
     const coveredCount = checks.filter(c => c.status === 'covered').length;
     const partialCount = checks.filter(c => c.status === 'partial').length;
     const missingCount = checks.filter(c => c.status === 'missing').length;
     const toVerifyCount = checks.filter(c => c.status === 'to_verify').length;
     const notApplicableCount = checks.filter(c => c.status === 'not_applicable').length;
+    const keywordCount = checks.filter(c => c.method === 'keyword').length;
+    const aiCount = checks.filter(c => c.method === 'llm_evidence').length;
     console.log(`Checks: ${coveredCount} covered, ${partialCount} partial, ${missingCount} missing, ${toVerifyCount} to verify, ${notApplicableCount} not applicable`);
+    if (keywordCount > 0) {
+      console.warn(`⚠️ ${keywordCount} requisiti su ${checks.length} valutati senza AI, a sole parole chiave`);
+    }
 
     let sourceChunks: Array<{ id: string; content: string; document_id: string }> = [];
     try {
@@ -3184,6 +3194,29 @@ denoServe(protect(async (req) => {
       unreadable_documents: unreadableDocuments,
       documents_analyzed: readableDocuments.map(d => d.name),
       counts: { covered: coveredCount, partial: partialCount, missing: missingCount, to_verify: toVerifyCount, not_applicable: notApplicableCount },
+      // Su quanti obblighi poggia davvero la percentuale. Senza questo dato una conformita'
+      // calcolata su 4 obblighi su 74 si legge come un punteggio, e non lo e'.
+      coverage_basis: {
+        evaluated: applicableCount,
+        to_verify: toVerifyCount,
+        not_applicable: notApplicableCount,
+        // quota di obblighi che riguardano l'organizzazione e che siamo riusciti a valutare
+        evaluated_share: applicableCount + toVerifyCount === 0
+          ? 1
+          : Math.round((applicableCount / (applicableCount + toVerifyCount)) * 100) / 100,
+        reliable: applicableCount + toVerifyCount === 0
+          ? true
+          : applicableCount / (applicableCount + toVerifyCount) >= 0.4,
+        declarations_provided: !!(applicabilityProfile?.answers && Object.keys(applicabilityProfile.answers).length > 0),
+      },
+      // Quando una chiamata AI non riesce, il requisito ricade sulla verifica a parole chiave:
+      // produce un esito senza citazioni che ha lo stesso aspetto di una verifica sulle prove.
+      // Senza questo dato la differenza non e' visibile a nessuno.
+      evaluation_quality: {
+        by_ai: aiCount,
+        by_keyword: keywordCount,
+        complete: keywordCount === 0,
+      },
       checks,
     };
 
@@ -3240,6 +3273,11 @@ denoServe(protect(async (req) => {
           regulation: reg,
           analyzed: checks.filter(c => c.regulation.toLowerCase() === reg.toLowerCase()).length,
         })),
+      },
+      evaluation_quality: {
+        by_ai: aiCount,
+        by_keyword: keywordCount,
+        complete: keywordCount === 0,
       },
       method: 'evidence_checks_with_keyword_fallback',
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });

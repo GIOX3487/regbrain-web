@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase, supabaseHttpUrl } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -46,6 +46,8 @@ export default function NewAssessment() {
   const [uploadedFiles, setUploadedFiles] = useState<Array<{ name: string, content: string, type: string, truncated: boolean }>>([]);
   const [unreadableFiles, setUnreadableFiles] = useState<Array<{ name: string, reason: string }>>([]);
   const [extracting, setExtracting] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   // Dichiarazioni di applicabilità: indici delle opzioni scelte, per ogni domanda.
   const [applicability, setApplicability] = useState<Record<string, number[]>>({});
@@ -60,9 +62,24 @@ export default function NewAssessment() {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
+    await processFiles(Array.from(files));
+    e.target.value = '';
+  };
 
+  // Il trascinamento passa dalla stessa strada della selezione manuale: stessi limiti,
+  // stessi scarti, stessi messaggi. Due percorsi diversi avrebbero due comportamenti diversi.
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDragging(false);
+    if (extracting) return;
+    const dropped = Array.from(e.dataTransfer?.files || []);
+    if (dropped.length === 0) return;
+    await processFiles(dropped);
+  };
+
+  const processFiles = async (files: File[]) => {
     const remainingSlots = Math.max(0, MAX_FILES - uploadedFiles.length);
-    const filesToProcess = Array.from(files).slice(0, remainingSlots);
+    const filesToProcess = files.slice(0, remainingSlots);
 
     if (filesToProcess.length === 0) {
       toast({
@@ -115,7 +132,6 @@ export default function NewAssessment() {
     setExtracting(false);
     setUploadedFiles(prev => [...prev, ...newFiles]);
     setUnreadableFiles(prev => [...prev, ...skipped]);
-    e.target.value = '';
 
     if (newFiles.length > 0) {
       toast({
@@ -316,23 +332,21 @@ export default function NewAssessment() {
                 <div className="space-y-2">
                   <h4 className="font-semibold text-sm">Cos'è la Gap Analysis?</h4>
                   <p className="text-sm text-muted-foreground">
-                    La <strong>Gap Analysis</strong> è un'analisi <strong>puntuale</strong> che identifica i gap specifici 
-                    tra la tua documentazione aziendale e i requisiti normativi. Ti dice <strong>dove sei non conforme oggi</strong> 
-                    e quali azioni correttive intraprendere.
+                    La <strong>Gap Analysis</strong> è un'analisi <strong>puntuale</strong> che identifica i gap
+                    specifici tra la tua documentazione aziendale e i requisiti normativi. Ti dice{' '}
+                    <strong>dove non sei conforme oggi</strong> e quali azioni correttive intraprendere.
                   </p>
                   <div className="text-sm text-muted-foreground">
-                    <strong>Come funziona:</strong> ogni requisito della normativa viene confrontato con i tuoi documenti; per ciascuno ottieni l'esito (documentato, parziale, mancante), le evidenze trovate, cosa manca e le azioni per rimediare, con un profilo di rischio a colori.
+                    <strong>Come funziona:</strong> ogni requisito della normativa viene confrontato con i tuoi
+                    documenti; per ciascuno ottieni l'esito (documentato, parziale, mancante), le evidenze trovate,
+                    cosa manca e le azioni per rimediare, con un profilo di rischio a colori.
                   </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    💡 <em>Dopo aver creato almeno 3 assessment, potrai accedere alla <strong>Predictive Analytics</strong> 
-                    per vedere come evolverà il tuo rischio nel tempo e pianificare investimenti futuri.</em>
-                  </p>
                 </div>
               </div>
             </div>
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-2">
-                <Label htmlFor="title">Titolo Valutazione</Label>
+                <Label htmlFor="title">Titolo della valutazione</Label>
                 <Input
                   id="title"
                   value={formData.title}
@@ -518,6 +532,19 @@ export default function NewAssessment() {
                     Puoi saltare: l'analisi verificherà tutto, con una nota nel report.
                   </p>
 
+                  {answeredCount < applicabilityQuestions.length && (
+                    <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400">
+                      <strong>{applicabilityQuestions.length - answeredCount} domande senza risposta.</strong>{' '}
+                      Gli obblighi che dipendono da quelle condizioni finiranno fra i "da verificare" e resteranno
+                      fuori dal calcolo della conformità.
+                      {formData.scope_regulations.some(r => r !== 'GDPR') && (
+                        <> Su normative diverse dal GDPR l'effetto è marcato: in una prova interna,
+                        lasciando senza risposta le due domande sull'AI Act, 64 obblighi su 70 sono rimasti
+                        da verificare e la percentuale di conformità è stata calcolata su quattro soli obblighi.</>
+                      )}
+                    </div>
+                  )}
+
                   <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
                     <div className="space-y-2">
                       <Label htmlFor="org-size" className="text-sm font-medium">
@@ -594,7 +621,7 @@ export default function NewAssessment() {
               )}
 
               <div className="space-y-2">
-                <Label>Carica Documenti aziendali per Gap Analysis</Label>
+                <Label>Carica i documenti aziendali da analizzare</Label>
                 <div className="mb-3 p-4 bg-muted/50 rounded-lg border-l-4 border-primary">
                   <p className="text-sm font-semibold mb-2">📋 Documenti necessari per l'analisi:</p>
                   <div className="space-y-2 text-xs text-muted-foreground">
@@ -626,20 +653,49 @@ export default function NewAssessment() {
                     </div>
                   </div>
                 </div>
-                <div className="border-2 border-dashed rounded-lg p-6 text-center">
+                {/* L'area tratteggiata prometteva il trascinamento senza gestirlo, e l'unica via
+                    d'ingresso era il campo di sistema, che non lascia capire che si possono scegliere
+                    piu' documenti in una volta. Ora l'area accetta il rilascio e apre la selezione. */}
+                <div
+                  className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+                    dragging ? 'border-primary bg-primary/5' : ''
+                  } ${extracting ? 'opacity-60' : 'cursor-pointer hover:border-primary/50'}`}
+                  onClick={() => { if (!extracting) fileInputRef.current?.click(); }}
+                  onDragOver={(e) => { e.preventDefault(); if (!extracting) setDragging(true); }}
+                  onDragEnter={(e) => { e.preventDefault(); if (!extracting) setDragging(true); }}
+                  onDragLeave={(e) => {
+                    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                    setDragging(false);
+                  }}
+                  onDrop={handleDrop}
+                >
                   <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground mb-2">
-                    Trascina qui i tuoi documenti o clicca per selezionarli
+                  <p className="text-sm font-medium mb-1">
+                    Trascina qui i documenti, anche tutti insieme
+                  </p>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    oppure seleziona i file dal computer. Nella finestra di scelta puoi prenderne più di uno:
+                    tieni premuto Cmd su Mac o Ctrl su Windows mentre li clicchi, oppure Shift per un intero blocco.
                   </p>
                   <Input
+                    ref={fileInputRef}
                     type="file"
                     multiple
                     accept=".pdf,.docx,.txt,.md,.xlsx,.xls,.csv"
                     onChange={handleFileUpload}
                     disabled={extracting}
-                    className="max-w-xs mx-auto"
+                    className="sr-only"
                   />
-                  <p className="text-xs text-muted-foreground mt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={extracting}
+                    onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    Seleziona documenti
+                  </Button>
+                  <p className="text-xs text-muted-foreground mt-3">
                     Formati accettati: PDF con testo, Word (.docx), Excel, CSV, testo. Le scansioni senza testo e i file .doc non possono essere letti.
                   </p>
                   {extracting && (
@@ -648,7 +704,7 @@ export default function NewAssessment() {
                     </p>
                   )}
                   {uploadedFiles.length > 0 && (
-                    <div className="mt-4">
+                    <div className="mt-4 cursor-default">
                       <p className="text-sm font-medium mb-2">{uploadedFiles.length} documenti pronti per l'analisi:</p>
                       <ul className="text-sm text-left max-w-md mx-auto space-y-1">
                         {uploadedFiles.map((file) => (
@@ -661,7 +717,7 @@ export default function NewAssessment() {
                             <button
                               type="button"
                               className="text-xs text-muted-foreground hover:text-destructive shrink-0"
-                              onClick={() => removeUploadedFile(file.name)}
+                              onClick={(e) => { e.stopPropagation(); removeUploadedFile(file.name); }}
                               aria-label={`Rimuovi ${file.name}`}
                             >
                               rimuovi
@@ -672,7 +728,7 @@ export default function NewAssessment() {
                     </div>
                   )}
                   {unreadableFiles.length > 0 && (
-                    <div className="mt-4 text-left max-w-md mx-auto rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-3">
+                    <div className="mt-4 text-left max-w-md mx-auto rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-3 cursor-default">
                       <p className="text-sm font-medium mb-1 text-amber-800 dark:text-amber-200">
                         {unreadableFiles.length} file non analizzabili (esclusi dall'analisi):
                       </p>
@@ -686,7 +742,7 @@ export default function NewAssessment() {
                       <button
                         type="button"
                         className="mt-2 text-xs underline text-amber-800 dark:text-amber-200"
-                        onClick={() => setUnreadableFiles([])}
+                        onClick={(e) => { e.stopPropagation(); setUnreadableFiles([]); }}
                       >
                         Nascondi elenco
                       </button>

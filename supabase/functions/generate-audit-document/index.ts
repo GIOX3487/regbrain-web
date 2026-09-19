@@ -3,6 +3,10 @@ import { aiFetch as fetch, getAIKey, getAIModel } from '../_shared/ai.ts';
 import { serve as denoServe } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.75.0";
 
+// Tempo concesso al modello per un singolo documento. Sta sotto la durata massima
+// dell'invocazione edge, cosi' se scade lo dice il codice e non l'infrastruttura.
+const DOCUMENT_AI_TIMEOUT_MS = 140000;
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -207,7 +211,7 @@ async function doGenerateDocument(supabase: any, params: {
       ? '\n\nMODALITÀ AUDIT: Aggiungi checklist ISO 27001 + GDPR mapping completo. Per ogni sezione includi riferimento incrociato ai controlli ISO 27001:2022 (Annex A). Aggiungi sezione extra di mappatura GDPR ↔ ISO 27001. Il documento deve essere di 40+ pagine equivalenti.'
       : '\n\nMODALITÀ STANDARD: Genera documento professionale completo e dettagliato, pronto per audit. Il documento deve essere di 25-30 pagine equivalenti.';
 
-    const dataRule = `\n\nREGOLA DATI AZIENDALI:
+    const dataRule = `\n\nDATA ODIERNA: ${new Date().toISOString().split('T')[0]} — usa questa data per la redazione del documento, non stimarla.\n\nREGOLA DATI AZIENDALI:
 - Usa i dati reali dall'assessment e dal profilo utente dove disponibili (settore: ${assessment.scope_sector}, giurisdizione: ${assessment.scope_jurisdiction}, ruolo: ${profile?.compliance_role || 'DPO'})
 - Per dati aziendali specifici NON disponibili nel contesto (ragione sociale, P.IVA, PEC, telefono, nomi persone, indirizzi), usa SEMPRE il placeholder '[DA COMPLETARE - descrizione del dato richiesto]'
 - È preferibile un campo da completare piuttosto che un dato inventato e falso
@@ -215,7 +219,11 @@ async function doGenerateDocument(supabase: any, params: {
 - NON inventare MAI nomi di persone, ragioni sociali, codici fiscali, numeri di telefono o indirizzi PEC
 - For language=it, ALL narrative content must be in Italian only (never English words like assessment, mitigation, high risk, controller, processor, yes/no). Use exclusively Sì/No and terminology GDPR in italiano.`;
 
+    // Una DPIA in modalita' standard vale 25-30 pagine: con il limite di un minuto non e' mai
+    // arrivata in fondo, falliva sempre con "Signal timed out". Il tetto resta sotto la durata
+    // massima dell'invocazione, cosi' l'errore, se arriva, e' dichiarato e non una morte improvvisa.
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      signal: AbortSignal.timeout(DOCUMENT_AI_TIMEOUT_MS),
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${LOVABLE_API_KEY}`,
@@ -741,11 +749,17 @@ async function doGenerateDocument(supabase: any, params: {
 
   } catch (error) {
     console.error('Background document generation failed:', error);
+    // "Signal timed out." non dice niente a chi legge: va tradotto in cosa e' successo
+    // e in cosa si puo' fare.
+    const raw = error instanceof Error ? error.message : 'Unknown error';
+    const friendly = /signal timed out|aborted|timeout/i.test(raw)
+      ? 'Il servizio di analisi non ha completato il documento entro il tempo massimo. Riprova, oppure genera il documento in modalita\' breve.'
+      : raw;
     await supabase
       .from('generated_documents')
       .update({
-        content: { _status: 'failed', _error: error instanceof Error ? error.message : 'Unknown error' },
-        metadata: { status: 'failed', error: error instanceof Error ? error.message : 'Unknown error' },
+        content: { _status: 'failed', _error: friendly, _error_raw: raw },
+        metadata: { status: 'failed', error: friendly, error_raw: raw },
         updated_at: new Date().toISOString(),
       })
       .eq('id', docId);
@@ -1146,6 +1160,7 @@ Documento attuale da correggere:
 ${JSON.stringify(currentContent)}`;
 
   const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    signal: AbortSignal.timeout(DOCUMENT_AI_TIMEOUT_MS),
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,

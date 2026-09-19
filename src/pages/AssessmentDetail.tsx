@@ -26,6 +26,7 @@ import {
   Languages
 } from "lucide-react";
 import { RiskScoreExplanation, RISK_STYLE, riskProfileOf, overallRiskProfile, type RiskProfile } from "@/components/compliance/RiskScoreExplanation";
+import { MetricExplainer, type MetricNumbers } from "@/components/compliance/MetricExplainer";
 import { DocumentConfigDialog, type ConfigDocumentType, type DocumentConfig } from "@/components/DocumentConfigDialog";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -61,7 +62,7 @@ interface RequirementCheck {
   status: 'covered' | 'partial' | 'missing' | 'to_verify' | 'not_applicable';
   risk_level: 'high' | 'medium' | 'low' | null;
   assessment: string;
-  evidence: Array<{ document: string; quote: string }>;
+  evidence: Array<{ document: string; quote: string; shared_with?: number }>;
   missing_elements: string[];
   improvement_suggestions?: string[];
   recommended_actions: string[];
@@ -79,6 +80,19 @@ interface RequirementChecksPayload {
   unreadable_documents?: string[];
   documents_analyzed?: string[];
   counts?: Record<string, number>;
+  coverage_basis?: {
+    evaluated: number;
+    to_verify: number;
+    not_applicable: number;
+    evaluated_share: number;
+    reliable: boolean;
+    declarations_provided: boolean;
+  };
+  evaluation_quality?: {
+    by_ai: number;
+    by_keyword: number;
+    complete: boolean;
+  };
   checks?: RequirementCheck[];
 }
 
@@ -266,6 +280,9 @@ export default function AssessmentDetail() {
       riskCounts: '{h} alti, {m} medi, {l} bassi',
       requirementsChecked: 'Requisiti verificati',
       documentedCount: '{n} documentati',
+      withGapsCount: '{n} con lacune',
+      notApplicableCount: '{n} non applicabili',
+      notApplicableTab: 'Non applicabili',
       toVerifyCount: '{n} da verificare',
       coveredTab: 'Requisiti documentati',
       toVerifyTab: 'Da verificare',
@@ -361,6 +378,9 @@ export default function AssessmentDetail() {
       riskCounts: '{h} high, {m} medium, {l} low',
       requirementsChecked: 'Requirements checked',
       documentedCount: '{n} documented',
+      withGapsCount: '{n} with gaps',
+      notApplicableCount: '{n} not applicable',
+      notApplicableTab: 'Not applicable',
       toVerifyCount: '{n} to verify',
       coveredTab: 'Documented requirements',
       toVerifyTab: 'To verify',
@@ -456,6 +476,9 @@ export default function AssessmentDetail() {
       riskCounts: '{h} altos, {m} medios, {l} bajos',
       requirementsChecked: 'Requisitos verificados',
       documentedCount: '{n} documentados',
+      withGapsCount: '{n} con carencias',
+      notApplicableCount: '{n} no aplicables',
+      notApplicableTab: 'No aplicables',
       toVerifyCount: '{n} por verificar',
       coveredTab: 'Requisitos documentados',
       toVerifyTab: 'Por verificar',
@@ -551,6 +574,9 @@ export default function AssessmentDetail() {
       riskCounts: '{h} élevés, {m} moyens, {l} faibles',
       requirementsChecked: 'Exigences vérifiées',
       documentedCount: '{n} documentées',
+      withGapsCount: '{n} avec des lacunes',
+      notApplicableCount: '{n} non applicables',
+      notApplicableTab: 'Non applicables',
       toVerifyCount: '{n} à vérifier',
       coveredTab: 'Exigences documentées',
       toVerifyTab: 'À vérifier',
@@ -646,6 +672,9 @@ export default function AssessmentDetail() {
       riskCounts: '{h} hoch, {m} mittel, {l} gering',
       requirementsChecked: 'Geprüfte Anforderungen',
       documentedCount: '{n} dokumentiert',
+      withGapsCount: '{n} mit Lücken',
+      notApplicableCount: '{n} nicht anwendbar',
+      notApplicableTab: 'Nicht anwendbar',
       toVerifyCount: '{n} zu prüfen',
       coveredTab: 'Dokumentierte Anforderungen',
       toVerifyTab: 'Zu prüfen',
@@ -1185,6 +1214,13 @@ export default function AssessmentDetail() {
       const pdfToVerify = pdfChecks.filter(c => c.status === 'to_verify');
       const pdfNotApplicable = pdfChecks.filter(c => c.status === 'not_applicable');
       const pdfUnreadable: string[] = (assessment.requirement_checks as RequirementChecksPayload | null)?.unreadable_documents || [];
+      const pdfBasis = (assessment.requirement_checks as RequirementChecksPayload | null)?.coverage_basis || null;
+      const pdfBasisIt = pdfBasis
+        ? ` La percentuale è calcolata su ${pdfBasis.evaluated} obblighi effettivamente valutati${pdfBasis.to_verify > 0 ? `, mentre ${pdfBasis.to_verify} restano da verificare perché non è stato possibile stabilire se le condizioni di applicabilità ricorrano` : ''}.${!pdfBasis.reliable ? ' Su questa base la percentuale non è rappresentativa della conformità complessiva.' : ''}${!pdfBasis.declarations_provided ? ' Il questionario di applicabilità non è stato compilato.' : ''}`
+        : '';
+      const pdfBasisEn = pdfBasis
+        ? ` The percentage is computed on ${pdfBasis.evaluated} requirements actually assessed${pdfBasis.to_verify > 0 ? `, while ${pdfBasis.to_verify} remain to be verified because it was not possible to establish whether the applicability conditions apply` : ''}.${!pdfBasis.reliable ? ' On this basis the percentage is not representative of overall compliance.' : ''}${!pdfBasis.declarations_provided ? ' The applicability questionnaire was not completed.' : ''}`
+        : '';
       const highGaps = gaps.filter(g => riskProfileOf(g.risk_level) === 'high').length;
       const mediumGaps = gaps.filter(g => riskProfileOf(g.risk_level) === 'medium').length;
       const lowGaps = gaps.filter(g => riskProfileOf(g.risk_level) === 'low').length;
@@ -1224,8 +1260,8 @@ export default function AssessmentDetail() {
       const checksSentenceEn = pdfChecks.length > 0
         ? ` ${pdfChecks.length} requirements were checked: ${pdfCovered.length} are documented, ${gaps.length} show gaps${pdfToVerify.length > 0 ? `, ${pdfToVerify.length} need an applicability check` : ''}${pdfNotApplicable.length > 0 ? `, ${pdfNotApplicable.length} are not applicable` : ''}.` : '';
       const summaryText = selectedLanguage === 'it' 
-        ? `L'analisi ha confrontato la documentazione caricata con i requisiti di ${assessment.scope_regulations?.join(', ') || 'le normative selezionate'}.${checksSentenceIt} Il livello di conformità documentale è del ${assessment.overall_compliance_percentage ?? 0}% (${complianceLevel}) e il profilo di rischio complessivo è ${pdfProfileLabel[pdfProfile].toLowerCase()} (${riskCountsText}). Il piano d'azione elenca, per ciascun gap, le azioni per colmarlo. L'analisi valuta ciò che risulta dai documenti, non l'effettiva applicazione delle misure, e non sostituisce il parere di un legale o del DPO.${pdfUnreadable.length > 0 ? ` Documenti esclusi perché non leggibili: ${pdfUnreadable.join(', ')}.` : ''}`
-        : `The analysis compared the uploaded documentation with the requirements of ${assessment.scope_regulations?.join(', ') || 'the selected regulations'}.${checksSentenceEn} Documentary compliance is ${assessment.overall_compliance_percentage ?? 0}% (${complianceLevel}) and the overall risk profile is ${pdfProfileLabel[pdfProfile].toLowerCase()} (${riskCountsText}). The action plan lists, for each gap, the actions to close it. The analysis assesses what the documents show, not the actual application of measures, and does not replace legal or DPO advice.${pdfUnreadable.length > 0 ? ` Documents excluded as unreadable: ${pdfUnreadable.join(', ')}.` : ''}`;
+        ? `L'analisi ha confrontato la documentazione caricata con i requisiti di ${assessment.scope_regulations?.join(', ') || 'le normative selezionate'}.${checksSentenceIt} Il livello di conformità documentale è del ${assessment.overall_compliance_percentage ?? 0}% (${complianceLevel}) e il profilo di rischio complessivo è ${pdfProfileLabel[pdfProfile].toLowerCase()} (${riskCountsText}).${pdfBasisIt} Il piano d'azione elenca, per ciascun gap, le azioni per colmarlo. L'analisi valuta ciò che risulta dai documenti, non l'effettiva applicazione delle misure, e non sostituisce il parere di un legale o del DPO.${pdfUnreadable.length > 0 ? ` Documenti esclusi perché non leggibili: ${pdfUnreadable.join(', ')}.` : ''}`
+        : `The analysis compared the uploaded documentation with the requirements of ${assessment.scope_regulations?.join(', ') || 'the selected regulations'}.${checksSentenceEn} Documentary compliance is ${assessment.overall_compliance_percentage ?? 0}% (${complianceLevel}) and the overall risk profile is ${pdfProfileLabel[pdfProfile].toLowerCase()} (${riskCountsText}).${pdfBasisEn} The action plan lists, for each gap, the actions to close it. The analysis assesses what the documents show, not the actual application of measures, and does not replace legal or DPO advice.${pdfUnreadable.length > 0 ? ` Documents excluded as unreadable: ${pdfUnreadable.join(', ')}.` : ''}`;
       
       doc.setFontSize(9);
       doc.setFont('helvetica', 'normal');
@@ -1716,11 +1752,22 @@ export default function AssessmentDetail() {
     );
   }
 
+  const complianceLabelOf = (pct: number | null) => {
+    if (pct === null) return '';
+    if (pct >= 90) return t.complianceExcellent;
+    if (pct >= 75) return t.complianceGood;
+    if (pct >= 60) return t.complianceSufficient;
+    if (pct >= 40) return t.complianceInsufficient;
+    return t.complianceCritical;
+  };
+
   const checksPayload = (assessment.requirement_checks || null) as RequirementChecksPayload | null;
   const checks: RequirementCheck[] = Array.isArray(checksPayload?.checks) ? checksPayload!.checks! : [];
   const coveredChecks = checks.filter(c => c.status === 'covered');
   const toVerifyChecks = checks.filter(c => c.status === 'to_verify');
   const notApplicableChecks = checks.filter(c => c.status === 'not_applicable');
+  const coverageBasis = checksPayload?.coverage_basis || null;
+  const evaluationQuality = checksPayload?.evaluation_quality || null;
   const unreadableDocuments = checksPayload?.unreadable_documents || [];
   const documentsAnalyzed = checksPayload?.documents_analyzed || [];
   const highGaps = gaps.filter(g => riskProfileOf(g.risk_level) === 'high').length;
@@ -1728,6 +1775,28 @@ export default function AssessmentDetail() {
   const lowGaps = gaps.filter(g => riskProfileOf(g.risk_level) === 'low').length;
   const overallProfile: RiskProfile = overallRiskProfile(gaps);
   const profileLabel: Record<RiskProfile, string> = { high: t.riskHigh, medium: t.riskMedium, low: t.riskLow, none: t.riskNone };
+  // Gli stessi numeri che compaiono nelle schede alimentano le spiegazioni: se la
+  // spiegazione rifacesse il conto per conto suo, prima o poi direbbe un'altra cosa.
+  const partialChecks = checks.filter(c => c.status === 'partial').length;
+  const missingChecks = checks.filter(c => c.status === 'missing').length;
+  const evaluatedCount = coverageBasis?.evaluated ?? (coveredChecks.length + partialChecks + missingChecks);
+  const metricNumbers: MetricNumbers = {
+    covered: coveredChecks.length,
+    partial: partialChecks,
+    missing: missingChecks,
+    toVerify: toVerifyChecks.length,
+    notApplicable: notApplicableChecks.length,
+    evaluated: evaluatedCount,
+    total: checks.length,
+    gaps: gaps.length,
+    compliance: assessment.overall_compliance_percentage ?? null,
+    complianceLabel: complianceLabelOf(assessment.overall_compliance_percentage ?? null),
+    risk: assessment.overall_risk_score ?? null,
+    riskLabel: profileLabel[overallProfile],
+    high: highGaps,
+    medium: mediumGaps,
+    low: lowGaps,
+  };
   const analysisInProgress = assessment.status !== 'completed';
   const progressDone = assessment.analysis_progress?.done ?? checks.length;
   const progressTotal = assessment.analysis_progress?.total ?? checksPayload?.total ?? 0;
@@ -1828,7 +1897,12 @@ export default function AssessmentDetail() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">{t.compliance}</CardTitle>
+              <CardTitle className="text-sm font-medium flex items-center gap-1.5">
+                {t.compliance}
+                {assessment.status === 'completed' && assessment.overall_compliance_percentage !== null && (
+                  <MetricExplainer kind="compliance" numbers={metricNumbers} language={selectedLanguage} />
+                )}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               {assessment.status !== 'completed' || assessment.overall_compliance_percentage === null ? (
@@ -1846,6 +1920,29 @@ export default function AssessmentDetail() {
                 {(assessment.overall_compliance_percentage ?? 0).toFixed(0)}%
               </div>
               <Progress value={assessment.overall_compliance_percentage ?? 0} />
+              {coverageBasis && (
+                <div className="mt-2 text-xs text-muted-foreground">
+                  su {coverageBasis.evaluated} obblighi valutati
+                  {coverageBasis.to_verify > 0 ? `, ${coverageBasis.to_verify} da verificare` : ''}
+                </div>
+              )}
+              {coverageBasis && !coverageBasis.reliable && (
+                <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400">
+                  Percentuale poco rappresentativa: è stato possibile valutare solo {coverageBasis.evaluated} obblighi
+                  su {coverageBasis.evaluated + coverageBasis.to_verify} che riguardano l'organizzazione.
+                  {!coverageBasis.declarations_provided
+                    ? ' Il questionario di applicabilità non è stato compilato: compilarlo permette di stabilire quali obblighi si applicano.'
+                    : ' I documenti caricati non dicono se le condizioni di applicabilità ricorrano.'}
+                </div>
+              )}
+              {evaluationQuality && !evaluationQuality.complete && (
+                <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400">
+                  {evaluationQuality.by_keyword} obblighi su {evaluationQuality.by_ai + evaluationQuality.by_keyword} non
+                  sono stati verificati sul testo dei documenti: il servizio di analisi non ha risposto e per quegli
+                  obblighi l'esito deriva dalla sola ricerca di parole chiave, senza citazioni. Rilanciare l'analisi
+                  per ottenere una verifica completa.
+                </div>
+              )}
               {(() => {
                 const pct = assessment.overall_compliance_percentage ?? 0;
                 if (pct >= 90) return (
@@ -1880,7 +1977,12 @@ export default function AssessmentDetail() {
 
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">{t.riskProfile}</CardTitle>
+              <CardTitle className="text-sm font-medium flex items-center gap-1.5">
+                {t.riskProfile}
+                {!analysisInProgress && gaps.length > 0 && (
+                  <MetricExplainer kind="risk" numbers={metricNumbers} language={selectedLanguage} />
+                )}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               {analysisInProgress ? <p className="text-sm text-muted-foreground">{t.resultsPending}</p> : <>
@@ -1920,14 +2022,21 @@ export default function AssessmentDetail() {
 
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">{t.requirementsChecked}</CardTitle>
+              <CardTitle className="text-sm font-medium flex items-center gap-1.5">
+                {t.requirementsChecked}
+                {checks.length > 0 && (
+                  <MetricExplainer kind="requirements" numbers={metricNumbers} language={selectedLanguage} />
+                )}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold mb-2">{analysisInProgress ? progressDone : checks.length > 0 ? checks.length : gaps.length}</div>
               {checks.length > 0 && (
                 <p className="text-sm text-muted-foreground">
                   <span className="text-green-700 dark:text-green-400">{t.documentedCount.replace('{n}', String(coveredChecks.length))}</span>
+                  {gaps.length > 0 && <>, {t.withGapsCount.replace('{n}', String(gaps.length))}</>}
                   {toVerifyChecks.length > 0 && <>, {t.toVerifyCount.replace('{n}', String(toVerifyChecks.length))}</>}
+                  {notApplicableChecks.length > 0 && <>, {t.notApplicableCount.replace('{n}', String(notApplicableChecks.length))}</>}
                 </p>
               )}
             </CardContent>
@@ -1960,10 +2069,11 @@ export default function AssessmentDetail() {
             {checks.length > 0 && (
               <TabsTrigger value="covered">{t.coveredTab} ({coveredChecks.length})</TabsTrigger>
             )}
-            {(toVerifyChecks.length > 0 || notApplicableChecks.length > 0) && (
-              <TabsTrigger value="verify">
-                {t.toVerifyTab} ({toVerifyChecks.length + notApplicableChecks.length})
-              </TabsTrigger>
+            {toVerifyChecks.length > 0 && (
+              <TabsTrigger value="verify">{t.toVerifyTab} ({toVerifyChecks.length})</TabsTrigger>
+            )}
+            {notApplicableChecks.length > 0 && (
+              <TabsTrigger value="notapplicable">{t.notApplicableTab} ({notApplicableChecks.length})</TabsTrigger>
             )}
             <TabsTrigger value="actions">{t.actionPlanTab} ({actionPlans.length})</TabsTrigger>
             <TabsTrigger value="documents">{t.documentsTab}</TabsTrigger>
@@ -2119,6 +2229,11 @@ export default function AssessmentDetail() {
                             <div key={i} className="rounded-md border border-green-200 bg-green-50 dark:bg-green-950/30 dark:border-green-900 p-3">
                               <p className="text-xs font-medium text-green-800 dark:text-green-200 mb-1">{e.document}</p>
                               <p className="text-xs italic">“{e.quote}”</p>
+                              {typeof e.shared_with === 'number' && e.shared_with > 0 && (
+                                <p className="mt-1 text-[11px] text-muted-foreground">
+                                  Questa stessa frase sostiene anche {e.shared_with} {e.shared_with === 1 ? 'altro obbligo' : 'altri obblighi'}: la carenza documentale è una sola.
+                                </p>
+                              )}
                             </div>
                           ))}
                         </CollapsibleContent>
@@ -2168,8 +2283,11 @@ export default function AssessmentDetail() {
                 )}
               </Card>
             ))}
+          </TabsContent>
+
+          <TabsContent value="notapplicable" className="space-y-3">
             {notApplicableChecks.length > 0 && (
-              <div className="pt-4">
+              <div>
                 <p className="text-sm text-muted-foreground mb-2">{t.notApplicableIntro}</p>
                 <div className="space-y-2">
                   {(() => {
@@ -2319,7 +2437,7 @@ export default function AssessmentDetail() {
                     <div className="text-left">
                       <div className="font-semibold">LIA</div>
                       <div className="text-xs text-muted-foreground">
-                        Legitimacy Impact Assessment (AI Act)
+                        Valutazione del legittimo interesse (art. 6.1.f GDPR)
                       </div>
                     </div>
                   </Button>
@@ -2338,19 +2456,6 @@ export default function AssessmentDetail() {
                     </div>
                   </Button>
 
-                  <Button 
-                    variant="outline" 
-                    className="justify-start h-auto py-4"
-                    onClick={() => generateDocument('gap_report')}
-                  >
-                    <Download className="mr-2 h-5 w-5" />
-                    <div className="text-left">
-                      <div className="font-semibold">Gap Report</div>
-                      <div className="text-xs text-muted-foreground">
-                        Executive Gap Analysis Report
-                      </div>
-                    </div>
-                  </Button>
                 </div>
               </CardContent>
             </Card>
