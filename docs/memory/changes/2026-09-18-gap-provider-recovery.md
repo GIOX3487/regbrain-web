@@ -40,6 +40,21 @@ Aggiornamento 19 settembre: la CI applicativa GitHub del commit c791f04 è verde
 
 Preparato localmente l'allineamento della base staging v7 con PR #9: miglioramenti facoltativi separati dalle carenze obbligatorie, gravità proporzionata alle carenze, rischio normalizzato. Le protezioni sulle citazioni restano attive. Passano 21 test su evidenze, applicabilità e classificazione, oltre ai controlli sintattici. Il candidato non è distribuito e non fa parte del codice di questa PR: cambierebbe la versione dei risultati, impedendo di usare l'analisi v7 pendente come prova di ripresa. Prima completare quella prova; poi distribuire il candidato riconciliato e avviare nuove analisi con le etichette attese già congelate.
 
+## Collaudo interfaccia e diagnosi aggiuntiva del 19 settembre
+
+Un'ulteriore ripresa reale riceve 503. Tre richieste brevi riescono; una richiesta rappresentativa su tre requisiti sintetici riceve 503 sia da generateContent sia dall'API compatibile OpenAI. Anche la variante con un solo requisito riceve 503. Questo non indica un guasto esclusivo dell'adattatore e non fornisce una misura di accuratezza.
+
+Il collaudo browser ha riprodotto un difetto: dopo l'interruzione la pagina mostrava ancora “analisi in corso” e “nessun rischio rilevato”. Corretti:
+- avviso persistente di pausa, avanzamento conservato e pulsante di ripresa;
+- pausa ricordata per analisi nella sessione della scheda, anche dopo riapertura; lo stato di navigazione viene consumato una sola volta;
+- nessun riepilogo di rischio conclusivo, zero gap definitivo o esportazione PDF durante l'analisi incompleta;
+- messaggio esplicito se la sessione di accesso è scaduta;
+- alla ripresa riuscita si rimuove la pausa; al completamento il PDF torna disponibile.
+
+Verificato nel browser integrato con il componente applicativo reale e API/autenticazione simulate solo su localhost: errore 503, conservazione 12/51, riapertura senza nuove chiamate automatiche, ripresa manuale riuscita, scomparsa dell'avviso e riabilitazione PDF. TypeScript del frontend verificato localmente. Il valore 80% del caso UI è un dato simulato e non è una misurazione di accuratezza o un risultato dello staging. La prova non certifica il flusso hosted completo né l'autenticazione reale.
+
+La funzione diagnostica staging-payload-check è limitata allo staging e agli account con app_metadata.staging_test; usa un payload sintetico fisso e non restituisce chiavi. Nessun cambio del modello e nessuna modifica della produzione.
+
 ## Rischi e limiti
 
 La continuità tecnica è migliorata, ma l'accuratezza non è stata rivalutata: il provider resta sovraccarico. Il benchmark del 17 settembre (36–39 fallback per scenario) non misura adeguatamente la correttezza dei giudizi. I controlli di sicurezza passati grazie al fallback non dimostrano capacità di riconoscere contraddizioni. I test locali non sostituiscono un test browser completo. La variante su main usa ancora la persistenza precedente alla PR #3: riconciliare prima del rilascio combinato.

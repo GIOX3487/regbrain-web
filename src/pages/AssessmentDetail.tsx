@@ -160,6 +160,18 @@ function CoverageScopeDisclaimer({ regulations, checks, unreadableDocuments, doc
   );
 }
 
+// A tab-scoped marker prevents a reload from restarting calls during a provider outage.
+function providerPauseKey(id: string) { return `regbrain:gap-provider-paused:${id}`; }
+function readProviderPause(id?: string): boolean {
+  try { return !!id && sessionStorage.getItem(providerPauseKey(id)) === '1'; } catch { return false; }
+}
+function writeProviderPause(id: string, paused: boolean) {
+  try {
+    if (paused) sessionStorage.setItem(providerPauseKey(id), '1');
+    else sessionStorage.removeItem(providerPauseKey(id));
+  } catch { /* The visible pause still works if storage is unavailable. */ }
+}
+
 export default function AssessmentDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -183,6 +195,9 @@ export default function AssessmentDetail() {
   // UI Translations
   const uiTranslations: Record<string, any> = {
     it: {
+      analysisPausedTitle: "Analisi in pausa",
+      resultsPending: "Risultati disponibili al termine dell’analisi",
+      analysisPaused: "Il servizio IA è temporaneamente indisponibile. I risultati già ottenuti sono salvati. Riprova più tardi con “Riprendi l’analisi”.",
       backToHub: 'Torna al Compliance Hub',
       exportPDF: 'Esporta PDF',
       loading: 'Caricamento...',
@@ -275,6 +290,9 @@ export default function AssessmentDetail() {
       suggestedActions: 'Azioni suggerite'
     },
     en: {
+      analysisPausedTitle: "Analysis paused",
+      resultsPending: "Results available when the analysis is complete",
+      analysisPaused: "The AI service is temporarily unavailable. Your results are saved. Try “Resume analysis” again later.",
       backToHub: 'Back to Compliance Hub',
       exportPDF: 'Export PDF',
       loading: 'Loading...',
@@ -367,6 +385,9 @@ export default function AssessmentDetail() {
       suggestedActions: 'Suggested actions'
     },
     es: {
+      analysisPausedTitle: "Análisis en pausa",
+      resultsPending: "Resultados disponibles al finalizar el análisis",
+      analysisPaused: "El servicio de IA no está disponible temporalmente. Los resultados están guardados. Prueba “Reanudar el análisis” más tarde.",
       backToHub: 'Volver al Centro de Cumplimiento',
       exportPDF: 'Exportar PDF',
       loading: 'Cargando...',
@@ -459,6 +480,9 @@ export default function AssessmentDetail() {
       suggestedActions: 'Acciones sugeridas'
     },
     fr: {
+      analysisPausedTitle: "Analyse en pause",
+      resultsPending: "Résultats disponibles à la fin de l’analyse",
+      analysisPaused: "Le service IA est temporairement indisponible. Les résultats sont enregistrés. Réessayez « Reprendre l’analyse » plus tard.",
       backToHub: 'Retour au Centre de Conformité',
       exportPDF: 'Exporter PDF',
       loading: 'Chargement...',
@@ -551,6 +575,9 @@ export default function AssessmentDetail() {
       suggestedActions: 'Actions suggérées'
     },
     de: {
+      analysisPausedTitle: "Analyse pausiert",
+      resultsPending: "Ergebnisse nach Abschluss der Analyse verfügbar",
+      analysisPaused: "Der KI-Dienst ist vorübergehend nicht verfügbar. Die Ergebnisse sind gespeichert. Versuchen Sie später „Analyse fortsetzen“.",
       backToHub: 'Zurück zum Compliance Hub',
       exportPDF: 'PDF Exportieren',
       loading: 'Lädt...',
@@ -698,7 +725,25 @@ export default function AssessmentDetail() {
   // (ultimo aggiornamento più vecchio di 45 secondi) la riprende da qui.
   const [resuming, setResuming] = useState(false);
   const resumingRef = useRef(false);
-  const resumeFailuresRef = useRef(location.state?.providerUnavailable ? 3 : 0);
+  const [providerPaused, setProviderPaused] = useState(() => !!location.state?.providerUnavailable || readProviderPause(id));
+  const resumeFailuresRef = useRef(providerPaused ? 3 : 0);
+  useEffect(() => {
+    const paused = !!location.state?.providerUnavailable || readProviderPause(id);
+    setProviderPaused(paused);
+    resumeFailuresRef.current = paused ? 3 : 0;
+    if (id && paused) writeProviderPause(id, true);
+    if (location.state?.providerUnavailable) {
+      navigate(location.pathname + location.search + location.hash, {
+        replace: true, state: { ...location.state, providerUnavailable: false },
+      });
+    }
+  }, [id, location.key]);
+  useEffect(() => {
+    if (id && assessment?.id === id && assessment.status === 'completed') {
+      writeProviderPause(id, false);
+      setProviderPaused(false);
+    }
+  }, [id, assessment?.id, assessment?.status]);
   // La callback dell'intervallo vive quanto l'effetto: senza questo riferimento leggerebbe
   // sempre lo stato della prima render e crederebbe ferma un'analisi che sta avanzando.
   const assessmentRef = useRef<Assessment | null>(null);
@@ -710,7 +755,7 @@ export default function AssessmentDetail() {
       const progress = assessmentRef.current?.analysis_progress;
       const stale = progress?.status === 'in_progress' && Array.isArray(progress.pending) && progress.pending.length > 0
         && progress.updated_at && Date.now() - Date.parse(progress.updated_at) > 40000;
-      if (stale && !resumingRef.current && resumeFailuresRef.current < 3) resumeAnalysis();
+      if (assessmentRef.current?.id === id && stale && !resumingRef.current && resumeFailuresRef.current < 3) resumeAnalysis();
     }, 5000);
     return () => clearInterval(timer);
   }, [assessment?.status, id]);
@@ -721,7 +766,7 @@ export default function AssessmentDetail() {
     setResuming(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+      if (!session) throw new Error('Sessione scaduta. Accedi nuovamente per riprendere l’analisi.');
       const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
       let guard = 0;
       let transientRetries = 0;
@@ -736,6 +781,8 @@ export default function AssessmentDetail() {
         if (data?.code === 'AI_ANALYSIS_UNAVAILABLE') {
           // Stop background retries during a provider outage; manual resume remains available.
           resumeFailuresRef.current = 2;
+          setProviderPaused(true);
+          writeProviderPause(id, true);
           throw new Error(data.error || 'Servizio IA temporaneamente non disponibile. Riprendi più tardi.');
         }
         if (response.status === 409) {
@@ -752,6 +799,8 @@ export default function AssessmentDetail() {
         transientRetries = 0;
         if (!response.ok) throw new Error(data?.error || `Errore ${response.status}`);
         await loadAssessment(true);
+        setProviderPaused(false);
+        writeProviderPause(id, false);
         resumeFailuresRef.current = 0;
         if (data.status !== 'in_progress') break;
       }
@@ -1716,6 +1765,8 @@ export default function AssessmentDetail() {
             </div>
             <Button 
               onClick={exportToPDF}
+              disabled={analysisInProgress}
+              title={analysisInProgress ? t.resultsPending : undefined}
               variant="outline"
               size="sm"
             >
@@ -1738,7 +1789,7 @@ export default function AssessmentDetail() {
               <p className="text-muted-foreground">{getTranslatedText('assessmentDescription') || assessment.description}</p>
             </div>
             <Badge variant={assessment.status === 'completed' ? 'default' : 'secondary'}>
-              {assessment.status}
+              {analysisInProgress && providerPaused && !resuming ? t.analysisPausedTitle : translateStatus(assessment.status)}
             </Badge>
           </div>
           <div className="flex gap-4 text-sm text-muted-foreground">
@@ -1755,9 +1806,11 @@ export default function AssessmentDetail() {
           <Card className="mb-6 border-primary/40">
             <CardContent className="p-4 space-y-2">
               <div className="flex items-center gap-3">
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary shrink-0"></div>
-                <p className="text-sm flex-1">
-                  {t.analysisInProgress}
+                {providerPaused && !resuming
+                  ? <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0" aria-hidden="true" />
+                  : <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary shrink-0" aria-hidden="true"></div>}
+                <p className="text-sm flex-1" role="status">
+                  {providerPaused && !resuming ? t.analysisPaused : t.analysisInProgress}
                   {progressTotal ? ` ${progressDone} / ${progressTotal}` : ''}
                 </p>
                 {!resuming && assessment.analysis_progress?.status === 'in_progress' && (
@@ -1830,6 +1883,7 @@ export default function AssessmentDetail() {
               <CardTitle className="text-sm font-medium">{t.riskProfile}</CardTitle>
             </CardHeader>
             <CardContent>
+              {analysisInProgress ? <p className="text-sm text-muted-foreground">{t.resultsPending}</p> : <>
               <div className={`flex items-center gap-2 text-2xl font-bold mb-2 ${RISK_STYLE[overallProfile].text}`}>
                 <span className={`w-4 h-4 rounded-full shrink-0 ${RISK_STYLE[overallProfile].dot}`} />
                 {profileLabel[overallProfile]}
@@ -1848,6 +1902,7 @@ export default function AssessmentDetail() {
               <p className="text-xs text-muted-foreground mt-2">
                 {t.riskCounts.replace('{h}', String(highGaps)).replace('{m}', String(mediumGaps)).replace('{l}', String(lowGaps))}
               </p>
+              </>}
             </CardContent>
           </Card>
 
@@ -1856,9 +1911,9 @@ export default function AssessmentDetail() {
               <CardTitle className="text-sm font-medium">{t.identifiedGaps}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold mb-2">{gaps.length}</div>
+              <div className="text-3xl font-bold mb-2">{analysisInProgress ? "--" : gaps.length}</div>
               <p className="text-sm text-muted-foreground">
-                {gaps.filter(g => g.status === 'open').length} {t.open}
+                {analysisInProgress ? t.resultsPending : `${gaps.filter(g => g.status === 'open').length} ${t.open}`}
               </p>
             </CardContent>
           </Card>
@@ -1868,7 +1923,7 @@ export default function AssessmentDetail() {
               <CardTitle className="text-sm font-medium">{t.requirementsChecked}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold mb-2">{checks.length > 0 ? checks.length : gaps.length}</div>
+              <div className="text-3xl font-bold mb-2">{analysisInProgress ? progressDone : checks.length > 0 ? checks.length : gaps.length}</div>
               {checks.length > 0 && (
                 <p className="text-sm text-muted-foreground">
                   <span className="text-green-700 dark:text-green-400">{t.documentedCount.replace('{n}', String(coveredChecks.length))}</span>
@@ -1880,13 +1935,13 @@ export default function AssessmentDetail() {
         </div>
 
         {/* Risk Score Explanation */}
-        <div className="mb-8">
+        {!analysisInProgress && <div className="mb-8">
           <RiskScoreExplanation 
             gaps={gaps}
             checks={checks}
             language={selectedLanguage}
           />
-        </div>
+        </div>}
 
         {checks.length > 0 && (
           <CoverageScopeDisclaimer
@@ -1918,8 +1973,10 @@ export default function AssessmentDetail() {
             {gaps.length === 0 && (
               <Card>
                 <CardContent className="py-12 text-center">
-                  <CheckCircle2 className="h-12 w-12 mx-auto text-green-600 mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">{t.riskNone}</h3>
+                  {analysisInProgress
+                    ? <Info className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                    : <CheckCircle2 className="h-12 w-12 mx-auto text-green-600 mb-4" />}
+                  <h3 className="text-lg font-semibold mb-2">{analysisInProgress ? t.resultsPending : t.riskNone}</h3>
                 </CardContent>
               </Card>
             )}

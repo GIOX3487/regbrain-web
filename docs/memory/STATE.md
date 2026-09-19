@@ -1,5 +1,9 @@
 # Stato condiviso di RegBrain
 
+## Collaudo del 19 settembre: pausa visibile e limiti della misura
+
+La PR #10 corregge anche la schermata dell'analisi interrotta: avviso di pausa persistente nella scheda, nessun rischio conclusivo prima della fine, PDF disponibile solo dopo completamento. Il percorso pausa/riapertura/ripresa riuscita è stato provato nel browser con API e autenticazione simulate localmente; non equivale al collaudo hosted completo. Una nuova ripresa reale e prove rappresentative su entrambi gli endpoint Gemini continuano a restituire 503; accuratezza ancora non misurabile. L'allineamento PR #9 nello staging è preparato localmente e testato, non distribuito. Dettagli nel [registro](changes/2026-09-18-gap-provider-recovery.md).
+
 ## Diagnosi provider e ripresa del 18 settembre
 
 Gemini ha restituito HTTP 503 per domanda elevata su tre richieste diagnostiche, anche senza JSON. La proposta `codex/gap-provider-recovery`, basata su main dopo PR #9, conserva i gruppi pendenti e interrompe i tentativi automatici durante l'indisponibilità. Prova reale su staging v7: 12 esclusioni conservate, 39 requisiti pendenti, zero fallback e conformità null. Il benchmark di accuratezza resta bloccato dal provider. Lo staging v7 conserva la base riconciliata PR #3/#6; l'allineamento della classificazione PR #9 è ancora da fare. Nessun rilascio in produzione in questa sessione. Dettagli e limiti nel [registro](changes/2026-09-18-gap-provider-recovery.md).
