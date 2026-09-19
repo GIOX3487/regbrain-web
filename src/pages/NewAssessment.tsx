@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase, supabaseHttpUrl } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -46,6 +46,8 @@ export default function NewAssessment() {
   const [uploadedFiles, setUploadedFiles] = useState<Array<{ name: string, content: string, type: string, truncated: boolean }>>([]);
   const [unreadableFiles, setUnreadableFiles] = useState<Array<{ name: string, reason: string }>>([]);
   const [extracting, setExtracting] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   // Dichiarazioni di applicabilità: indici delle opzioni scelte, per ogni domanda.
   const [applicability, setApplicability] = useState<Record<string, number[]>>({});
@@ -60,9 +62,24 @@ export default function NewAssessment() {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
+    await processFiles(Array.from(files));
+    e.target.value = '';
+  };
 
+  // Il trascinamento passa dalla stessa strada della selezione manuale: stessi limiti,
+  // stessi scarti, stessi messaggi. Due percorsi diversi avrebbero due comportamenti diversi.
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDragging(false);
+    if (extracting) return;
+    const dropped = Array.from(e.dataTransfer?.files || []);
+    if (dropped.length === 0) return;
+    await processFiles(dropped);
+  };
+
+  const processFiles = async (files: File[]) => {
     const remainingSlots = Math.max(0, MAX_FILES - uploadedFiles.length);
-    const filesToProcess = Array.from(files).slice(0, remainingSlots);
+    const filesToProcess = files.slice(0, remainingSlots);
 
     if (filesToProcess.length === 0) {
       toast({
@@ -115,7 +132,6 @@ export default function NewAssessment() {
     setExtracting(false);
     setUploadedFiles(prev => [...prev, ...newFiles]);
     setUnreadableFiles(prev => [...prev, ...skipped]);
-    e.target.value = '';
 
     if (newFiles.length > 0) {
       toast({
@@ -636,20 +652,49 @@ export default function NewAssessment() {
                     </div>
                   </div>
                 </div>
-                <div className="border-2 border-dashed rounded-lg p-6 text-center">
+                {/* L'area tratteggiata prometteva il trascinamento senza gestirlo, e l'unica via
+                    d'ingresso era il campo di sistema, che non lascia capire che si possono scegliere
+                    piu' documenti in una volta. Ora l'area accetta il rilascio e apre la selezione. */}
+                <div
+                  className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
+                    dragging ? 'border-primary bg-primary/5' : ''
+                  } ${extracting ? 'opacity-60' : 'cursor-pointer hover:border-primary/50'}`}
+                  onClick={() => { if (!extracting) fileInputRef.current?.click(); }}
+                  onDragOver={(e) => { e.preventDefault(); if (!extracting) setDragging(true); }}
+                  onDragEnter={(e) => { e.preventDefault(); if (!extracting) setDragging(true); }}
+                  onDragLeave={(e) => {
+                    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                    setDragging(false);
+                  }}
+                  onDrop={handleDrop}
+                >
                   <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground mb-2">
-                    Trascina qui i tuoi documenti o clicca per selezionarli
+                  <p className="text-sm font-medium mb-1">
+                    Trascina qui i documenti, anche tutti insieme
+                  </p>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    oppure seleziona i file dal computer. Nella finestra di scelta puoi prenderne più di uno:
+                    tieni premuto Cmd su Mac o Ctrl su Windows mentre li clicchi, oppure Shift per un intero blocco.
                   </p>
                   <Input
+                    ref={fileInputRef}
                     type="file"
                     multiple
                     accept=".pdf,.docx,.txt,.md,.xlsx,.xls,.csv"
                     onChange={handleFileUpload}
                     disabled={extracting}
-                    className="max-w-xs mx-auto"
+                    className="sr-only"
                   />
-                  <p className="text-xs text-muted-foreground mt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={extracting}
+                    onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    Seleziona documenti
+                  </Button>
+                  <p className="text-xs text-muted-foreground mt-3">
                     Formati accettati: PDF con testo, Word (.docx), Excel, CSV, testo. Le scansioni senza testo e i file .doc non possono essere letti.
                   </p>
                   {extracting && (
@@ -658,7 +703,7 @@ export default function NewAssessment() {
                     </p>
                   )}
                   {uploadedFiles.length > 0 && (
-                    <div className="mt-4">
+                    <div className="mt-4 cursor-default">
                       <p className="text-sm font-medium mb-2">{uploadedFiles.length} documenti pronti per l'analisi:</p>
                       <ul className="text-sm text-left max-w-md mx-auto space-y-1">
                         {uploadedFiles.map((file) => (
@@ -671,7 +716,7 @@ export default function NewAssessment() {
                             <button
                               type="button"
                               className="text-xs text-muted-foreground hover:text-destructive shrink-0"
-                              onClick={() => removeUploadedFile(file.name)}
+                              onClick={(e) => { e.stopPropagation(); removeUploadedFile(file.name); }}
                               aria-label={`Rimuovi ${file.name}`}
                             >
                               rimuovi
@@ -682,7 +727,7 @@ export default function NewAssessment() {
                     </div>
                   )}
                   {unreadableFiles.length > 0 && (
-                    <div className="mt-4 text-left max-w-md mx-auto rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-3">
+                    <div className="mt-4 text-left max-w-md mx-auto rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/30 p-3 cursor-default">
                       <p className="text-sm font-medium mb-1 text-amber-800 dark:text-amber-200">
                         {unreadableFiles.length} file non analizzabili (esclusi dall'analisi):
                       </p>
@@ -696,7 +741,7 @@ export default function NewAssessment() {
                       <button
                         type="button"
                         className="mt-2 text-xs underline text-amber-800 dark:text-amber-200"
-                        onClick={() => setUnreadableFiles([])}
+                        onClick={(e) => { e.stopPropagation(); setUnreadableFiles([]); }}
                       >
                         Nascondi elenco
                       </button>

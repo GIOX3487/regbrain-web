@@ -178,6 +178,20 @@ appoggiandosi alla politica di riga gia' esistente. Nessuna modifica al database
 (SITE-03, branch `claude/chat-sidebar-pulizia`).
 
 
+## Caricamento dei documenti nella gap analysis, 19 settembre
+
+Segnalato che i documenti si potevano caricare uno alla volta. L'attributo `multiple` era gia'
+presente nel pacchetto servito in produzione, quindi la selezione multipla era tecnicamente
+possibile: mancava il modo di capirlo. L'area tratteggiata dichiarava "Trascina qui i tuoi
+documenti o clicca per selezionarli" senza gestire ne' il rilascio ne' il clic, e l'unica via
+d'ingresso era il campo di sistema, da cui la finestra di macOS sembra a selezione singola.
+
+L'area accetta ora il rilascio, si evidenzia durante il trascinamento e apre la selezione al clic;
+la lavorazione dei file passa da un'unica funzione condivisa fra trascinamento e selezione
+manuale, cosi' limiti, scarti e messaggi restano identici. Il campo di sistema diventa invisibile
+ma raggiungibile da tastiera, sostituito da un pulsante, e il testo spiega come prendere piu' file
+insieme (SITE-04, branch `claude/caricamento-documenti-multiplo`).
+
 ## Memoria e coordinamento
 
 Memoria, istruzioni per gli agenti e workflow sono integrati con la [PR #4](https://github.com/GIOX3487/regbrain-web/pull/4), commit `72b7e2e69866ce0665f39b0e52d2ddda659e9398` (MEM-01). I 18 test della memoria e le verifiche applicative sono verdi anche su main. Il controllo fidato è stato provato sulla PR #5: una revisione senza registro è stata rifiutata con il messaggio richiesto ([prova negativa](https://github.com/GIOX3487/regbrain-web/actions/runs/35203449382)). Lo stato del blocco tecnico dei merge è **non attivo**: il piano del repository privato non consente i ruleset, e la protezione main non è leggibile dall'integrazione. MEM-02 resta bloccato su configurazione/piano dell'amministratore; vedere [procedura](README.md).
