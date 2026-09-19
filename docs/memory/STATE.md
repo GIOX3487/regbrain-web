@@ -246,6 +246,23 @@ richiesto e sistemate due etichette con la maiuscola a meta' frase. Cercato lo s
 tutta la schermata: nessun altro caso. Resta da cercarlo nelle altre pagine (SITE-06, branch
 `claude/testi-nuova-valutazione`).
 
+## Homepage: numeri, confronto e posizionamento DPO, 19 settembre
+
+I tre numeri hanno ora un'etichetta sopra la cifra (Fedelta' delle citazioni, Copertura normativa,
+Tempo di analisi): prima "55 su 55" non diceva a cosa si riferisse senza leggere la didascalia.
+Tolta l'incoerenza fra la scheda che diceva 254 obblighi a catalogo e quella che diceva "per
+verificare 250 obblighi".
+
+Aggiunta sotto i numeri una tabella di cinque righe che confronta il prodotto con un'AI generalista
+su comportamenti osservabili: da dove viene la risposta, come si verifica, cosa succede quando non
+sa, come si aggiorna, cosa si ottiene.
+
+Aggiunta sotto il primo pulsante la fascia "Costruito con i DPO, per i DPO" con tre prove: 32
+professionisti fra DPO e CISO nella validazione iniziale (dato che viene dal pitch e non e'
+verificabile da qui), accordo di validazione firmato con un'azienda cliente (Go Infoteam, nome non
+citato sul sito), e la firma che resta a chi risponde. Nulla e' stato scritto su UniDPO, che non ha
+un accordo firmato (SITE-07, branch `claude/homepage-rag-e-dpo`).
+
 ## Memoria e coordinamento
 
 Memoria, istruzioni per gli agenti e workflow sono integrati con la [PR #4](https://github.com/GIOX3487/regbrain-web/pull/4), commit `72b7e2e69866ce0665f39b0e52d2ddda659e9398` (MEM-01). I 18 test della memoria e le verifiche applicative sono verdi anche su main. Il controllo fidato è stato provato sulla PR #5: una revisione senza registro è stata rifiutata con il messaggio richiesto ([prova negativa](https://github.com/GIOX3487/regbrain-web/actions/runs/35203449382)). Lo stato del blocco tecnico dei merge è **non attivo**: il piano del repository privato non consente i ruleset, e la protezione main non è leggibile dall'integrazione. MEM-02 resta bloccato su configurazione/piano dell'amministratore; vedere [procedura](README.md).
