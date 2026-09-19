@@ -136,6 +136,17 @@ segmenti su 65 verbatim e 15 citazioni marcate come condivise.
 Resta aperto GAP-07, la riproducibilita'. Resta da decidere GAP-08, le due voci di catalogo
 sovrapposte.
 
+## Barra laterale della chat, 19 settembre
+
+Ripulita la barra laterale di `/chat`. Tolto il tasto Audit Log, che ripeteva come voce di
+navigazione lo storico gia' elencato sotto con domanda e data; la rotta `/audit` resta attiva.
+Tolto il tasto Chat, che portava sempre alla pagina in cui l'utente si trovava, dato che quella
+barra esiste solo dentro `Chat.tsx`. Il tasto Nuova conversazione diventa un piu' nell'intestazione
+dell'elenco delle conversazioni recenti, con descrizione al passaggio del cursore. Ogni
+conversazione ha ora un cestino con conferma esplicita che cancella la riga da `query_log`,
+appoggiandosi alla politica di riga gia' esistente. Nessuna modifica al database o alle rotte
+(SITE-03, branch `claude/chat-sidebar-pulizia`).
+
 ## Memoria e coordinamento
 
 Memoria, istruzioni per gli agenti e workflow sono integrati con la [PR #4](https://github.com/GIOX3487/regbrain-web/pull/4), commit `72b7e2e69866ce0665f39b0e52d2ddda659e9398` (MEM-01). I 18 test della memoria e le verifiche applicative sono verdi anche su main. Il controllo fidato è stato provato sulla PR #5: una revisione senza registro è stata rifiutata con il messaggio richiesto ([prova negativa](https://github.com/GIOX3487/regbrain-web/actions/runs/35203449382)). Lo stato del blocco tecnico dei merge è **non attivo**: il piano del repository privato non consente i ruleset, e la protezione main non è leggibile dall'integrazione. MEM-02 resta bloccato su configurazione/piano dell'amministratore; vedere [procedura](README.md).
