@@ -136,6 +136,36 @@ segmenti su 65 verbatim e 15 citazioni marcate come condivise.
 Resta aperto GAP-07, la riproducibilita'. Resta da decidere GAP-08, le due voci di catalogo
 sovrapposte.
 
+## Qualita' e carico della gap analysis: verifica del 19 settembre
+
+Verifica richiesta dopo una segnalazione di Giovanni su un carico di richieste troppo alto. Il
+problema non si e' riprodotto. Tre analisi GDPR in parallelo su utenti distinti: 9,8, 16,2 e 13,5
+secondi, esiti 20, 20 e 21 per cento. Catalogo intero, 250 obblighi su sei normative, in tre
+invocazioni: 45 secondi da sola, 61 e 65 secondi con due analisi contemporanee. Su circa 600
+chiamate al modello nessuna fallita, nessun 429 nei log, nessuna ricaduta a parole chiave.
+
+Corretta comunque la fragilita' che rendeva invisibile un guasto: quando una chiamata AI falliva
+tre volte il requisito ricadeva in silenzio sulla verifica a parole chiave, che produce un esito
+senza citazioni dall'aspetto identico a una verifica sulle prove. I tentativi passano a quattro con
+attesa progressiva (1,5, 5 e 12 secondi) applicata solo sui limiti di frequenza, lo stato finale
+porta `evaluation_quality` con il conteggio per metodo e il dettaglio dell'assessment mostra un
+avviso quando la valutazione non e' completa. Corretta anche la contraddizione degli obblighi da
+verificare, che dichiaravano l'applicabilita' non determinabile ed elencavano comunque elementi
+mancanti (v25, branch `claude/gap-analysis-ricadute-visibili`).
+
+Accuratezza misurata sul fascicolo reale di Infoteam, sei documenti GDPR veri. Citazioni oneste: 36
+segmenti su 36 presenti alla lettera nel documento indicato, nessuna attribuzione sbagliata,
+lunghezza media 158 caratteri. Giudizio sistematicamente severo: zero o un obbligo coperto su 51,
+conformita' fra 20 e 23 per cento su quattro giri. L'articolo 37 risulta parziale pur essendoci la
+comunicazione al Garante dei dati di contatto del DPO; gli articoli 29 e 32 par. 4 risultano
+parziali pur essendoci le istruzioni scritte al personale. Causa misurata: 56 elementi su 109
+dichiarati mancanti sono copiati alla lettera dalla documentazione attesa del catalogo (GAP-09,
+dipendente da GAP-07).
+
+Sul catalogo intero 166 obblighi su 250 finiscono in `to_verify` perche' il questionario di
+applicabilita' copre bene solo il GDPR: il paracadute della v23 marca il risultato come non
+affidabile, ma la percentuale mostrata poggia su 70 obblighi.
+
 ## Barra laterale della chat, 19 settembre
 
 Ripulita la barra laterale di `/chat`. Tolto il tasto Audit Log, che ripeteva come voce di
@@ -146,6 +176,7 @@ dell'elenco delle conversazioni recenti, con descrizione al passaggio del cursor
 conversazione ha ora un cestino con conferma esplicita che cancella la riga da `query_log`,
 appoggiandosi alla politica di riga gia' esistente. Nessuna modifica al database o alle rotte
 (SITE-03, branch `claude/chat-sidebar-pulizia`).
+
 
 ## Memoria e coordinamento
 

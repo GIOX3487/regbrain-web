@@ -1927,7 +1927,7 @@ interface RequirementCheck {
   keyword_coverage: number;
 }
 
-const CHECKS_VERSION = 'gap-analysis-v24-prove-condivise';
+const CHECKS_VERSION = 'gap-analysis-v25-ricadute-visibili';
 const SEVERITY_RANK: Record<string, number> = { critical: 3, high: 2, medium: 1, low: 0 };
 const RISK_SCORE_MAP: Record<string, number> = { high: 74, medium: 52, low: 28 };
 
@@ -2854,6 +2854,10 @@ denoServe(protect(async (req) => {
       const declaredFacts = profileFactsForPrompt(applicabilityProfile);
       let processedInThisRun = 0;
       let lastStageMs = 0;
+      // Quante chiamate AI hanno incontrato il limite di frequenza e quante si sono arrese:
+      // senza questi numeri una valutazione degradata e' indistinguibile da una riuscita.
+      let rateLimitedAttempts = 0;
+      let failedBatches = 0;
       while (state.pending.length > 0 && Date.now() < deadline && processedInThisRun < MAX_PER_INVOCATION) {
         // Il gruppo non può sconfinare oltre MAX_PER_INVOCATION: gli embedding dei requisiti
         // sono stati calcolati esattamente per i primi MAX_PER_INVOCATION in coda, e valutare
@@ -2882,8 +2886,12 @@ denoServe(protect(async (req) => {
               })));
             }
             const documentNames = readableDocuments.map(d => d.name);
+            // Un limite di frequenza si supera aspettando, non insistendo: attese di 0,9 e 1,8
+            // secondi non bastano contro una quota calcolata al minuto. L'attesa cresce e non
+            // sfora mai il tempo dell'invocazione, perche' l'avanzamento e' gia' salvato e la
+            // chiamata successiva riprende da dove si era fermata.
             const results = await runWithConcurrency(batches.map((batch) => async () => {
-              for (let attempt = 1; attempt <= 3; attempt++) {
+              for (let attempt = 1; attempt <= 4; attempt++) {
                 try {
                   const map = await assessRequirementBatchWithLLM(aiKey, batch, normalizedLanguage, profile, documentNames, declaredFacts);
                   if (map.size > 0) return map;
@@ -2891,9 +2899,17 @@ denoServe(protect(async (req) => {
                 } catch (e) {
                   const message = e instanceof Error ? e.message : String(e);
                   console.error(`LLM batch failed (attempt ${attempt}):`, message);
-                  if (/ 429|rate limit/i.test(message)) await new Promise(r => setTimeout(r, 900 * attempt));
+                  const throttled = /\b429\b|rate limit|resource_exhausted|quota/i.test(message);
+                  if (throttled) rateLimitedAttempts++;
+                  if (attempt < 4) {
+                    const wait = (throttled ? [1500, 5000, 12000][attempt - 1] : 400 * attempt)
+                      + Math.floor(Math.random() * 600);
+                    if (Date.now() + wait > deadline) break;
+                    await new Promise(r => setTimeout(r, wait));
+                  }
                 }
               }
+              failedBatches++;
               return new Map<string, any>();
             }), LLM_CONCURRENCY);
             for (const map of results) for (const [k, v] of map) llmResults.set(k, v);
@@ -2990,6 +3006,13 @@ denoServe(protect(async (req) => {
                   ? (isIt ? 'Dalla documentazione non risulta se il requisito si applica all\'organizzazione.' : 'The documentation does not show whether the requirement applies to the organisation.')
                   : '';
               }
+              // Applicabilita' non determinabile e carenze non possono stare insieme: dire che
+              // manca un documento presuppone di sapere che quel documento e' dovuto. Finche' non
+              // sappiamo se l'obbligo riguarda l'organizzazione, non c'e' nulla da dichiarare mancante.
+              if (status === 'to_verify') {
+                missingElements.length = 0;
+                actions = [];
+              }
               return {
                 ...base,
                 status,
@@ -3051,6 +3074,9 @@ denoServe(protect(async (req) => {
         const tSave = Date.now();
         if (state.pending.length > 0) await saveState(supabase, assessmentId, state);
         console.log(`✓ ${groupRequirements.length} requisiti in ${Date.now() - tGroup}ms (salvataggio esiti ${lastStageMs}ms, stato ${Date.now() - tSave}ms) — ${state.done}/${state.total}`);
+        if (rateLimitedAttempts > 0 || failedBatches > 0) {
+          console.warn(`⚠️ ${failedBatches} gruppi valutati a parole chiave, ${rateLimitedAttempts} tentativi respinti dal limite di frequenza`);
+        }
       }
     }
 
@@ -3117,7 +3143,12 @@ denoServe(protect(async (req) => {
     const missingCount = checks.filter(c => c.status === 'missing').length;
     const toVerifyCount = checks.filter(c => c.status === 'to_verify').length;
     const notApplicableCount = checks.filter(c => c.status === 'not_applicable').length;
+    const keywordCount = checks.filter(c => c.method === 'keyword').length;
+    const aiCount = checks.filter(c => c.method === 'llm_evidence').length;
     console.log(`Checks: ${coveredCount} covered, ${partialCount} partial, ${missingCount} missing, ${toVerifyCount} to verify, ${notApplicableCount} not applicable`);
+    if (keywordCount > 0) {
+      console.warn(`⚠️ ${keywordCount} requisiti su ${checks.length} valutati senza AI, a sole parole chiave`);
+    }
 
     let sourceChunks: Array<{ id: string; content: string; document_id: string }> = [];
     try {
@@ -3233,6 +3264,14 @@ denoServe(protect(async (req) => {
           : applicableCount / (applicableCount + toVerifyCount) >= 0.4,
         declarations_provided: !!(applicabilityProfile?.answers && Object.keys(applicabilityProfile.answers).length > 0),
       },
+      // Quando una chiamata AI non riesce, il requisito ricade sulla verifica a parole chiave:
+      // produce un esito senza citazioni che ha lo stesso aspetto di una verifica sulle prove.
+      // Senza questo dato la differenza non e' visibile a nessuno.
+      evaluation_quality: {
+        by_ai: aiCount,
+        by_keyword: keywordCount,
+        complete: keywordCount === 0,
+      },
       checks,
     };
 
@@ -3289,6 +3328,11 @@ denoServe(protect(async (req) => {
           regulation: reg,
           analyzed: checks.filter(c => c.regulation.toLowerCase() === reg.toLowerCase()).length,
         })),
+      },
+      evaluation_quality: {
+        by_ai: aiCount,
+        by_keyword: keywordCount,
+        complete: keywordCount === 0,
       },
       method: 'evidence_checks_with_keyword_fallback',
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
