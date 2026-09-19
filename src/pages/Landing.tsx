@@ -144,33 +144,22 @@ const Landing = () => {
         <div className="absolute bottom-0 right-0 w-48 h-48 sm:w-96 sm:h-96 bg-secondary/20 rounded-full blur-3xl -z-10 animate-pulse" />
       </section>
 
-      {/* Costruito con i DPO */}
+      {/* Pensato per chi firma */}
       <section className="px-4 sm:px-6 py-10 sm:py-12 border-y border-border bg-muted/30">
         <div className="max-w-5xl mx-auto text-center space-y-6">
           <div className="space-y-2">
-            <h2 className="text-2xl sm:text-3xl font-bold">Costruito con i DPO, per i DPO</h2>
+            <h2 className="text-2xl sm:text-3xl font-bold">Pensato per chi firma</h2>
             <p className="text-muted-foreground max-w-2xl mx-auto">
-              Non è una scrivania di sviluppatori che immagina come si fa compliance: l'impostazione è stata
-              messa alla prova da chi la firma tutti i giorni.
+              Non è una scrivania di sviluppatori che immagina come si fa compliance: il prodotto è costruito
+              attorno al lavoro di chi la responsabilità se la prende davvero.
             </p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm text-left">
-            <div className="document-card space-y-1">
-              <p className="font-semibold text-foreground">32 professionisti</p>
-              <p className="text-muted-foreground">
-                fra DPO e CISO hanno validato impostazione e priorità prima che scrivessimo il prodotto.
-              </p>
-            </div>
-            <div className="document-card space-y-1">
-              <p className="font-semibold text-foreground">Accordo di validazione firmato</p>
-              <p className="text-muted-foreground">
-                con un'azienda cliente: il motore lavora su documentazione reale, non su casi di scuola.
-              </p>
-            </div>
+          <div className="max-w-2xl mx-auto text-sm text-left">
             <div className="document-card space-y-1">
               <p className="font-semibold text-foreground">La firma resta a chi risponde</p>
               <p className="text-muted-foreground">
-                l'app prepara l'istruttoria e la prova; la valutazione e la responsabilità restano del DPO.
+                l'app prepara l'istruttoria e la prova; la valutazione e la responsabilità restano del DPO o
+                del titolare.
               </p>
             </div>
           </div>
