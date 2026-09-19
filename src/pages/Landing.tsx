@@ -144,6 +144,39 @@ const Landing = () => {
         <div className="absolute bottom-0 right-0 w-48 h-48 sm:w-96 sm:h-96 bg-secondary/20 rounded-full blur-3xl -z-10 animate-pulse" />
       </section>
 
+      {/* Costruito con i DPO */}
+      <section className="px-4 sm:px-6 py-10 sm:py-12 border-y border-border bg-muted/30">
+        <div className="max-w-5xl mx-auto text-center space-y-6">
+          <div className="space-y-2">
+            <h2 className="text-2xl sm:text-3xl font-bold">Costruito con i DPO, per i DPO</h2>
+            <p className="text-muted-foreground max-w-2xl mx-auto">
+              Non è una scrivania di sviluppatori che immagina come si fa compliance: l'impostazione è stata
+              messa alla prova da chi la firma tutti i giorni.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm text-left">
+            <div className="document-card space-y-1">
+              <p className="font-semibold text-foreground">32 professionisti</p>
+              <p className="text-muted-foreground">
+                fra DPO e CISO hanno validato impostazione e priorità prima che scrivessimo il prodotto.
+              </p>
+            </div>
+            <div className="document-card space-y-1">
+              <p className="font-semibold text-foreground">Accordo di validazione firmato</p>
+              <p className="text-muted-foreground">
+                con un'azienda cliente: il motore lavora su documentazione reale, non su casi di scuola.
+              </p>
+            </div>
+            <div className="document-card space-y-1">
+              <p className="font-semibold text-foreground">La firma resta a chi risponde</p>
+              <p className="text-muted-foreground">
+                l'app prepara l'istruttoria e la prova; la valutazione e la responsabilità restano del DPO.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Cosa fa */}
       <section className="px-4 sm:px-6 py-16 sm:py-20 bg-gradient-to-b from-muted/30 to-background">
         <div className="max-w-6xl mx-auto">
@@ -486,26 +519,85 @@ const Landing = () => {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mb-8">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mb-12">
             <div className="document-card space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Fedeltà delle citazioni
+              </p>
               <div className="text-3xl sm:text-4xl font-bold text-primary">55 su 55</div>
               <p className="text-sm text-muted-foreground">
-                citazioni corrispondenti alla lettera al documento citato e attribuite al file giusto,
+                citazioni ritrovate alla lettera nel documento indicato e attribuite al file giusto,
                 confrontate a macchina con il testo caricato.
               </p>
             </div>
             <div className="document-card space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Copertura normativa
+              </p>
               <div className="text-3xl sm:text-4xl font-bold text-primary">254</div>
               <p className="text-sm text-muted-foreground">
-                obblighi nel catalogo, articolo per articolo su sei regolamenti, con la prova documentale
-                attesa e la condizione di applicabilità.
+                obblighi a catalogo, articolo per articolo su sei regolamenti, ciascuno con la prova
+                documentale attesa e la condizione che lo rende applicabile.
               </p>
             </div>
             <div className="document-card space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Tempo di analisi
+              </p>
               <div className="text-3xl sm:text-4xl font-bold text-primary">70 sec</div>
               <p className="text-sm text-muted-foreground">
-                per verificare 250 obblighi su tutte e sei le normative.
+                per un'analisi completa sulle sei normative, dal caricamento dei documenti al referto
+                con le evidenze.
               </p>
+            </div>
+          </div>
+
+          {/* Il confronto sta sotto i numeri e non sopra: prima la prova, poi la spiegazione.
+              Ogni riga descrive un comportamento osservabile del prodotto, non un aggettivo. */}
+          <div className="max-w-4xl mx-auto">
+            <h3 className="text-xl sm:text-2xl font-bold text-center mb-2">
+              Perché non basta chiedere a un'AI generalista
+            </h3>
+            <p className="text-sm text-muted-foreground text-center mb-6">
+              La differenza non è quanto scrive bene: è da dove prende quello che scrive e cosa fa quando non lo sa.
+            </p>
+            <div className="document-card overflow-x-auto p-0">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left font-semibold p-3 sm:p-4 w-1/4"></th>
+                    <th className="text-left font-semibold p-3 sm:p-4">AI generalista</th>
+                    <th className="text-left font-semibold p-3 sm:p-4 text-primary">RegBrain</th>
+                  </tr>
+                </thead>
+                <tbody className="text-muted-foreground">
+                  <tr className="border-b border-border/60">
+                    <td className="p-3 sm:p-4 font-medium text-foreground align-top">Da dove viene la risposta</td>
+                    <td className="p-3 sm:p-4 align-top">Dalla memoria del modello, ferma alla data di addestramento</td>
+                    <td className="p-3 sm:p-4 align-top">Dal testo dei regolamenti indicizzato articolo per articolo e dai documenti che carichi</td>
+                  </tr>
+                  <tr className="border-b border-border/60">
+                    <td className="p-3 sm:p-4 font-medium text-foreground align-top">Come si verifica</td>
+                    <td className="p-3 sm:p-4 align-top">Il riferimento normativo va ricontrollato a mano, uno per uno</td>
+                    <td className="p-3 sm:p-4 align-top">Ogni constatazione cita la frase del tuo documento, ritrovata alla lettera nel file indicato</td>
+                  </tr>
+                  <tr className="border-b border-border/60">
+                    <td className="p-3 sm:p-4 font-medium text-foreground align-top">Quando non sa</td>
+                    <td className="p-3 sm:p-4 align-top">Risponde comunque, in modo plausibile</td>
+                    <td className="p-3 sm:p-4 align-top">Dichiara l'obbligo da verificare e dice quale condizione manca per deciderlo</td>
+                  </tr>
+                  <tr className="border-b border-border/60">
+                    <td className="p-3 sm:p-4 font-medium text-foreground align-top">Aggiornamento normativo</td>
+                    <td className="p-3 sm:p-4 align-top">Dipende da quando il modello è stato addestrato</td>
+                    <td className="p-3 sm:p-4 align-top">Il catalogo si aggiorna dalle fonti ufficiali senza riaddestrare nulla</td>
+                  </tr>
+                  <tr>
+                    <td className="p-3 sm:p-4 font-medium text-foreground align-top">Cosa ottieni</td>
+                    <td className="p-3 sm:p-4 align-top">Un testo da rileggere e riscrivere</td>
+                    <td className="p-3 sm:p-4 align-top">Per ogni obbligo: esito, prova, cosa manca, azione, con il profilo di rischio</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
