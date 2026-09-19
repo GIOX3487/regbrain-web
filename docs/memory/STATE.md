@@ -192,6 +192,21 @@ manuale, cosi' limiti, scarti e messaggi restano identici. Il campo di sistema d
 ma raggiungibile da tastiera, sostituito da un pulsante, e il testo spiega come prendere piu' file
 insieme (SITE-04, branch `claude/caricamento-documenti-multiplo`).
 
+## Metriche del referto spiegate, 19 settembre
+
+Le tre schede in cima al referto mostravano percentuale di conformita', profilo di rischio e
+conteggio dei requisiti senza dire come nascono. Ogni scheda ha ora un punto interrogativo che apre
+una spiegazione breve con i numeri di quella analisi dentro il testo: la percentuale e' documentati
+piu' meta' dei parziali sugli obblighi valutabili, con da verificare e non applicabili fuori dal
+denominatore; il profilo prende il livello del gap piu' grave e non la media, mentre il punteggio
+numerico e' il peso dei gap sul massimo teorico; da verificare significa obbligo condizionale la cui
+condizione non risulta dai documenti, non documento mancante.
+
+Corretta una contraddizione fra le due parti della pagina: la scheda diceva "9 da verificare" e il
+tab sotto diceva "Da verificare (19)" perche' vi sommava i non applicabili. Ora sono due tab
+distinti e la scheda dei requisiti mostra tutte e quattro le voci (SITE-05, branch
+`claude/spiegazione-metriche`).
+
 ## Memoria e coordinamento
 
 Memoria, istruzioni per gli agenti e workflow sono integrati con la [PR #4](https://github.com/GIOX3487/regbrain-web/pull/4), commit `72b7e2e69866ce0665f39b0e52d2ddda659e9398` (MEM-01). I 18 test della memoria e le verifiche applicative sono verdi anche su main. Il controllo fidato è stato provato sulla PR #5: una revisione senza registro è stata rifiutata con il messaggio richiesto ([prova negativa](https://github.com/GIOX3487/regbrain-web/actions/runs/35203449382)). Lo stato del blocco tecnico dei merge è **non attivo**: il piano del repository privato non consente i ruleset, e la protezione main non è leggibile dall'integrazione. MEM-02 resta bloccato su configurazione/piano dell'amministratore; vedere [procedura](README.md).
