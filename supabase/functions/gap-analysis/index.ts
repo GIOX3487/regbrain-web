@@ -2263,10 +2263,11 @@ function selectEvidenceForRequirement(
   const presiPerDocumento = new Map<string, number>();
   const gia = new Set<number>();
   let used = 0;
-  const prendi = (i: number, tettoPerDocumento: number): void => {
+  const prendi = (i: number, tettoPerDocumento: number, tettoLunghezza = Infinity): void => {
     if (gia.has(i)) return;
     const s = eleggibili[i];
     if (picked.length >= EVIDENCE_MAX_SECTIONS) return;
+    if (s.text.length > tettoLunghezza) return;
     if ((presiPerDocumento.get(s.docName) || 0) >= tettoPerDocumento) return;
     if (used + s.text.length > maxChars) return;
     picked.push({ docName: s.docName, text: s.text, score: s.score });
@@ -2276,7 +2277,7 @@ function selectEvidenceForRequirement(
   };
   // Primo giro: una sola sezione per documento, in ordine di punteggio. Serve a far entrare
   // ogni documento pertinente prima che il piu' prolisso esaurisca lo spazio disponibile.
-  for (let i = 0; i < eleggibili.length; i++) prendi(i, 1);
+  for (let i = 0; i < eleggibili.length; i++) prendi(i, 1, EVIDENCE_FIRST_PASS_MAX_SECTION);
   // Secondo giro: lo spazio che resta va alle sezioni migliori, con un tetto per documento.
   for (let i = 0; i < eleggibili.length; i++) prendi(i, EVIDENCE_MAX_PER_DOC);
   // Le sezioni tornano in ordine di pertinenza, non nell'ordine in cui sono state scelte.
@@ -2420,11 +2421,15 @@ const LLM_CONCURRENCY = 18;
 // del DPO al Garante o la politica sugli incidenti non entravano mai, e il loro obbligo
 // risultava scoperto pur essendo documentato. Il tetto piu' alto, insieme al limite per
 // documento qui sotto, fa entrare anche i fascicoli brevi.
-const EVIDENCE_CHARS = 7000;
+const EVIDENCE_CHARS = 9000;
 const SECTION_CHARS = 1100;
 // Quante sezioni al massimo puo' portare uno stesso documento dopo il primo giro di scelta.
 const EVIDENCE_MAX_PER_DOC = 3;
-const EVIDENCE_MAX_SECTIONS = 10;
+const EVIDENCE_MAX_SECTIONS = 12;
+// Nel primo giro, quello che deve far entrare piu' documenti possibile, le sezioni molto
+// lunghe restano fuori: una sola da 3500 caratteri toglierebbe il posto a tre documenti
+// interi. Rientrano nel secondo giro, se lo spazio avanza.
+const EVIDENCE_FIRST_PASS_MAX_SECTION = 1500;
 
 // Stato leggero dell'analisi, salvato in compliance_assessments.analysis_progress.
 // Gli esiti dei requisiti stanno in assessment_requirement_checks, una riga ciascuno:
