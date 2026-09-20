@@ -318,3 +318,31 @@ L'instabilita' e' ridotta, non risolta (GAP-10).
 
 Il numero unico di sintesi non e' ancora un dato da mettere in un'offerta; i singoli esiti con
 citazione verificata lo sono.
+
+## L'analisi diventa un documento datato, 20 settembre
+
+A parita' di documenti caricati l'analisi ora restituisce sempre lo stesso esito, e lo fa non
+ricalcolando invece che cercando di rendere deterministico il modello, che a temperatura zero
+deterministico non e'.
+
+La memoria del risultato esisteva gia' ma aveva la versione del motore e l'elenco degli obblighi
+dentro la chiave: ogni correzione al motore cancellava la memoria di tutte le analisi fatte. Ora
+l'impronta comprende solo il caso (documenti, dichiarazioni, normative, lingua, profilo,
+fatturato), la versione sta accanto al risultato e la corrispondenza con il catalogo viene
+controllata al momento del riuso.
+
+Un'analisi conclusa non viene piu' ricalcolata: una seconda chiamata restituisce gli esiti salvati
+con `frozen: true`. Il rifacimento va chiesto con `rerun: true` e rilegge i documenti
+dall'archivio dell'assessment. Ogni giro completato scrive una riga in `assessment_runs`, e sopra
+le schede un riquadro dice di quale versione si sta guardando l'esito e quali obblighi sono
+cambiati rispetto al giro precedente. Un'analisi prodotta da un motore precedente viene segnalata
+in ambra ma non rifatta da sola.
+
+Provato in produzione su un fascicolo reale da otto documenti: due analisi distinte con gli stessi
+documenti danno 51 esiti su 51 identici, testo del giudizio compreso; la riapertura non tocca
+nulla; due rifacimenti espliciti producono due righe di cronologia con tre obblighi di differenza.
+Durante la prova la tabella nuova aveva le policy ma non i privilegi e la cronologia non veniva
+scritta: corretto e riprovato.
+
+Il riuso resta per utente (GAP-11) e l'oscillazione del modello resta quando il ricalcolo avviene
+davvero, ma e' datata e visibile invece che silenziosa.

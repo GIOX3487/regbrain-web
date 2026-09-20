@@ -2543,6 +2543,8 @@ denoServe(protect(async (req) => {
     const body = await req.json();
     const { assessmentId } = body;
     const isContinuation = body.continue === true;
+    // Rifare un'analisi gia' chiusa e' un'azione voluta, non l'effetto di riaprire una pagina.
+    const isRerun = body.rerun === true;
 
     if (!assessmentId || typeof assessmentId !== 'string') {
       return errorResponse(400, 'Invalid or missing assessmentId');
@@ -2554,9 +2556,28 @@ denoServe(protect(async (req) => {
 
     const { data: assessment } = await supabase
       .from('compliance_assessments')
-      .select('id, annual_revenue_eur, scope_regulations, analysis_progress, status, applicability_profile')
+      .select('id, annual_revenue_eur, scope_regulations, analysis_progress, status, applicability_profile, requirement_checks')
       .eq('id', assessmentId).eq('user_id', user.id).maybeSingle();
     if (!assessment) return errorResponse(404, 'Assessment not found');
+
+    // Un'analisi conclusa e' un documento datato, non una domanda da rifare a ogni apertura:
+    // finche' non viene chiesto un rifacimento restituisce sempre gli stessi esiti, anche se
+    // nel frattempo il motore e' cambiato. Senza questo, una seconda chiamata sullo stesso
+    // assessment produrrebbe numeri diversi a parita' di documenti.
+    if (assessment.status === 'completed' && !isContinuation && !isRerun) {
+      const salvato = assessment.requirement_checks as { version?: string; checks?: RequirementCheck[] } | null;
+      if (Array.isArray(salvato?.checks) && salvato!.checks.length > 0) {
+        console.log(`🔒 ${assessmentId} gia' completata: restituiti gli esiti salvati senza ricalcolo`);
+        return new Response(JSON.stringify({
+          success: true,
+          status: 'completed',
+          frozen: true,
+          engine_version: salvato!.version || null,
+          progress: { done: salvato!.checks.length, total: salvato!.checks.length },
+          checks: salvato!.checks,
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+    }
 
     const { data: profile } = await supabase
       .from('profiles').select('*').eq('id', user.id).maybeSingle();
@@ -2568,6 +2589,8 @@ denoServe(protect(async (req) => {
     let normalizedRegulations: string[];
     let normalizedLanguage: string;
     let state: AnalysisState | null = null;
+    // Versione del motore che ha prodotto gli esiti riusati, quando non sono stati ricalcolati.
+    let reusedEngineVersion: string | null = null;
 
     if (isContinuation) {
       const saved = assessment.analysis_progress as AnalysisState | null;
@@ -2584,7 +2607,23 @@ denoServe(protect(async (req) => {
       if (normalizedDocuments.length === 0) return errorResponse(409, 'Documents of this assessment are no longer available');
       console.log(`Continuing gap analysis for ${assessmentId}: ${saved.pending.length} requirements pending`);
     } else {
-      const { userDocuments, regulations, language = 'it' } = body;
+      const { language = 'it' } = body;
+      let userDocuments = body.userDocuments;
+      let regulations = body.regulations;
+      // Rifacendo un'analisi esistente i documenti sono gia' in archivio: chiederli di nuovo
+      // al client significherebbe farli ricaricare a mano, e un byte di differenza basterebbe
+      // a produrre un fascicolo diverso da quello di cui si vuole il confronto.
+      if (isRerun) {
+        if (!Array.isArray(userDocuments) || userDocuments.length === 0) {
+          const { data: storedDocs } = await supabase
+            .from('assessment_documents').select('name, type, content')
+            .eq('assessment_id', assessmentId).order('name', { ascending: true });
+          userDocuments = storedDocs || [];
+        }
+        if (!Array.isArray(regulations) || regulations.length === 0) {
+          regulations = assessment.scope_regulations || [];
+        }
+      }
       if (!Array.isArray(userDocuments) || userDocuments.length === 0) {
         return errorResponse(400, 'userDocuments must be a non-empty array');
       }
@@ -2593,6 +2632,9 @@ denoServe(protect(async (req) => {
       }
       if (!Array.isArray(regulations) || regulations.length === 0) {
         return errorResponse(400, 'regulations must be a non-empty array');
+      }
+      if (isRerun && !body.applicabilityProfile && assessment.applicability_profile) {
+        console.log('↻ rifacimento: mantenute le dichiarazioni gia\' registrate');
       }
       if (body.applicabilityProfile && typeof body.applicabilityProfile === 'object') {
         const raw = body.applicabilityProfile as ApplicabilityProfile;
@@ -2671,17 +2713,33 @@ denoServe(protect(async (req) => {
     // altrimenti un secondo profilo sugli stessi documenti riuserebbe il risultato del primo.
     const cacheFingerprint = state?.cache_key || await generateCacheFingerprint(
       normalizedRegulations, normalizedDocuments, normalizedLanguage, profile, assessment?.annual_revenue_eur,
-      applicableRequirements.map(r => r.id),
       applicabilityProfile,
     );
 
     if (!state) {
-      const { data: cachedResult } = await supabase
+      // Il riuso non guarda la versione del motore: a parita' di documenti, dichiarazioni e
+      // profilo l'esito deve restare quello, anche dopo una correzione del motore. Cambia
+      // solo se il catalogo degli obblighi applicabili non e' piu' lo stesso, perche' in quel
+      // caso il risultato salvato non risponderebbe piu' alle stesse domande. Un rifacimento
+      // chiesto esplicitamente ignora il salvato e ricalcola tutto.
+      const { data: cachedResult } = isRerun ? { data: null } : await supabase
         .from('gap_analysis_cache').select('result_payload')
         .eq('user_id', user.id).eq('cache_key', cacheFingerprint).maybeSingle();
-      const cachedChecks = cachedResult?.result_payload?.version === CHECKS_VERSION && Array.isArray(cachedResult?.result_payload?.checks)
-        ? cachedResult.result_payload.checks as RequirementCheck[]
+      const salvate = Array.isArray(cachedResult?.result_payload?.checks)
+        ? cachedResult!.result_payload.checks as RequirementCheck[]
         : null;
+      const stessoCatalogo = !!salvate && (() => {
+        const attesi = new Set(applicableRequirements.map(r => r.id));
+        const trovati = new Set(salvate.map(c => c.requirement_id));
+        return attesi.size === trovati.size && [...attesi].every(id => trovati.has(id));
+      })();
+      if (salvate && !stessoCatalogo) {
+        console.log('↻ risultato salvato scartato: il catalogo degli obblighi applicabili e\' cambiato');
+      }
+      if (salvate && stessoCatalogo) {
+        reusedEngineVersion = cachedResult?.result_payload?.version || null;
+      }
+      const cachedChecks = stessoCatalogo ? salvate : null;
       const now = new Date().toISOString();
       await supabase.from('assessment_requirement_checks').delete().eq('assessment_id', assessmentId);
       if (cachedChecks) {
@@ -3164,6 +3222,10 @@ denoServe(protect(async (req) => {
       return errorResponse(500, 'Nessun esito disponibile per questa analisi: rilanciarla dall\'inizio');
     }
 
+    // Versione che ha davvero prodotto questi esiti: riscriverla come corrente dopo un riuso
+    // farebbe credere che il motore di oggi li abbia ricalcolati.
+    const engineVersion = reusedEngineVersion || CHECKS_VERSION;
+
     await supabase.from('gap_analysis_cache').upsert({
       user_id: user.id,
       cache_key: cacheFingerprint,
@@ -3171,7 +3233,7 @@ denoServe(protect(async (req) => {
       regulations: normalizedRegulations,
       language: normalizedLanguage,
       documents_count: normalizedDocuments.length,
-      result_payload: { version: CHECKS_VERSION, checks, unreadable_documents: unreadableDocuments },
+      result_payload: { version: engineVersion, checks, unreadable_documents: unreadableDocuments },
     }, { onConflict: 'user_id,cache_key' });
 
     // Una stessa frase puo' sostenere piu' obblighi: sul fascicolo di prova una riga
@@ -3295,7 +3357,8 @@ denoServe(protect(async (req) => {
       : Math.max(0, Math.min(100, Math.round((gapWeight / (applicableCount * 3)) * 100)));
 
     const finalState = {
-      version: CHECKS_VERSION,
+      version: engineVersion,
+      reused_from_cache: !!reusedEngineVersion,
       status: 'completed',
       language: normalizedLanguage,
       regulations: normalizedRegulations,
@@ -3344,6 +3407,26 @@ denoServe(protect(async (req) => {
     }).eq('id', assessmentId);
     await supabase.from('assessment_requirement_checks').delete().eq('assessment_id', assessmentId);
 
+    // Un giro per riga: l'esito di ieri resta accanto a quello di oggi, cosi' il confronto fra
+    // due versioni si legge invece di essere sovrascritto.
+    const { data: ultimoGiro } = await supabase
+      .from('assessment_runs').select('run_number')
+      .eq('assessment_id', assessmentId).order('run_number', { ascending: false }).limit(1).maybeSingle();
+    const { error: runError } = await supabase.from('assessment_runs').insert({
+      assessment_id: assessmentId,
+      user_id: user.id,
+      run_number: (ultimoGiro?.run_number || 0) + 1,
+      engine_version: engineVersion,
+      reused_from_cache: !!reusedEngineVersion,
+      compliance_percentage: overallCompliance,
+      risk_score: overallRisk,
+      counts: finalState.counts,
+      documents: readableDocuments.map(d => d.name),
+      checks,
+    });
+    // La cronologia non deve far fallire l'analisi: se la riga non entra, l'esito resta valido.
+    if (runError) console.error('Registrazione del giro non riuscita:', runError.message);
+
     const actionPlans = insertedGaps
       .filter((g: any) => g.priority <= 3)
       .flatMap((gap: any) => {
@@ -3369,6 +3452,8 @@ denoServe(protect(async (req) => {
     return new Response(JSON.stringify({
       success: true,
       status: 'completed',
+      engine_version: engineVersion,
+      reused_from_cache: !!reusedEngineVersion,
       progress: { done: checks.length, total: checks.length },
       gaps: insertedGaps,
       checks,
@@ -3575,12 +3660,14 @@ async function generateCacheFingerprint(
   language: string,
   profile: any,
   annualRevenue: number | null | undefined,
-  requirementIds: string[] = [],
   applicabilityProfile: ApplicabilityProfile | null = null,
 ): Promise<string> {
+  // Ne' la versione del motore ne' l'elenco degli obblighi entrano nell'impronta: se ci
+  // stessero, ogni correzione al motore e ogni riga aggiunta al catalogo cancellerebbero la
+  // memoria di tutte le analisi gia' fatte, e lo stesso fascicolo caricato domani darebbe
+  // numeri diversi da oggi. La versione viene conservata accanto al risultato, e la
+  // corrispondenza con il catalogo viene controllata al momento del riuso.
   const canonicalInput = JSON.stringify({
-    v: CHECKS_VERSION,
-    q: [...requirementIds].sort(),
     a: Object.entries(applicabilityProfile?.answers || {}).sort(([x], [y]) => x.localeCompare(y)),
     r: [...regulations].map(canonicalizeString).filter(Boolean).sort((a, b) => a.localeCompare(b)),
     l: canonicalizeString(language).toLowerCase() || 'it',

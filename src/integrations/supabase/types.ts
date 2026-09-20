@@ -264,6 +264,59 @@ export type Database = {
           },
         ]
       }
+      assessment_runs: {
+        Row: {
+          assessment_id: string
+          checks: Json
+          compliance_percentage: number | null
+          counts: Json | null
+          created_at: string
+          documents: Json | null
+          engine_version: string
+          id: string
+          reused_from_cache: boolean
+          risk_score: number | null
+          run_number: number
+          user_id: string
+        }
+        Insert: {
+          assessment_id: string
+          checks: Json
+          compliance_percentage?: number | null
+          counts?: Json | null
+          created_at?: string
+          documents?: Json | null
+          engine_version: string
+          id?: string
+          reused_from_cache?: boolean
+          risk_score?: number | null
+          run_number: number
+          user_id: string
+        }
+        Update: {
+          assessment_id?: string
+          checks?: Json
+          compliance_percentage?: number | null
+          counts?: Json | null
+          created_at?: string
+          documents?: Json | null
+          engine_version?: string
+          id?: string
+          reused_from_cache?: boolean
+          risk_score?: number | null
+          run_number?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assessment_runs_assessment_id_fkey"
+            columns: ["assessment_id"]
+            isOneToOne: false
+            referencedRelation: "compliance_assessments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       board_training: {
         Row: {
           completion_criteria: Json | null
