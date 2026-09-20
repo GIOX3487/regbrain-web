@@ -296,3 +296,66 @@ La [roadmap unica](../../roadmap.md) conserva anche i due task dell'8 settembre,
 ## Preparazione del collaudo richiesto il 17 settembre
 
 Le verifiche in sola lettura confermano un solo progetto Supabase (`regbrain-web`), nessun branch di prova e la migrazione atomica ancora assente. Prerequisiti principali e permessi service_role sono presenti; tre assessment risultavano completati, nessuno in corso al momento della lettura. Non sono stati modificati database o funzioni in produzione. Il collaudo completo resta da eseguire: occorre identificare o creare uno staging, con organizzazione ed eventuale costo confermati. Procedura e risultati: [STAGING.md](STAGING.md). I test isolati già verdi non vengono riclassificati come collaudo hosted.
+
+## Qualita' della gap analysis: verifica e correzione del 20 settembre
+
+Verificata la v25 in produzione sul fascicolo reale di Infoteam, diciassette documenti GDPR veri,
+confrontando il giro dell'utente con due giri riprodotti con le stesse risposte al questionario.
+Le citazioni reggono: 112 su 112 alla lettera, nessuna attribuzione sbagliata. Nessuna ricaduta a
+parole chiave. Gli elementi mancanti non sono piu' copiati dal catalogo.
+
+Trovati tre difetti. Quattro documenti su diciassette non venivano mai letti, perche' il tetto di
+4200 caratteri di estratto per requisito lasciava entrare tre o quattro sezioni e le prendeva il
+documento piu' prolisso: l'articolo 37 risultava parziale chiedendo la ricevuta di comunicazione al
+Garante, che sta scritta nel file mai letto. Le risposte al questionario non arrivavano al modello,
+perche' le etichette delle condizioni GDPR non erano fra quelle passate nel prompt, e l'articolo 9
+apriva un gap muto nonostante la dichiarazione contraria. Gli esiti cambiavano fra giri identici:
+conformita' 64, 57 e 57 per cento, con l'etichetta che passava da Sufficiente a Insufficiente.
+
+Corretto nella v26 (`gap-analysis-v26-prove-da-tutti-i-documenti`): scelta degli estratti in due
+giri, con al massimo una sezione per documento nel primo, tetto per requisito da 4200 a 9000
+caratteri, dichiarazioni GDPR nel prompt, e contrasto fra dichiarazione e documenti che diventa uno
+stato "da verificare" spiegato invece di un gap muto.
+
+Rimisurato con quattro giri indipendenti: l'articolo 37 cita la comunicazione al Garante in tutti e
+quattro e la carenza falsa e' sparita, l'articolo 9 e l'articolo 44 sono stabili e coerenti con le
+risposte date, i documenti citati passano da tredici a quattordici su diciassette, le citazioni
+restano 98 su 98 alla lettera. Conformita' 68,8, 65,0, 68,8 e 62,9 per cento, tutte dentro la
+stessa etichetta; differenza media fra due giri 4,5 esiti su 51 contro i 7 e 8 della v25.
+L'instabilita' e' ridotta, non risolta (GAP-10).
+
+Il numero unico di sintesi non e' ancora un dato da mettere in un'offerta; i singoli esiti con
+citazione verificata lo sono.
+
+## L'analisi diventa un documento datato, 20 settembre
+
+A parita' di documenti caricati l'analisi ora restituisce sempre lo stesso esito, e lo fa non
+ricalcolando invece che cercando di rendere deterministico il modello, che a temperatura zero
+deterministico non e'.
+
+La memoria del risultato esisteva gia' ma aveva la versione del motore e l'elenco degli obblighi
+dentro la chiave: ogni correzione al motore cancellava la memoria di tutte le analisi fatte. Ora
+l'impronta comprende solo il caso (documenti, dichiarazioni, normative, lingua, profilo,
+fatturato), la versione sta accanto al risultato e la corrispondenza con il catalogo viene
+controllata al momento del riuso.
+
+Un'analisi conclusa non viene piu' ricalcolata: una seconda chiamata restituisce gli esiti salvati
+con `frozen: true`. Il rifacimento va chiesto con `rerun: true` e rilegge i documenti
+dall'archivio dell'assessment. Ogni giro completato scrive una riga in `assessment_runs`, e sopra
+le schede un riquadro dice di quale versione si sta guardando l'esito e quali obblighi sono
+cambiati rispetto al giro precedente. Un'analisi prodotta da un motore precedente viene segnalata
+in ambra ma non rifatta da sola.
+
+Provato in produzione su un fascicolo reale da otto documenti: due analisi distinte con gli stessi
+documenti danno 51 esiti su 51 identici, testo del giudizio compreso; la riapertura non tocca
+nulla; due rifacimenti espliciti producono due righe di cronologia con tre obblighi di differenza.
+Durante la prova la tabella nuova aveva le policy ma non i privilegi e la cronologia non veniva
+scritta: corretto e riprovato.
+
+Il riuso resta per utente (GAP-11) e l'oscillazione del modello resta quando il ricalcolo avviene
+davvero, ma e' datata e visibile invece che silenziosa.
+
+
+### Candidato PR #10 riallineato a PR #24
+
+Versione candidata v27: pausa anche sul rifacimento esplicito, conservazione della cronologia e degli esiti congelati. Il 20 settembre il test completo nello staging riceve ancora 503 dal provider; 12/51 conservati e punteggio finale assente. Rilascio non eseguito: resta da combinare PR #3 e completare il collaudo reale.

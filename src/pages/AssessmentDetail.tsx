@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { RiskScoreExplanation, RISK_STYLE, riskProfileOf, overallRiskProfile, type RiskProfile } from "@/components/compliance/RiskScoreExplanation";
 import { MetricExplainer, type MetricNumbers } from "@/components/compliance/MetricExplainer";
+import { AnalysisVersions, type AnalysisRun } from "@/components/compliance/AnalysisVersions";
 import { DocumentConfigDialog, type ConfigDocumentType, type DocumentConfig } from "@/components/DocumentConfigDialog";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -196,6 +197,8 @@ export default function AssessmentDetail() {
   const [actionPlans, setActionPlans] = useState<ActionPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedLanguage, setSelectedLanguage] = useState<'it' | 'en' | 'es' | 'fr' | 'de'>('it');
+  const [runs, setRuns] = useState<AnalysisRun[]>([]);
+  const [rerunning, setRerunning] = useState(false);
   const [configDialogOpen, setConfigDialogOpen] = useState(false);
   const [configDocType, setConfigDocType] = useState<ConfigDocumentType | null>(null);
 
@@ -303,6 +306,10 @@ export default function AssessmentDetail() {
       noToVerify: 'Nessun requisito da verificare.',
       analysisInProgress: 'Analisi in corso: la pagina si aggiorna da sola appena i risultati sono pronti.',
       resumeAnalysis: 'Riprendi l\'analisi',
+      rerunDoneTitle: 'Analisi rifatta',
+      rerunDoneBody: 'La nuova versione e\' stata salvata accanto alla precedente: il confronto e\' in cima alla pagina.',
+      rerunFailedTitle: 'Rifacimento non riuscito',
+      rerunFailedBody: 'Riprova tra poco. L\'analisi precedente resta intatta.',
       appliesWhen: 'Si applica se',
       suggestedActions: 'Azioni suggerite'
     },
@@ -401,6 +408,10 @@ export default function AssessmentDetail() {
       noToVerify: 'Nothing to verify.',
       analysisInProgress: 'Analysis in progress: this page refreshes automatically when results are ready.',
       resumeAnalysis: 'Resume analysis',
+      rerunDoneTitle: 'Analysis run again',
+      rerunDoneBody: 'The new version was saved next to the previous one: the comparison is at the top of the page.',
+      rerunFailedTitle: 'Could not run it again',
+      rerunFailedBody: 'Try again shortly. The previous analysis is untouched.',
       appliesWhen: 'Applies when',
       suggestedActions: 'Suggested actions'
     },
@@ -499,6 +510,10 @@ export default function AssessmentDetail() {
       noToVerify: 'Nada por verificar.',
       analysisInProgress: 'Análisis en curso: la página se actualiza sola cuando los resultados están listos.',
       resumeAnalysis: 'Reanudar el análisis',
+      rerunDoneTitle: 'Análisis repetido',
+      rerunDoneBody: 'La nueva versión se guardó junto a la anterior: la comparación está arriba en la página.',
+      rerunFailedTitle: 'No se pudo repetir',
+      rerunFailedBody: 'Vuelve a intentarlo en un momento. El análisis anterior queda intacto.',
       appliesWhen: 'Se aplica si',
       suggestedActions: 'Acciones sugeridas'
     },
@@ -597,6 +612,10 @@ export default function AssessmentDetail() {
       noToVerify: 'Rien à vérifier.',
       analysisInProgress: 'Analyse en cours : la page se met à jour automatiquement dès que les résultats sont prêts.',
       resumeAnalysis: 'Reprendre l\'analyse',
+      rerunDoneTitle: 'Analyse relancée',
+      rerunDoneBody: 'La nouvelle version a été enregistrée à côté de la précédente : la comparaison est en haut de la page.',
+      rerunFailedTitle: 'Relance impossible',
+      rerunFailedBody: 'Réessayez dans un instant. L\'analyse précédente reste intacte.',
       appliesWhen: "S'applique si",
       suggestedActions: 'Actions suggérées'
     },
@@ -695,6 +714,10 @@ export default function AssessmentDetail() {
       noToVerify: 'Nichts zu prüfen.',
       analysisInProgress: 'Analyse läuft: die Seite aktualisiert sich automatisch, sobald Ergebnisse vorliegen.',
       resumeAnalysis: 'Analyse fortsetzen',
+      rerunDoneTitle: 'Analyse erneut ausgeführt',
+      rerunDoneBody: 'Die neue Version wurde neben der vorherigen gespeichert: der Vergleich steht oben auf der Seite.',
+      rerunFailedTitle: 'Erneute Ausführung fehlgeschlagen',
+      rerunFailedBody: 'Versuchen Sie es gleich noch einmal. Die vorherige Analyse bleibt unverändert.',
       appliesWhen: 'Gilt wenn',
       suggestedActions: 'Vorgeschlagene Maßnahmen'
     }
@@ -849,6 +872,63 @@ export default function AssessmentDetail() {
     }
   };
 
+  // Il rifacimento e' l'unico modo per ricalcolare un'analisi chiusa: senza { rerun: true }
+  // la funzione restituisce gli esiti salvati senza toccarli. I documenti li rilegge
+  // dall'archivio dell'assessment, cosi' il fascicolo confrontato e' esattamente lo stesso.
+  const rerunAnalysis = async () => {
+    if (rerunning || resumingRef.current || !id) return;
+    resumingRef.current = true;
+    setRerunning(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Sessione scaduta. Accedi nuovamente per rifare l’analisi.');
+      const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      const call = (payload: Record<string, unknown>) => fetch(`${supabaseHttpUrl}/functions/v1/gap-analysis`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}`, 'apikey': anonKey },
+        body: JSON.stringify({ assessmentId: id, ...payload }),
+      });
+      const checkResponse = (response: Response, data: { code?: string; error?: string }) => {
+        if (data?.code === 'AI_ANALYSIS_UNAVAILABLE') {
+          resumeFailuresRef.current = 3;
+          setProviderPaused(true);
+          writeProviderPause(id, true);
+        }
+        if (!response.ok) throw new Error(data?.error || `Errore ${response.status}`);
+      };
+      let response = await call({ rerun: true });
+      let data = await response.json().catch(() => ({}));
+      checkResponse(response, data);
+      let guard = 0;
+      while (data?.status === 'in_progress' && guard < 20) {
+        guard++;
+        response = await call({ continue: true });
+        data = await response.json().catch(() => ({}));
+        checkResponse(response, data);
+      }
+      if (data?.status !== 'completed') throw new Error('Analisi ancora in corso: riprendila dal dettaglio.');
+      setProviderPaused(false);
+      writeProviderPause(id, false);
+      resumeFailuresRef.current = 0;
+      await loadAssessment(true);
+      toast({
+        title: t.rerunDoneTitle,
+        description: t.rerunDoneBody,
+      });
+    } catch (err) {
+      console.error('Rerun analysis failed:', err);
+      await loadAssessment(true);
+      toast({
+        title: t.rerunFailedTitle,
+        description: err instanceof Error ? err.message : t.rerunFailedBody,
+        variant: 'destructive',
+      });
+    } finally {
+      resumingRef.current = false;
+      setRerunning(false);
+    }
+  };
+
   const loadAssessment = async (silent = false) => {
     try {
       const { data: assessmentData, error: assessmentError } = await supabase
@@ -881,6 +961,18 @@ export default function AssessmentDetail() {
 
       if (plansError) throw plansError;
       setActionPlans(plansData || []);
+
+      // Gli ultimi due giri bastano per dire di quale versione si sta guardando l'esito e
+      // cosa e' cambiato rispetto a prima. La cronologia non e' essenziale alla pagina:
+      // se non si carica, il resto viene mostrato lo stesso.
+      const { data: runsData, error: runsError } = await supabase
+        .from('assessment_runs')
+        .select('id, run_number, engine_version, created_at, compliance_percentage, risk_score, checks')
+        .eq('assessment_id', id)
+        .order('run_number', { ascending: false })
+        .limit(2);
+      if (runsError) console.error('Storico dei giri non disponibile:', runsError.message);
+      setRuns((runsData || []) as unknown as AnalysisRun[]);
 
     } catch (error) {
       console.error('Error loading assessment:', error);
@@ -1891,6 +1983,15 @@ export default function AssessmentDetail() {
               ) : null}
             </CardContent>
           </Card>
+        )}
+
+        {assessment.status === 'completed' && runs.length > 0 && (
+          <AnalysisVersions
+            runs={runs}
+            language={selectedLanguage}
+            onRerun={rerunAnalysis}
+            rerunning={rerunning}
+          />
         )}
 
         {/* KPIs */}

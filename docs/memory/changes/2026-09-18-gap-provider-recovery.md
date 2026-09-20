@@ -6,7 +6,7 @@ state_review: updated
 state_reason: Diagnosi reale del provider e verifica del comportamento in staging.
 roadmap_review: updated
 roadmap_reason: Ambiente staging disponibile; collaudo di accuratezza bloccato dall'indisponibilità IA.
-files: ["supabase/functions/gap-analysis/index.ts", "supabase/functions/_shared/gap-ai-batch.ts", "src/pages/NewAssessment.tsx", "src/pages/AssessmentDetail.tsx", "deployment/gap-ai-batch.test.mjs", "package.json", "docs/memory/STATE.md", "roadmap.md"]
+files: ["supabase/functions/gap-analysis/index.ts", "supabase/functions/_shared/gap-ai-batch.ts", "src/pages/NewAssessment.tsx", "src/pages/AssessmentDetail.tsx", "deployment/gap-ai-batch.test.mjs", "package.json", "src/lib/engine-version.ts", "docs/memory/STATE.md", "roadmap.md"]
 ---
 
 ## Richiesta e contesto
@@ -74,3 +74,11 @@ La continuità tecnica è migliorata, ma l'accuratezza non è stata rivalutata: 
 ## Prossimo passo
 
 GAP-01: quando il modello torna disponibile, riprendere il test salvato e rieseguire il corpus; allineare anche PR #9 nel candidato staging per valutare l'ultima classificazione. Poi completare il flusso browser e il rilascio della PR #3 con la relativa migrazione. Questa proposta resta separata e non integra automaticamente altre PR.
+
+## Riconciliazione con PR #23 e #24 (20 settembre)
+
+Base main 6172ce0. Conservati il recupero di evidenze da più documenti, le dichiarazioni di applicabilità, il congelamento degli esiti e la cronologia con rifacimento esplicito. Versione candidata v27, allineata anche nel frontend. Il riuso delle analisi precedenti resta quello scelto nella PR #24: la versione nuova non le ricalcola automaticamente e non certifica i loro vecchi risultati.
+
+Anche il rifacimento esplicito gestisce AI_ANALYSIS_UNAVAILABLE, ricarica l'avanzamento salvato e impedisce riprese automatiche concorrenti; il messaggio di successo richiede status completed. Sessione scaduta segnalata esplicitamente.
+
+Nuova prova reale staging: richieste brevi 200/503/200; benchmark completo interrotto da 503 overloaded. Database verificato: 12 elaborati, 39 pendenti, conformità null. Nessun rilascio in produzione; serve ancora candidato combinato con PR #3 e collaudo completo.
