@@ -1,5 +1,13 @@
 # Stato condiviso di RegBrain
 
+## Collaudo del 19 settembre: pausa visibile e limiti della misura
+
+La PR #10 è riconciliata con main 0dfc984 (PR #11–#22), conserva i miglioramenti del socio e usa versione risultati v26. Corregge anche la schermata dell'analisi interrotta: avviso di pausa persistente nella scheda, nessun rischio conclusivo prima della fine, PDF disponibile solo dopo completamento. Il percorso pausa/riapertura/ripresa riuscita è stato provato nel browser con API e autenticazione simulate localmente; non equivale al collaudo hosted completo. Una nuova ripresa reale e prove rappresentative su entrambi gli endpoint Gemini continuano a restituire 503; accuratezza ancora non misurabile. L'allineamento PR #9 nello staging è preparato localmente e testato, non distribuito. Dettagli nel [registro](changes/2026-09-18-gap-provider-recovery.md).
+
+## Diagnosi provider e ripresa del 18 settembre
+
+Gemini ha restituito HTTP 503 per domanda elevata su tre richieste diagnostiche, anche senza JSON. La proposta `codex/gap-provider-recovery`, basata su main dopo PR #9, conserva i gruppi pendenti e interrompe i tentativi automatici durante l'indisponibilità. Prova reale su staging v7: 12 esclusioni conservate, 39 requisiti pendenti, zero fallback e conformità null. Il benchmark di accuratezza resta bloccato dal provider. Lo staging v7 conserva la base riconciliata PR #3/#6; l'allineamento della classificazione PR #9 è ancora da fare. Nessun rilascio in produzione in questa sessione. Dettagli e limiti nel [registro](changes/2026-09-18-gap-provider-recovery.md).
+
 Ultima ricognizione: 17 settembre 2026. Base applicativa verificata: `5bf7a8c3e970765423dda429cb124f185a393a39`. Questo documento distingue codice su main, proposte aperte e ambiente live non verificato.
 
 ## Già presente nel codice su main
@@ -346,3 +354,12 @@ scritta: corretto e riprovato.
 
 Il riuso resta per utente (GAP-11) e l'oscillazione del modello resta quando il ricalcolo avviene
 davvero, ma e' datata e visibile invece che silenziosa.
+
+
+### Candidato PR #10 riallineato a PR #24
+
+Versione candidata v27: pausa anche sul rifacimento esplicito, conservazione della cronologia e degli esiti congelati. Il 20 settembre il test completo nello staging riceve ancora 503 dal provider; 12/51 conservati e punteggio finale assente. Rilascio non eseguito: resta da combinare PR #3 e completare il collaudo reale.
+
+### Persistenza v28 nello staging (20 settembre)
+
+Integrata la persistenza della PR #3 con la cronologia recente nella PR #10. Esiti, azioni e cronologia si salvano insieme; il rifacimento preserva lo storico. Staging funzione v8, 37 test passati e prova di rollback sul database reale superata. Gemini restituisce ancora 503 sul benchmark: produzione non aggiornata e accuratezza non misurata. Le altre modifiche qualitative della PR #3 restano da integrare separatamente.
