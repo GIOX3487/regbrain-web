@@ -35,3 +35,7 @@ Aggiornata il 17 settembre 2026. Prima di lavorare leggere [AGENTS.md](AGENTS.md
 - Aggiornare stato e prove quando cambia un'attività. Conservare le attività chiuse con link al registro/PR e, se pertinente, alla verifica del rilascio.
 - Chi prende in carico un'attività lo indica nella propria PR e nel registro; nessuna assegnazione implicita ai soci.
 - Non usare altri file come roadmap concorrenti. Le specifiche tecniche e i registri possono approfondire e collegare questi ID.
+
+### Avanzamento tecnico GAP-01 — 20 settembre, v28
+
+Persistenza atomica e cronologia integrate e installate nello staging. Verificati rollback, ripresa e due versioni consecutive; 37 test backend verdi. Collaudo completo IA ancora fermo su 503 del provider. Nessun rilascio produzione. La restante integrazione qualitativa della PR #3 e la revisione del catalogo restano aperte.

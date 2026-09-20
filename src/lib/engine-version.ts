@@ -5,9 +5,9 @@
 // per dire se un'analisi e' stata prodotta da un motore precedente. Un'analisi vecchia non
 // viene mai rifatta da sola: si segnala e basta, cosi' gli esiti gia' consegnati restano
 // quelli fino a quando non e' l'utente a chiedere il rifacimento.
-export const GAP_ANALYSIS_ENGINE_VERSION = 'gap-analysis-v27-resumable-provider-errors';
+export const GAP_ANALYSIS_ENGINE_VERSION = 'gap-analysis-v28-atomic-history';
 
-// Etichetta breve leggibile: "v26" da "gap-analysis-v27-resumable-provider-errors".
+// Etichetta breve leggibile: "v26" da "gap-analysis-v28-atomic-history".
 export function engineVersionLabel(version: string | null | undefined): string {
   if (!version) return '';
   const m = /-(v\d+)-/.exec(version);

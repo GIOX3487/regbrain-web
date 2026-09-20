@@ -1928,7 +1928,7 @@ interface RequirementCheck {
   keyword_coverage: number;
 }
 
-const CHECKS_VERSION = 'gap-analysis-v27-resumable-provider-errors';
+const CHECKS_VERSION = 'gap-analysis-v28-atomic-history';
 const SEVERITY_RANK: Record<string, number> = { critical: 3, high: 2, medium: 1, low: 0 };
 const RISK_SCORE_MAP: Record<string, number> = { high: 74, medium: 52, low: 28 };
 
@@ -2440,6 +2440,7 @@ interface AnalysisState {
   started_at: string;
   updated_at: string;
   cache_key: string;
+  reused_engine_version?: string | null;
   total: number;
   done: number;
   pending: string[];
@@ -2447,10 +2448,11 @@ interface AnalysisState {
   documents_analyzed: string[];
 }
 
-async function saveState(supabase: any, assessmentId: string, state: AnalysisState) {
-  await supabase.from('compliance_assessments')
-    .update({ analysis_progress: state })
-    .eq('id', assessmentId);
+async function saveState(supabase: any, assessmentId: string, state: AnalysisState, token: string, checks: RequirementCheck[] = []) {
+  const { error } = await supabase.rpc('save_gap_analysis_progress', {
+    p_assessment_id: assessmentId, p_token: token, p_state: state, p_checks: checks,
+  });
+  if (error) throw error;
 }
 
 async function loadStagedChecks(supabase: any, assessmentId: string): Promise<RequirementCheck[]> {
@@ -2458,7 +2460,7 @@ async function loadStagedChecks(supabase: any, assessmentId: string): Promise<Re
   for (let from = 0; ; from += 500) {
     const { data, error } = await supabase
       .from('assessment_requirement_checks')
-      .select('check_payload')
+      .select('check_payload').order('requirement_id')
       .eq('assessment_id', assessmentId)
       .range(from, from + 499);
     if (error) throw error;
@@ -2526,6 +2528,7 @@ denoServe(protect(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let releaseLease: (() => Promise<void>) | undefined;
   try {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) throw new Error('Missing authorization header');
@@ -2552,6 +2555,18 @@ denoServe(protect(async (req) => {
       return errorResponse(400, 'Invalid assessmentId format');
     }
 
+    const leaseToken = crypto.randomUUID();
+    const { data: acquired, error: leaseError } = await supabase.rpc('acquire_gap_analysis_lease', {
+      p_assessment_id: assessmentId, p_user_id: user.id, p_token: leaseToken,
+    });
+    if (leaseError) throw leaseError;
+    if (!acquired) return new Response(JSON.stringify({ success: true, status: 'in_progress', retryAfterMs: 5000 }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+    releaseLease = async () => {
+      const { error } = await supabase.from('gap_analysis_leases').delete().eq('assessment_id', assessmentId).eq('token', leaseToken);
+      if (error) console.error('Unable to release analysis lease:', error);
+    };
     const { data: assessment } = await supabase
       .from('compliance_assessments')
       .select('id, annual_revenue_eur, scope_regulations, analysis_progress, status, applicability_profile, requirement_checks')
@@ -2562,7 +2577,7 @@ denoServe(protect(async (req) => {
     // finche' non viene chiesto un rifacimento restituisce sempre gli stessi esiti, anche se
     // nel frattempo il motore e' cambiato. Senza questo, una seconda chiamata sullo stesso
     // assessment produrrebbe numeri diversi a parita' di documenti.
-    if (assessment.status === 'completed' && !isContinuation && !isRerun) {
+    if (assessment.status === 'completed' && !isRerun) {
       const salvato = assessment.requirement_checks as { version?: string; checks?: RequirementCheck[] } | null;
       if (Array.isArray(salvato?.checks) && salvato!.checks.length > 0) {
         console.log(`🔒 ${assessmentId} gia' completata: restituiti gli esiti salvati senza ricalcolo`);
@@ -2596,6 +2611,7 @@ denoServe(protect(async (req) => {
         return errorResponse(409, 'No analysis in progress for this assessment');
       }
       state = saved;
+      reusedEngineVersion = saved.reused_engine_version || null;
       normalizedRegulations = saved.regulations;
       normalizedLanguage = saved.language || 'it';
       const { data: storedDocs } = await supabase
@@ -2739,15 +2755,6 @@ denoServe(protect(async (req) => {
       }
       const cachedChecks = stessoCatalogo ? salvate : null;
       const now = new Date().toISOString();
-      await supabase.from('assessment_requirement_checks').delete().eq('assessment_id', assessmentId);
-      if (cachedChecks) {
-        console.log('✅ CACHE HIT - reusing cached requirement checks');
-        for (let i = 0; i < cachedChecks.length; i += 100) {
-          await supabase.from('assessment_requirement_checks').insert(
-            cachedChecks.slice(i, i + 100).map(c => ({ assessment_id: assessmentId, requirement_id: c.requirement_id, check_payload: c })),
-          );
-        }
-      }
       state = {
         version: CHECKS_VERSION,
         status: 'in_progress',
@@ -2758,15 +2765,15 @@ denoServe(protect(async (req) => {
         cache_key: cacheFingerprint,
         total: applicableRequirements.length,
         done: cachedChecks ? cachedChecks.length : 0,
+        reused_engine_version: reusedEngineVersion,
         pending: cachedChecks ? [] : applicableRequirements.map(r => r.id),
         unreadable_documents: unreadableDocuments,
         documents_analyzed: readableDocuments.map(d => d.name),
       };
-      await supabase.from('compliance_assessments').update({
-        requirement_checks: null,
-        analysis_progress: state,
-        status: 'in_progress',
-      }).eq('id', assessmentId);
+      const { error: startError } = await supabase.rpc('start_gap_analysis', {
+        p_assessment_id: assessmentId, p_token: leaseToken, p_state: state, p_checks: cachedChecks || [],
+      });
+      if (startError) throw startError;
     }
 
     // ------------------------------------------------------------
@@ -2838,18 +2845,11 @@ denoServe(protect(async (req) => {
         });
       }
       if (risolti.length > 0) {
-        for (let i = 0; i < risolti.length; i += 100) {
-          const { error } = await supabase.from('assessment_requirement_checks').upsert(
-            risolti.slice(i, i + 100).map(c => ({ assessment_id: assessmentId, requirement_id: c.requirement_id, check_payload: c })),
-            { onConflict: 'assessment_id,requirement_id' },
-          );
-          if (error) throw error;
-        }
         const esclusi = new Set(risolti.map(c => c.requirement_id));
         state.pending = state.pending.filter(id => !esclusi.has(id));
         state.done += risolti.length;
         state.updated_at = new Date().toISOString();
-        await saveState(supabase, assessmentId, state);
+        await saveState(supabase, assessmentId, state, leaseToken, risolti);
         console.log(`🚫 ${risolti.length} requisiti esclusi dalle dichiarazioni di applicabilità, ${state.pending.length} restano da valutare`);
       }
     }
@@ -2968,6 +2968,7 @@ denoServe(protect(async (req) => {
         const groupRequirements = groupIds.map(id => requirementById.get(id)).filter((r): r is RegulatoryRequirement => !!r);
         const tGroup = Date.now();
 
+        let groupChecks: RequirementCheck[] = [];
         if (groupRequirements.length > 0) {
           const keywordInfo = new Map<string, { covered: string[]; ratio: number }>();
           for (const req of groupRequirements) {
@@ -3120,13 +3121,8 @@ denoServe(protect(async (req) => {
             throw new GapAIUnavailable('invalid_response');
           });
 
-          const tStage = Date.now();
-          const { error: stageError } = await supabase.from('assessment_requirement_checks').upsert(
-            newChecks.map(c => ({ assessment_id: assessmentId, requirement_id: c.requirement_id, check_payload: c })),
-            { onConflict: 'assessment_id,requirement_id' },
-          );
-          if (stageError) throw stageError;
-          const stageMs = Date.now() - tStage;
+          groupChecks = newChecks;
+          const stageMs = 0;
           state.done += newChecks.length;
           lastStageMs = stageMs;
           processedInThisRun += newChecks.length;
@@ -3135,7 +3131,7 @@ denoServe(protect(async (req) => {
         state.pending = state.pending.slice(groupIds.length);
         state.updated_at = new Date().toISOString();
         const tSave = Date.now();
-        if (state.pending.length > 0) await saveState(supabase, assessmentId, state);
+        await saveState(supabase, assessmentId, state, leaseToken, groupChecks);
         console.log(`✓ ${groupRequirements.length} requisiti in ${Date.now() - tGroup}ms (salvataggio esiti ${lastStageMs}ms, stato ${Date.now() - tSave}ms) — ${state.done}/${state.total}`);
 
       }
@@ -3144,7 +3140,7 @@ denoServe(protect(async (req) => {
     state.updated_at = new Date().toISOString();
 
     if (state.pending.length > 0) {
-      await saveState(supabase, assessmentId, state);
+      await saveState(supabase, assessmentId, state, leaseToken);
       console.log(`Invocazione conclusa: ${state.done}/${state.total} verificati, ${state.pending.length} rimanenti`);
       return new Response(JSON.stringify({
         success: true,
@@ -3162,7 +3158,7 @@ denoServe(protect(async (req) => {
       .sort((a, b) => `${a.regulation}|${a.reference}`.localeCompare(`${b.regulation}|${b.reference}`));
 
     // Chiudere l'analisi senza esiti produrrebbe "100% di conformità, nessun gap": meglio un errore.
-    if (checks.length === 0) {
+    if (checks.length === 0 || checks.length !== state.total || new Set(checks.map(c => c.requirement_id)).size !== state.total) {
       console.error(`Finalizzazione senza esiti per ${assessmentId}: la tabella di appoggio è vuota`);
       return errorResponse(500, 'Nessun esito disponibile per questa analisi: rilanciarla dall\'inizio');
     }
@@ -3171,15 +3167,7 @@ denoServe(protect(async (req) => {
     // farebbe credere che il motore di oggi li abbia ricalcolati.
     const engineVersion = reusedEngineVersion || CHECKS_VERSION;
 
-    await supabase.from('gap_analysis_cache').upsert({
-      user_id: user.id,
-      cache_key: cacheFingerprint,
-      input_fingerprint: cacheFingerprint,
-      regulations: normalizedRegulations,
-      language: normalizedLanguage,
-      documents_count: normalizedDocuments.length,
-      result_payload: { version: engineVersion, checks, unreadable_documents: unreadableDocuments },
-    }, { onConflict: 'user_id,cache_key' });
+
 
     // Una stessa frase puo' sostenere piu' obblighi: sul fascicolo di prova una riga
     // della procedura diritti reggeva quattro constatazioni diverse. Presentarle come
@@ -3247,6 +3235,7 @@ denoServe(protect(async (req) => {
         ? (isIt ? `Elementi mancanti: ${c.missing_elements.join('; ')}` : `Missing elements: ${c.missing_elements.join('; ')}`)
         : (isIt ? 'Nessuna documentazione pertinente individuata nei documenti caricati.' : 'No relevant documentation found in the uploaded documents.');
       return {
+        id: crypto.randomUUID(),
         assessment_id: assessmentId,
         requirement_reference: c.reference,
         requirement_description: c.description,
@@ -3270,16 +3259,7 @@ denoServe(protect(async (req) => {
       };
     });
 
-    await supabase.from('action_plans').delete().eq('assessment_id', assessmentId);
-    await supabase.from('identified_gaps').delete().eq('assessment_id', assessmentId);
-
-    let insertedGaps: any[] = [];
-    for (let i = 0; i < gapsToInsert.length; i += 25) {
-      const { data, error: gapsError } = await supabase
-        .from('identified_gaps').insert(gapsToInsert.slice(i, i + 25)).select();
-      if (gapsError) throw gapsError;
-      insertedGaps.push(...(data || []));
-    }
+    const insertedGaps = gapsToInsert;
 
     const applicableCount = coveredCount + partialCount + missingCount;
     // Senza nemmeno un requisito valutabile la percentuale non esiste: scriverne una (tanto meno 100)
@@ -3341,55 +3321,23 @@ denoServe(protect(async (req) => {
       checks,
     };
 
-    // Il blob completo viene scritto una sola volta, a fine analisi
-    await supabase.from('compliance_assessments').update({
-      overall_risk_score: overallRisk,
-      overall_compliance_percentage: overallCompliance,
-      requirement_checks: finalState,
-      analysis_progress: { ...state, status: 'completed', done: checks.length, total: checks.length, pending: [], updated_at: new Date().toISOString() },
-      status: 'completed',
-      completed_at: new Date().toISOString(),
-    }).eq('id', assessmentId);
-    await supabase.from('assessment_requirement_checks').delete().eq('assessment_id', assessmentId);
-
-    // Un giro per riga: l'esito di ieri resta accanto a quello di oggi, cosi' il confronto fra
-    // due versioni si legge invece di essere sovrascritto.
-    const { data: ultimoGiro } = await supabase
-      .from('assessment_runs').select('run_number')
-      .eq('assessment_id', assessmentId).order('run_number', { ascending: false }).limit(1).maybeSingle();
-    const { error: runError } = await supabase.from('assessment_runs').insert({
-      assessment_id: assessmentId,
-      user_id: user.id,
-      run_number: (ultimoGiro?.run_number || 0) + 1,
-      engine_version: engineVersion,
-      reused_from_cache: !!reusedEngineVersion,
-      compliance_percentage: overallCompliance,
-      risk_score: overallRisk,
-      counts: finalState.counts,
-      documents: readableDocuments.map(d => d.name),
-      checks,
+    const { error: finalizeError } = await supabase.rpc('finalize_gap_analysis_with_history', {
+      p_assessment_id: assessmentId, p_token: leaseToken, p_final: finalState,
+      p_progress: { ...state, status: 'completed', done: checks.length, pending: [], updated_at: new Date().toISOString() },
+      p_gaps: gapsToInsert, p_risk: overallRisk, p_compliance: overallCompliance,
     });
-    // La cronologia non deve far fallire l'analisi: se la riga non entra, l'esito resta valido.
-    if (runError) console.error('Registrazione del giro non riuscita:', runError.message);
+    if (finalizeError) throw finalizeError;
 
-    const actionPlans = insertedGaps
-      .filter((g: any) => g.priority <= 3)
-      .flatMap((gap: any) => {
-        const actions = Array.isArray(gap.recommended_actions) ? gap.recommended_actions : [];
-        return actions.slice(0, 3).map((action: any) => ({
-          assessment_id: assessmentId,
-          gap_id: gap.id,
-          title: gap.requirement_reference || '',
-          description: action?.action || gap.gap_description,
-          priority: gap.priority,
-          estimated_cost_eur: null,
-          estimated_hours: null,
-          status: 'pending',
-        }));
-      });
-    for (let i = 0; i < actionPlans.length; i += 50) {
-      await supabase.from('action_plans').insert(actionPlans.slice(i, i + 50));
-    }
+    const { error: cacheError } = await supabase.from('gap_analysis_cache').upsert({
+      user_id: user.id,
+      cache_key: cacheFingerprint,
+      input_fingerprint: cacheFingerprint,
+      regulations: normalizedRegulations,
+      language: normalizedLanguage,
+      documents_count: normalizedDocuments.length,
+      result_payload: { version: engineVersion, checks, unreadable_documents: unreadableDocuments },
+    }, { onConflict: 'user_id,cache_key' });
+    if (cacheError) console.warn('Completed analysis was not cached');
 
     console.log(`Finalizzazione in ${Date.now() - tFinal}ms`);
     console.log(`Gap analysis completed: ${insertedGaps.length} gaps (${highCount} high, ${mediumCount} medium, ${lowCount} low), risk=${overallRisk}, compliance=${overallCompliance}%`);
@@ -3432,6 +3380,8 @@ denoServe(protect(async (req) => {
     }
     console.error('Error in gap-analysis function:', error);
     return errorResponse(500, error instanceof Error ? error.message : 'Unknown error occurred');
+  } finally {
+    await releaseLease?.();
   }
 }, false, false));
 

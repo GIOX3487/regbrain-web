@@ -359,3 +359,7 @@ davvero, ma e' datata e visibile invece che silenziosa.
 ### Candidato PR #10 riallineato a PR #24
 
 Versione candidata v27: pausa anche sul rifacimento esplicito, conservazione della cronologia e degli esiti congelati. Il 20 settembre il test completo nello staging riceve ancora 503 dal provider; 12/51 conservati e punteggio finale assente. Rilascio non eseguito: resta da combinare PR #3 e completare il collaudo reale.
+
+### Persistenza v28 nello staging (20 settembre)
+
+Integrata la persistenza della PR #3 con la cronologia recente nella PR #10. Esiti, azioni e cronologia si salvano insieme; il rifacimento preserva lo storico. Staging funzione v8, 37 test passati e prova di rollback sul database reale superata. Gemini restituisce ancora 503 sul benchmark: produzione non aggiornata e accuratezza non misurata. Le altre modifiche qualitative della PR #3 restano da integrare separatamente.
