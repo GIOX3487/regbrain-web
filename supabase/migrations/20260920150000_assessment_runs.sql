@@ -33,3 +33,8 @@ drop policy if exists "Users can insert own assessment runs" on public.assessmen
 create policy "Users can insert own assessment runs"
   on public.assessment_runs for insert
   with check (auth.uid() = user_id);
+
+-- Le policy da sole non bastano: senza i privilegi di tabella la funzione riceve
+-- "permission denied" e il giro non viene registrato. Verificato in produzione.
+grant select, insert on public.assessment_runs to authenticated;
+grant select, insert, update, delete on public.assessment_runs to service_role;
