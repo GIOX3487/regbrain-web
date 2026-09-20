@@ -1927,7 +1927,7 @@ interface RequirementCheck {
   keyword_coverage: number;
 }
 
-const CHECKS_VERSION = 'gap-analysis-v25-ricadute-visibili';
+const CHECKS_VERSION = 'gap-analysis-v26-prove-da-tutti-i-documenti';
 const SEVERITY_RANK: Record<string, number> = { critical: 3, high: 2, medium: 1, low: 0 };
 const RISK_SCORE_MAP: Record<string, number> = { high: 74, medium: 52, low: 28 };
 
@@ -2157,19 +2157,36 @@ function applicabilityVerdict(req: RegulatoryRequirement, profile: Applicability
 
 function profileFactsForPrompt(profile: ApplicabilityProfile | null): string {
   if (!profile?.answers) return '';
-  const labelByKey = new Map(APPLICABILITY_RULES.map(r => [r.key, r.label_it]));
-  const si: string[] = [];
-  const no: string[] = [];
+  // Le etichette delle condizioni GDPR non stanno in APPLICABILITY_RULES, che riguarda solo le
+  // normative decise per espressione regolare: senza questa aggiunta, in un'analisi di solo
+  // GDPR al modello arrivava la sola dimensione dell'organizzazione e nessuna delle risposte
+  // date al questionario, che restavano quindi senza effetto sul giudizio.
+  const labelByKey = new Map<string, string>([
+    ...APPLICABILITY_RULES.map(r => [r.key, r.label_it] as [string, string]),
+    ...Object.values(GDPR_SINGLE_CONDITION).map(c => [c.key, c.label_it] as [string, string]),
+  ]);
+  // Le qualifiche ("fornitore di sistemi di IA") si dicono con "rientrare fra", le condizioni
+  // del GDPR ("trasferimenti fuori dall'Unione europea") con "ricorrere": tenerle separate
+  // evita frasi che il modello fatica a interpretare.
+  const chiaviCondizione = new Set(Object.values(GDPR_SINGLE_CONDITION).map(c => c.key));
+  const ruoliSi: string[] = [];
+  const ruoliNo: string[] = [];
+  const condizioniSi: string[] = [];
+  const condizioniNo: string[] = [];
   for (const [key, value] of Object.entries(profile.answers)) {
     const label = labelByKey.get(key);
     if (!label) continue;
+    const si = chiaviCondizione.has(key) ? condizioniSi : ruoliSi;
+    const no = chiaviCondizione.has(key) ? condizioniNo : ruoliNo;
     if (value === 'si' && !si.includes(label)) si.push(label);
     if (value === 'no' && !no.includes(label)) no.push(label);
   }
   const righe: string[] = [];
   if (profile.size) righe.push(`Dimensione dichiarata: ${profile.size}.`);
-  if (si.length > 0) righe.push(`L'organizzazione ha dichiarato di rientrare fra: ${si.join('; ')}.`);
-  if (no.length > 0) righe.push(`L'organizzazione ha dichiarato di NON rientrare fra: ${no.join('; ')}.`);
+  if (ruoliSi.length > 0) righe.push(`L'organizzazione ha dichiarato di rientrare fra: ${ruoliSi.join('; ')}.`);
+  if (ruoliNo.length > 0) righe.push(`L'organizzazione ha dichiarato di NON rientrare fra: ${ruoliNo.join('; ')}.`);
+  if (condizioniSi.length > 0) righe.push(`L'organizzazione ha dichiarato che queste condizioni ricorrono: ${condizioniSi.join('; ')}.`);
+  if (condizioniNo.length > 0) righe.push(`L'organizzazione ha dichiarato che queste condizioni NON ricorrono: ${condizioniNo.join('; ')}. Per un requisito condizionale che dipende da una di queste condizioni usa "not_applicable", a meno che un estratto mostri chiaramente il contrario: in quel caso spiegalo nel campo "assessment".`);
   if (righe.length === 0) return '';
   return `Dichiarazioni rese dall'organizzazione all'avvio dell'analisi (valgono come i fatti scritti nei documenti, ma riguardano solo l'applicabilità degli obblighi, mai la loro attuazione):\n${righe.join('\n')}`;
 }
@@ -2239,15 +2256,32 @@ function selectEvidenceForRequirement(
     return { docName: s.docName, text: s.text, score: sim + Math.min(0.3, kwHits * 0.08), sim, kwHits };
   });
   scored.sort((a, b) => b.score - a.score);
+  // Solo le sezioni che hanno qualcosa a che vedere con il requisito.
+  const eleggibili = scored.filter(s => s.sim >= 0.25 || s.kwHits > 0);
+
   const picked: Array<{ docName: string; text: string; score: number }> = [];
+  const presiPerDocumento = new Map<string, number>();
+  const gia = new Set<number>();
   let used = 0;
-  for (const s of scored) {
-    if (picked.length >= 10) break;
-    if (s.sim < 0.25 && s.kwHits === 0) continue;
-    if (used + s.text.length > maxChars) continue;
+  const prendi = (i: number, tettoPerDocumento: number, tettoLunghezza = Infinity): void => {
+    if (gia.has(i)) return;
+    const s = eleggibili[i];
+    if (picked.length >= EVIDENCE_MAX_SECTIONS) return;
+    if (s.text.length > tettoLunghezza) return;
+    if ((presiPerDocumento.get(s.docName) || 0) >= tettoPerDocumento) return;
+    if (used + s.text.length > maxChars) return;
     picked.push({ docName: s.docName, text: s.text, score: s.score });
+    presiPerDocumento.set(s.docName, (presiPerDocumento.get(s.docName) || 0) + 1);
     used += s.text.length;
-  }
+    gia.add(i);
+  };
+  // Primo giro: una sola sezione per documento, in ordine di punteggio. Serve a far entrare
+  // ogni documento pertinente prima che il piu' prolisso esaurisca lo spazio disponibile.
+  for (let i = 0; i < eleggibili.length; i++) prendi(i, 1, EVIDENCE_FIRST_PASS_MAX_SECTION);
+  // Secondo giro: lo spazio che resta va alle sezioni migliori, con un tetto per documento.
+  for (let i = 0; i < eleggibili.length; i++) prendi(i, EVIDENCE_MAX_PER_DOC);
+  // Le sezioni tornano in ordine di pertinenza, non nell'ordine in cui sono state scelte.
+  picked.sort((a, b) => b.score - a.score);
   return picked;
 }
 
@@ -2381,8 +2415,21 @@ const MAX_PER_INVOCATION = 108;
 const GROUP_SIZE = 54;
 const LLM_BATCH_SIZE = 3;
 const LLM_CONCURRENCY = 18;
-const EVIDENCE_CHARS = 4200;
+// Quanto testo dei documenti accompagna ogni requisito nella domanda al modello.
+// Su un fascicolo di 17 documenti il tetto precedente di 4200 caratteri bastava per tre o
+// quattro sezioni, e le prendeva tutte il documento piu' denso sul tema: la comunicazione
+// del DPO al Garante o la politica sugli incidenti non entravano mai, e il loro obbligo
+// risultava scoperto pur essendo documentato. Il tetto piu' alto, insieme al limite per
+// documento qui sotto, fa entrare anche i fascicoli brevi.
+const EVIDENCE_CHARS = 9000;
 const SECTION_CHARS = 1100;
+// Quante sezioni al massimo puo' portare uno stesso documento dopo il primo giro di scelta.
+const EVIDENCE_MAX_PER_DOC = 3;
+const EVIDENCE_MAX_SECTIONS = 12;
+// Nel primo giro, quello che deve far entrare piu' documenti possibile, le sezioni molto
+// lunghe restano fuori: una sola da 3500 caratteri toglierebbe il posto a tre documenti
+// interi. Rientrano nel secondo giro, se lo spazio avanza.
+const EVIDENCE_FIRST_PASS_MAX_SECTION = 1500;
 
 // Stato leggero dell'analisi, salvato in compliance_assessments.analysis_progress.
 // Gli esiti dei requisiti stanno in assessment_requirement_checks, una riga ciascuno:
@@ -2989,6 +3036,17 @@ denoServe(protect(async (req) => {
               // altrimenti finisce tra i requisiti da verificare, non tra quelli mancanti.
               if (req.conditional && (status === 'missing' || status === 'partial') && applicability !== 'si') {
                 if (evidence.length === 0 || applicability === 'non_determinabile') status = 'to_verify';
+              }
+              // Condizione dichiarata come non ricorrente e smentita dai documenti. L'esclusione
+              // era stata sospesa perche' i documenti coprivano il tema, e fin qui il requisito
+              // tornava a produrre un gap senza dire che contraddiceva una risposta data
+              // dall'utente: chi ha compilato il questionario deve poter sciogliere il contrasto.
+              const smentitaDaiDocumenti = verdict?.status === 'not_applicable' && verdict.kind === 'condition';
+              if (smentitaDaiDocumenti && (status === 'missing' || status === 'partial')) {
+                status = 'to_verify';
+                assessmentText = `${assessmentText} ${isIt
+                  ? 'All\'avvio dell\'analisi è stato dichiarato che questa condizione non ricorre, ma i documenti caricati ne parlano: confermare quale delle due cose vale prima di trattarlo come un adempimento dovuto.'
+                  : 'At the start of the analysis this condition was declared not to occur, but the uploaded documents discuss it: confirm which of the two holds before treating this as a due obligation.'}`.trim().substring(0, 1200);
               }
               // Su un gap l'utente deve poter vedere perché l'obbligo lo riguarda.
               if (verdict?.status === 'applicable' && (status === 'missing' || status === 'partial')
