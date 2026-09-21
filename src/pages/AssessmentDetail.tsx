@@ -28,6 +28,7 @@ import {
 import { RiskScoreExplanation, RISK_STYLE, riskProfileOf, overallRiskProfile, type RiskProfile } from "@/components/compliance/RiskScoreExplanation";
 import { MetricExplainer, type MetricNumbers } from "@/components/compliance/MetricExplainer";
 import { DocumentConfigDialog, type ConfigDocumentType, type DocumentConfig } from "@/components/DocumentConfigDialog";
+import { FeedbackThumbs, type ExistingFeedback } from "@/components/feedback/FeedbackThumbs";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { format } from 'date-fns';
@@ -189,6 +190,7 @@ export default function AssessmentDetail() {
   const { toast } = useToast();
   const [assessment, setAssessment] = useState<Assessment | null>(null);
   const [gaps, setGaps] = useState<Gap[]>([]);
+  const [myFeedback, setMyFeedback] = useState<Record<string, ExistingFeedback>>({});
   const [actionPlans, setActionPlans] = useState<ActionPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedLanguage, setSelectedLanguage] = useState<'it' | 'en' | 'es' | 'fr' | 'de'>('it');
@@ -292,6 +294,8 @@ export default function AssessmentDetail() {
       statusNotApplicable: 'Non applicabile',
       toVerifyIntro: 'Obblighi che valgono solo in certe situazioni: dai documenti non risulta se ricorrono. Non sono conteggiati come gap, ma vanno chiariti.',
       notAssessedTitle: 'Normative non valutate',
+      feedbackOverall: 'Questa analisi ti è stata utile?',
+      feedbackItem: 'Esito corretto?',
       notAssessedBody: 'Non è stabilito che l\'organizzazione rientri in queste normative, quindi nessun loro obbligo è stato trattato come carenza e nessuno entra nella percentuale di conformità. Per valutarle, avvia una nuova analisi rispondendo alla domanda di ambito.',
       notAssessedCount: (n: number) => n === 1 ? '1 obbligo' : `${n} obblighi`,
       notApplicableIntro: 'Requisiti non applicabili in base a quanto dichiarato nei documenti:',
@@ -390,6 +394,8 @@ export default function AssessmentDetail() {
       statusNotApplicable: 'Not applicable',
       toVerifyIntro: 'Obligations that apply only in certain situations: the documents do not show whether they occur. Not counted as gaps, but to be clarified.',
       notAssessedTitle: 'Regulations not assessed',
+      feedbackOverall: 'Was this analysis useful?',
+      feedbackItem: 'Is this outcome right?',
       notAssessedBody: 'It has not been established that the organisation falls within these regulations, so none of their obligations was treated as a gap and none counts towards the compliance percentage. To assess them, start a new analysis and answer the scope question.',
       notAssessedCount: (n: number) => n === 1 ? '1 requirement' : `${n} requirements`,
       notApplicableIntro: 'Requirements not applicable according to the documents:',
@@ -488,6 +494,8 @@ export default function AssessmentDetail() {
       statusNotApplicable: 'No aplicable',
       toVerifyIntro: 'Obligaciones que solo aplican en ciertas situaciones: los documentos no muestran si se dan. No cuentan como brechas, pero deben aclararse.',
       notAssessedTitle: 'Normativas no evaluadas',
+      feedbackOverall: '¿Te ha resultado útil este análisis?',
+      feedbackItem: '¿Es correcto este resultado?',
       notAssessedBody: 'No se ha establecido que la organización esté dentro del ámbito de estas normativas, por lo que ninguna de sus obligaciones se ha tratado como brecha ni cuenta en el porcentaje de cumplimiento. Para evaluarlas, inicia un nuevo análisis respondiendo a la pregunta de ámbito.',
       notAssessedCount: (n: number) => n === 1 ? '1 requisito' : `${n} requisitos`,
       notApplicableIntro: 'Requisitos no aplicables según los documentos:',
@@ -586,6 +594,8 @@ export default function AssessmentDetail() {
       statusNotApplicable: 'Non applicable',
       toVerifyIntro: 'Obligations qui ne s\'appliquent que dans certaines situations : les documents ne montrent pas si elles se présentent. Non comptées comme écarts, mais à clarifier.',
       notAssessedTitle: 'Réglementations non évaluées',
+      feedbackOverall: 'Cette analyse vous a-t-elle été utile ?',
+      feedbackItem: 'Ce résultat est-il correct ?',
       notAssessedBody: 'Il n\'est pas établi que l\'organisation entre dans le champ de ces réglementations : aucune de leurs obligations n\'a été traitée comme un écart ni comptée dans le pourcentage de conformité. Pour les évaluer, lancez une nouvelle analyse en répondant à la question de champ d\'application.',
       notAssessedCount: (n: number) => n === 1 ? '1 exigence' : `${n} exigences`,
       notApplicableIntro: 'Exigences non applicables selon les documents :',
@@ -684,6 +694,8 @@ export default function AssessmentDetail() {
       statusNotApplicable: 'Nicht anwendbar',
       toVerifyIntro: 'Pflichten, die nur in bestimmten Situationen gelten: aus den Dokumenten geht nicht hervor, ob sie vorliegen. Nicht als Lücken gezählt, aber zu klären.',
       notAssessedTitle: 'Nicht bewertete Regelwerke',
+      feedbackOverall: 'War diese Analyse hilfreich?',
+      feedbackItem: 'Ist dieses Ergebnis richtig?',
       notAssessedBody: 'Es ist nicht festgestellt, dass die Organisation in den Anwendungsbereich dieser Regelwerke fällt: keine ihrer Pflichten wurde als Lücke behandelt oder in den Konformitätsgrad eingerechnet. Um sie zu bewerten, starten Sie eine neue Analyse und beantworten Sie die Frage zum Anwendungsbereich.',
       notAssessedCount: (n: number) => n === 1 ? '1 Anforderung' : `${n} Anforderungen`,
       notApplicableIntro: 'Laut Dokumenten nicht anwendbare Anforderungen:',
@@ -850,6 +862,19 @@ export default function AssessmentDetail() {
 
       if (plansError) throw plansError;
       setActionPlans(plansData || []);
+
+      // Voti già dati da questo utente a questa analisi, per mostrarli al ricaricamento.
+      const { data: { user: me } } = await supabase.auth.getUser();
+      if (me) {
+        const { data: fbData } = await supabase
+          .from('feedback')
+          .select('id, rating, comment, target_key')
+          .eq('assessment_id', id)
+          .eq('author_id', me.id);
+        const byKey: Record<string, ExistingFeedback> = {};
+        (fbData || []).forEach((f) => { byKey[f.target_key] = { id: f.id, rating: f.rating, comment: f.comment }; });
+        setMyFeedback(byKey);
+      }
 
 
     } catch (error) {
@@ -1743,6 +1768,24 @@ export default function AssessmentDetail() {
   };
 
   const checksPayload = (assessment.requirement_checks || null) as RequirementChecksPayload | null;
+  const engineVersion = checksPayload?.version || null;
+  // Pollice su/giù sul singolo esito: la chiave resta stabile finché l'analisi non viene rifatta.
+  const itemFeedback = (key: string, context: Record<string, unknown>) => {
+    const targetKey = `gap:${assessment.id}:${key}`;
+    return (
+      <div className="mt-3 pt-2 border-t border-border/60">
+        <FeedbackThumbs
+          source="gap_item"
+          targetKey={targetKey}
+          assessmentId={assessment.id}
+          initial={myFeedback[targetKey] || null}
+          prompt={t.feedbackItem}
+          language={selectedLanguage}
+          context={{ ...context, assessment_title: assessment.title, engine_version: engineVersion, page: `/compliance/assessment/${assessment.id}` }}
+        />
+      </div>
+    );
+  };
   const checks: RequirementCheck[] = Array.isArray(checksPayload?.checks) ? checksPayload!.checks! : [];
   const coveredChecks = checks.filter(c => c.status === 'covered');
   const toVerifyChecks = checks.filter(c => c.status === 'to_verify');
@@ -2195,6 +2238,16 @@ export default function AssessmentDetail() {
                       </Collapsible>
                     )}
                   </div>
+                  {itemFeedback(`gap:${gap.id}`, {
+                    kind: 'gap',
+                    status: gap.coverage_status || 'missing',
+                    reference: gap.requirement_reference,
+                    description: gap.requirement_description,
+                    risk_level: gap.risk_level,
+                    current_state: gap.current_state,
+                    gap_description: gap.gap_description,
+                    evidence: evidence.slice(0, 3),
+                  })}
                 </CardContent>
               </Card>
               );
@@ -2251,6 +2304,12 @@ export default function AssessmentDetail() {
                     )}
                   </CardContent>
                 )}
+                <CardContent className="pt-0">
+                  {itemFeedback(`req:${c.requirement_id}`, {
+                    kind: 'check', requirement_id: c.requirement_id, regulation: c.regulation, reference: c.reference,
+                    description: c.description, status: c.status, assessment: c.assessment, evidence: (c.evidence || []).slice(0, 3),
+                  })}
+                </CardContent>
               </Card>
             ))}
           </TabsContent>
@@ -2286,15 +2345,19 @@ export default function AssessmentDetail() {
                   )}
                   {c.assessment && <CardDescription className="mt-1">{c.assessment}</CardDescription>}
                 </CardHeader>
-                {c.recommended_actions?.length > 0 && (
-                  <CardContent className="pt-0">
+                <CardContent className="pt-0">
+                  {c.recommended_actions?.length > 0 && (
                     <div className="space-y-2">
                       {c.recommended_actions.map((a, i) => (
                         <div key={i} className="bg-muted p-3 rounded-lg text-sm">{a}</div>
                       ))}
                     </div>
-                  </CardContent>
-                )}
+                  )}
+                  {itemFeedback(`req:${c.requirement_id}`, {
+                    kind: 'check', requirement_id: c.requirement_id, regulation: c.regulation, reference: c.reference,
+                    description: c.description, status: c.status, assessment: c.assessment, applicability_note: c.applicability_note ?? null,
+                  })}
+                </CardContent>
               </Card>
             ))}
           </TabsContent>
@@ -2475,6 +2538,30 @@ export default function AssessmentDetail() {
             </Card>
           </TabsContent>
         </Tabs>
+        {assessment.status === 'completed' && (
+          <Card className="mt-6">
+            <CardContent className="py-4">
+              <FeedbackThumbs
+                source="gap_analysis"
+                targetKey={`gap:${assessment.id}:overall`}
+                assessmentId={assessment.id}
+                initial={myFeedback[`gap:${assessment.id}:overall`] || null}
+                prompt={t.feedbackOverall}
+                language={selectedLanguage}
+                context={{
+                  assessment_title: assessment.title,
+                  regulations: assessment.scope_regulations,
+                  compliance: assessment.overall_compliance_percentage,
+                  risk_score: assessment.overall_risk_score,
+                  counts: checksPayload?.counts ?? null,
+                  gaps: gaps.length,
+                  engine_version: engineVersion,
+                  page: `/compliance/assessment/${assessment.id}`,
+                }}
+              />
+            </CardContent>
+          </Card>
+        )}
         <DocumentConfigDialog
           open={configDialogOpen}
           onOpenChange={setConfigDialogOpen}

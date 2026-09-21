@@ -382,3 +382,15 @@ bozze di DPIA, registro dei trattamenti, LIA e analisi dei rischi, citazioni rit
 parola, referto datato ed esportabile. Tolte le affermazioni su quattro agenti, monitoraggio continuo,
 audit trail immutabile e documenti pronti all'audit. Titolo, profili d'uso e motto descrivono ancora
 il prodotto previsto (SITE-08).
+
+## Console di amministrazione e feedback degli utenti, 21 settembre
+
+Esiste `/admin`, riservata al ruolo admin: indicatori, feedback, attività in diretta (realtime),
+errori delle funzioni edge (ogni risposta 4xx/5xx tranne 401), chat, gap analysis e utenti di tutta
+la piattaforma. Chat e gap analysis hanno pollici su e giù con commento facoltativo (risposta della
+chat, singolo esito, analisi intera), salvati in `feedback` con l'istantanea di ciò che l'utente ha
+visto; il registro eventi è `app_events`, conservato 90 giorni. Entrambe usano `author_id`/`actor_id`
+per sopravvivere alla pulizia delle demo. Il ruolo admin si ottiene solo con email confermata presente
+in `admin_allowlist` (oggi `cecchinoxsempre@gmail.com`); nessun account di Matteo esisteva il
+21 settembre, quindi va creato registrandosi. L'informativa privacy non dice ancora che il team legge
+conversazioni e feedback.
