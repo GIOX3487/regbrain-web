@@ -69,6 +69,13 @@ interface RequirementCheck {
   recommended_actions: string[];
   confidence: number | null;
   method: string;
+  scope_undetermined?: boolean;
+}
+
+interface RegulationNotAssessed {
+  regulation: string;
+  count: number;
+  reason: string;
 }
 
 interface RequirementChecksPayload {
@@ -81,9 +88,11 @@ interface RequirementChecksPayload {
   unreadable_documents?: string[];
   documents_analyzed?: string[];
   counts?: Record<string, number>;
+  regulations_not_assessed?: RegulationNotAssessed[];
   coverage_basis?: {
     evaluated: number;
     to_verify: number;
+    not_assessed?: number;
     not_applicable: number;
     evaluated_share: number;
     reliable: boolean;
@@ -285,6 +294,9 @@ export default function AssessmentDetail() {
       statusToVerify: 'Da verificare',
       statusNotApplicable: 'Non applicabile',
       toVerifyIntro: 'Obblighi che valgono solo in certe situazioni: dai documenti non risulta se ricorrono. Non sono conteggiati come gap, ma vanno chiariti.',
+      notAssessedTitle: 'Normative non valutate',
+      notAssessedBody: 'Non è stabilito che l\'organizzazione rientri in queste normative, quindi nessun loro obbligo è stato trattato come carenza e nessuno entra nella percentuale di conformità. Per valutarle, avvia una nuova analisi rispondendo alla domanda di ambito.',
+      notAssessedCount: (n: number) => n === 1 ? '1 obbligo' : `${n} obblighi`,
       notApplicableIntro: 'Requisiti non applicabili in base a quanto dichiarato nei documenti:',
       noCovered: 'Nessun requisito risulta documentato in modo completo.',
       noToVerify: 'Nessun requisito da verificare.',
@@ -384,6 +396,9 @@ export default function AssessmentDetail() {
       statusToVerify: 'To verify',
       statusNotApplicable: 'Not applicable',
       toVerifyIntro: 'Obligations that apply only in certain situations: the documents do not show whether they occur. Not counted as gaps, but to be clarified.',
+      notAssessedTitle: 'Regulations not assessed',
+      notAssessedBody: 'It has not been established that the organisation falls within these regulations, so none of their obligations was treated as a gap and none counts towards the compliance percentage. To assess them, start a new analysis and answer the scope question.',
+      notAssessedCount: (n: number) => n === 1 ? '1 requirement' : `${n} requirements`,
       notApplicableIntro: 'Requirements not applicable according to the documents:',
       noCovered: 'No requirement is fully documented.',
       noToVerify: 'Nothing to verify.',
@@ -483,6 +498,9 @@ export default function AssessmentDetail() {
       statusToVerify: 'Por verificar',
       statusNotApplicable: 'No aplicable',
       toVerifyIntro: 'Obligaciones que solo aplican en ciertas situaciones: los documentos no muestran si se dan. No cuentan como brechas, pero deben aclararse.',
+      notAssessedTitle: 'Normativas no evaluadas',
+      notAssessedBody: 'No se ha establecido que la organización esté dentro del ámbito de estas normativas, por lo que ninguna de sus obligaciones se ha tratado como brecha ni cuenta en el porcentaje de cumplimiento. Para evaluarlas, inicia un nuevo análisis respondiendo a la pregunta de ámbito.',
+      notAssessedCount: (n: number) => n === 1 ? '1 requisito' : `${n} requisitos`,
       notApplicableIntro: 'Requisitos no aplicables según los documentos:',
       noCovered: 'Ningún requisito está documentado por completo.',
       noToVerify: 'Nada por verificar.',
@@ -582,6 +600,9 @@ export default function AssessmentDetail() {
       statusToVerify: 'À vérifier',
       statusNotApplicable: 'Non applicable',
       toVerifyIntro: 'Obligations qui ne s\'appliquent que dans certaines situations : les documents ne montrent pas si elles se présentent. Non comptées comme écarts, mais à clarifier.',
+      notAssessedTitle: 'Réglementations non évaluées',
+      notAssessedBody: 'Il n\'est pas établi que l\'organisation entre dans le champ de ces réglementations : aucune de leurs obligations n\'a été traitée comme un écart ni comptée dans le pourcentage de conformité. Pour les évaluer, lancez une nouvelle analyse en répondant à la question de champ d\'application.',
+      notAssessedCount: (n: number) => n === 1 ? '1 exigence' : `${n} exigences`,
       notApplicableIntro: 'Exigences non applicables selon les documents :',
       noCovered: 'Aucune exigence n\'est entièrement documentée.',
       noToVerify: 'Rien à vérifier.',
@@ -681,6 +702,9 @@ export default function AssessmentDetail() {
       statusToVerify: 'Zu prüfen',
       statusNotApplicable: 'Nicht anwendbar',
       toVerifyIntro: 'Pflichten, die nur in bestimmten Situationen gelten: aus den Dokumenten geht nicht hervor, ob sie vorliegen. Nicht als Lücken gezählt, aber zu klären.',
+      notAssessedTitle: 'Nicht bewertete Regelwerke',
+      notAssessedBody: 'Es ist nicht festgestellt, dass die Organisation in den Anwendungsbereich dieser Regelwerke fällt: keine ihrer Pflichten wurde als Lücke behandelt oder in den Konformitätsgrad eingerechnet. Um sie zu bewerten, starten Sie eine neue Analyse und beantworten Sie die Frage zum Anwendungsbereich.',
+      notAssessedCount: (n: number) => n === 1 ? '1 Anforderung' : `${n} Anforderungen`,
       notApplicableIntro: 'Laut Dokumenten nicht anwendbare Anforderungen:',
       noCovered: 'Keine Anforderung ist vollständig dokumentiert.',
       noToVerify: 'Nichts zu prüfen.',
@@ -1233,7 +1257,9 @@ export default function AssessmentDetail() {
         ? ((assessment.requirement_checks as RequirementChecksPayload).checks as RequirementCheck[])
         : [];
       const pdfCovered = pdfChecks.filter(c => c.status === 'covered');
-      const pdfToVerify = pdfChecks.filter(c => c.status === 'to_verify');
+      const pdfToVerify = pdfChecks.filter(c => c.status === 'to_verify' && !c.scope_undetermined);
+      const pdfNotAssessedCount = pdfChecks.filter(c => c.scope_undetermined).length;
+      const pdfAssessedCount = pdfChecks.length - pdfNotAssessedCount;
       const pdfNotApplicable = pdfChecks.filter(c => c.status === 'not_applicable');
       const pdfUnreadable: string[] = (assessment.requirement_checks as RequirementChecksPayload | null)?.unreadable_documents || [];
       const pdfBasis = (assessment.requirement_checks as RequirementChecksPayload | null)?.coverage_basis || null;
@@ -1242,6 +1268,15 @@ export default function AssessmentDetail() {
         : '';
       const pdfBasisEn = pdfBasis
         ? ` The percentage is computed on ${pdfBasis.evaluated} requirements actually assessed${pdfBasis.to_verify > 0 ? `, while ${pdfBasis.to_verify} remain to be verified because it was not possible to establish whether the applicability conditions apply` : ''}.${!pdfBasis.reliable ? ' On this basis the percentage is not representative of overall compliance.' : ''}${!pdfBasis.declarations_provided ? ' The applicability questionnaire was not completed.' : ''}`
+        : '';
+      // Le normative selezionate ma non valutate vanno dichiarate anche nel PDF: chi legge il
+      // referto stampato deve sapere che la percentuale non le comprende e perche'.
+      const pdfNotAssessed = (assessment.requirement_checks as RequirementChecksPayload | null)?.regulations_not_assessed || [];
+      const pdfNotAssessedIt = pdfNotAssessed.length > 0
+        ? ` Normative non valutate: ${pdfNotAssessed.map(r => r.regulation).join(', ')}. Non è stabilito che l'organizzazione vi rientri, quindi nessun loro obbligo è trattato come carenza né entra nella percentuale.`
+        : '';
+      const pdfNotAssessedEn = pdfNotAssessed.length > 0
+        ? ` Regulations not assessed: ${pdfNotAssessed.map(r => r.regulation).join(', ')}. It has not been established that the organisation falls within them, so none of their obligations is treated as a gap or counted in the percentage.`
         : '';
       const highGaps = gaps.filter(g => riskProfileOf(g.risk_level) === 'high').length;
       const mediumGaps = gaps.filter(g => riskProfileOf(g.risk_level) === 'medium').length;
@@ -1257,7 +1292,7 @@ export default function AssessmentDetail() {
       doc.text(`• ${t.identifiedGaps}: ${gaps.length}`, 25, yPos);
       yPos += 8;
       if (pdfChecks.length > 0) {
-        doc.text(`• ${uiT.requirementsChecked}: ${pdfChecks.length} (${uiT.documentedCount.replace('{n}', String(pdfCovered.length))}${pdfToVerify.length > 0 ? `, ${uiT.toVerifyCount.replace('{n}', String(pdfToVerify.length))}` : ''})`, 25, yPos);
+        doc.text(`• ${uiT.requirementsChecked}: ${pdfAssessedCount} (${uiT.documentedCount.replace('{n}', String(pdfCovered.length))}${pdfToVerify.length > 0 ? `, ${uiT.toVerifyCount.replace('{n}', String(pdfToVerify.length))}` : ''})`, 25, yPos);
         yPos += 8;
       }
       doc.text(`• ${t.actionsInPlan}: ${actionPlans.length}`, 25, yPos);
@@ -1278,12 +1313,12 @@ export default function AssessmentDetail() {
         (assessment.overall_compliance_percentage || 0) >= 40 ? (selectedLanguage === 'it' ? 'insufficiente' : 'insufficient') : (selectedLanguage === 'it' ? 'critico' : 'critical');
       
       const checksSentenceIt = pdfChecks.length > 0
-        ? ` Sono stati verificati ${pdfChecks.length} requisiti: ${pdfCovered.length} risultano documentati, ${gaps.length} presentano lacune${pdfToVerify.length > 0 ? `, ${pdfToVerify.length} richiedono una verifica sull'applicabilità` : ''}${pdfNotApplicable.length > 0 ? `, ${pdfNotApplicable.length} non sono applicabili` : ''}.` : '';
+        ? ` Sono stati verificati ${pdfAssessedCount} requisiti: ${pdfCovered.length} risultano documentati, ${gaps.length} presentano lacune${pdfToVerify.length > 0 ? `, ${pdfToVerify.length} richiedono una verifica sull'applicabilità` : ''}${pdfNotApplicable.length > 0 ? `, ${pdfNotApplicable.length} non sono applicabili` : ''}.${pdfNotAssessedCount > 0 ? ` Altri ${pdfNotAssessedCount} appartengono a normative non valutate.` : ''}` : '';
       const checksSentenceEn = pdfChecks.length > 0
-        ? ` ${pdfChecks.length} requirements were checked: ${pdfCovered.length} are documented, ${gaps.length} show gaps${pdfToVerify.length > 0 ? `, ${pdfToVerify.length} need an applicability check` : ''}${pdfNotApplicable.length > 0 ? `, ${pdfNotApplicable.length} are not applicable` : ''}.` : '';
+        ? ` ${pdfAssessedCount} requirements were checked: ${pdfCovered.length} are documented, ${gaps.length} show gaps${pdfToVerify.length > 0 ? `, ${pdfToVerify.length} need an applicability check` : ''}${pdfNotApplicable.length > 0 ? `, ${pdfNotApplicable.length} are not applicable` : ''}.${pdfNotAssessedCount > 0 ? ` A further ${pdfNotAssessedCount} belong to regulations not assessed.` : ''}` : '';
       const summaryText = selectedLanguage === 'it' 
-        ? `L'analisi ha confrontato la documentazione caricata con i requisiti di ${assessment.scope_regulations?.join(', ') || 'le normative selezionate'}.${checksSentenceIt} Il livello di conformità documentale è del ${assessment.overall_compliance_percentage ?? 0}% (${complianceLevel}) e il profilo di rischio complessivo è ${pdfProfileLabel[pdfProfile].toLowerCase()} (${riskCountsText}).${pdfBasisIt} Il piano d'azione elenca, per ciascun gap, le azioni per colmarlo. L'analisi valuta ciò che risulta dai documenti, non l'effettiva applicazione delle misure, e non sostituisce il parere di un legale o del DPO.${pdfUnreadable.length > 0 ? ` Documenti esclusi perché non leggibili: ${pdfUnreadable.join(', ')}.` : ''}`
-        : `The analysis compared the uploaded documentation with the requirements of ${assessment.scope_regulations?.join(', ') || 'the selected regulations'}.${checksSentenceEn} Documentary compliance is ${assessment.overall_compliance_percentage ?? 0}% (${complianceLevel}) and the overall risk profile is ${pdfProfileLabel[pdfProfile].toLowerCase()} (${riskCountsText}).${pdfBasisEn} The action plan lists, for each gap, the actions to close it. The analysis assesses what the documents show, not the actual application of measures, and does not replace legal or DPO advice.${pdfUnreadable.length > 0 ? ` Documents excluded as unreadable: ${pdfUnreadable.join(', ')}.` : ''}`;
+        ? `L'analisi ha confrontato la documentazione caricata con i requisiti di ${assessment.scope_regulations?.join(', ') || 'le normative selezionate'}.${checksSentenceIt} Il livello di conformità documentale è del ${assessment.overall_compliance_percentage ?? 0}% (${complianceLevel}) e il profilo di rischio complessivo è ${pdfProfileLabel[pdfProfile].toLowerCase()} (${riskCountsText}).${pdfBasisIt}${pdfNotAssessedIt} Il piano d'azione elenca, per ciascun gap, le azioni per colmarlo. L'analisi valuta ciò che risulta dai documenti, non l'effettiva applicazione delle misure, e non sostituisce il parere di un legale o del DPO.${pdfUnreadable.length > 0 ? ` Documenti esclusi perché non leggibili: ${pdfUnreadable.join(', ')}.` : ''}`
+        : `The analysis compared the uploaded documentation with the requirements of ${assessment.scope_regulations?.join(', ') || 'the selected regulations'}.${checksSentenceEn} Documentary compliance is ${assessment.overall_compliance_percentage ?? 0}% (${complianceLevel}) and the overall risk profile is ${pdfProfileLabel[pdfProfile].toLowerCase()} (${riskCountsText}).${pdfBasisEn}${pdfNotAssessedEn} The action plan lists, for each gap, the actions to close it. The analysis assesses what the documents show, not the actual application of measures, and does not replace legal or DPO advice.${pdfUnreadable.length > 0 ? ` Documents excluded as unreadable: ${pdfUnreadable.join(', ')}.` : ''}`;
       
       doc.setFontSize(9);
       doc.setFont('helvetica', 'normal');
@@ -1787,6 +1822,16 @@ export default function AssessmentDetail() {
   const checks: RequirementCheck[] = Array.isArray(checksPayload?.checks) ? checksPayload!.checks! : [];
   const coveredChecks = checks.filter(c => c.status === 'covered');
   const toVerifyChecks = checks.filter(c => c.status === 'to_verify');
+  // Obblighi di normative con ambito non stabilito: si mostrano raggruppati per normativa e non
+  // rientrano nella base di calcolo, a differenza dei "da verificare" ordinari.
+  const notAssessedChecks = toVerifyChecks.filter(c => c.scope_undetermined);
+  const ordinaryToVerifyChecks = toVerifyChecks.filter(c => !c.scope_undetermined);
+  const regulationsNotAssessed: RegulationNotAssessed[] = checksPayload?.regulations_not_assessed
+    || Array.from(notAssessedChecks.reduce((m, c) => {
+      const e = m.get(c.regulation) || { regulation: c.regulation, count: 0, reason: c.assessment };
+      e.count++;
+      return m.set(c.regulation, e);
+    }, new Map<string, RegulationNotAssessed>()).values());
   const notApplicableChecks = checks.filter(c => c.status === 'not_applicable');
   const coverageBasis = checksPayload?.coverage_basis || null;
   const evaluationQuality = checksPayload?.evaluation_quality || null;
@@ -1806,7 +1851,7 @@ export default function AssessmentDetail() {
     covered: coveredChecks.length,
     partial: partialChecks,
     missing: missingChecks,
-    toVerify: toVerifyChecks.length,
+    toVerify: ordinaryToVerifyChecks.length,
     notApplicable: notApplicableChecks.length,
     evaluated: evaluatedCount,
     total: checks.length,
@@ -1918,6 +1963,28 @@ export default function AssessmentDetail() {
             onRerun={rerunAnalysis}
             rerunning={rerunning}
           />
+        )}
+
+        {assessment.status === 'completed' && regulationsNotAssessed.length > 0 && (
+          <Card className="mb-6 border-amber-500/40">
+            <CardContent className="p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <Info className="h-4 w-4 text-amber-600 shrink-0" />
+                <p className="text-sm font-medium">
+                  {t.notAssessedTitle}: {regulationsNotAssessed.map(r => r.regulation).join(', ')}
+                </p>
+              </div>
+              <p className="text-xs text-muted-foreground">{t.notAssessedBody}</p>
+              <ul className="space-y-1">
+                {regulationsNotAssessed.map(r => (
+                  <li key={r.regulation} className="text-xs border-l-2 border-amber-500/40 pl-2">
+                    <span className="font-medium">{r.regulation}</span>
+                    <span className="text-muted-foreground"> ({t.notAssessedCount(r.count)}). {r.reason}</span>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
         )}
 
         {/* KPIs */}
@@ -2274,13 +2341,22 @@ export default function AssessmentDetail() {
           </TabsContent>
 
           <TabsContent value="verify" className="space-y-3">
-            {toVerifyChecks.length > 0 && (
+            {regulationsNotAssessed.map(r => (
+              <div key={r.regulation} className="rounded-md border border-amber-500/40 p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="secondary">{t.notAssessedTitle}</Badge>
+                  <span className="text-sm font-medium">{r.regulation}: {t.notAssessedCount(r.count)}</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">{r.reason}</p>
+              </div>
+            ))}
+            {ordinaryToVerifyChecks.length > 0 && (
               <p className="text-sm text-muted-foreground">{t.toVerifyIntro}</p>
             )}
             {toVerifyChecks.length === 0 && (
               <Card><CardContent className="py-8 text-center text-muted-foreground">{t.noToVerify}</CardContent></Card>
             )}
-            {toVerifyChecks.map((c) => (
+            {ordinaryToVerifyChecks.map((c) => (
               <Card key={c.requirement_id} className="border-l-4 border-l-slate-400">
                 <CardHeader className="pb-3">
                   <div className="flex flex-wrap items-center gap-2 mb-1">
