@@ -31,6 +31,14 @@ export interface ApplicabilityQuestion {
   /** Tutte le chiavi toccate da questa domanda. */
   keys: string[];
   choices: ApplicabilityChoice[];
+  /**
+   * Domanda di ambito: decide se l'intera normativa riguarda l'organizzazione. E' obbligatoria,
+   * perche' senza risposta la normativa non puo' essere valutata (il motore la segna come non
+   * valutata invece di presumere che si applichi). "Non lo so" e' una risposta ammessa.
+   * Le chiavi devono coprire quelle di REGULATION_GATES in
+   * supabase/functions/_shared/regulation-scope.ts: lo verifica deployment/regulation-scope.test.mjs.
+   */
+  scope?: boolean;
 }
 
 export const ORG_SIZES = [
@@ -96,6 +104,7 @@ export const APPLICABILITY_QUESTIONS: ApplicabilityQuestion[] = [
   },
   {
     id: "ai_role",
+    scope: true,
     regulation: "AI Act",
     question: "Che ruolo avete rispetto ai sistemi di intelligenza artificiale?",
     help: "Fornitore: sviluppate un sistema o lo immettete sul mercato con il vostro nome. Deployer: usate un sistema sviluppato da altri nella vostra attività.",
@@ -126,6 +135,7 @@ export const APPLICABILITY_QUESTIONS: ApplicabilityQuestion[] = [
   },
   {
     id: "cra_role",
+    scope: true,
     regulation: "CRA",
     question: "Che ruolo avete rispetto ai prodotti con elementi digitali?",
     help: "Prodotti con elementi digitali: software e hardware connessi immessi sul mercato dell'Unione, compresi i componenti venduti separatamente.",
@@ -141,6 +151,7 @@ export const APPLICABILITY_QUESTIONS: ApplicabilityQuestion[] = [
   },
   {
     id: "da_role",
+    scope: true,
     regulation: "Data Act",
     question: "Che ruolo avete rispetto ai dati generati da prodotti e servizi?",
     help: "Titolare dei dati: mettete a disposizione dati generati dall'uso di un prodotto connesso o di un servizio correlato.",
@@ -156,6 +167,7 @@ export const APPLICABILITY_QUESTIONS: ApplicabilityQuestion[] = [
   },
   {
     id: "dora_subject",
+    scope: true,
     regulation: "DORA",
     question: "La vostra organizzazione è un'entità finanziaria ai sensi di DORA?",
     help: "Entità finanziarie: banche, assicurazioni, SIM, SGR, istituti di pagamento, di moneta elettronica, gestori di cripto-attività e altri soggetti elencati all'articolo 2 del regolamento.",
@@ -171,6 +183,7 @@ export const APPLICABILITY_QUESTIONS: ApplicabilityQuestion[] = [
   },
   {
     id: "nis2_subject",
+    scope: true,
     regulation: "NIS2",
     question: "Come siete classificati ai fini NIS2?",
     help: "La classificazione dipende dal settore e dalla dimensione, ed è quella risultante dalla registrazione presso l'ACN.",
@@ -223,4 +236,15 @@ export function countAnswered(
   selections: Record<string, number[]>,
 ): number {
   return questions.filter(q => (selections[q.id] || []).length > 0).length;
+}
+
+/**
+ * Domande di ambito ancora senza risposta: finche' ce n'e' una, l'analisi non parte.
+ * "Non lo so" conta come risposta.
+ */
+export function unansweredScopeQuestions(
+  questions: ApplicabilityQuestion[],
+  selections: Record<string, number[]>,
+): ApplicabilityQuestion[] {
+  return questions.filter(q => q.scope && (selections[q.id] || []).length === 0);
 }

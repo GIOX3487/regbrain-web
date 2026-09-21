@@ -16,6 +16,7 @@ import {
   questionsForRegulations,
   buildAnswers,
   countAnswered,
+  unansweredScopeQuestions,
 } from "@/lib/applicability-questions";
 
 const AVAILABLE_REGULATIONS = [
@@ -54,6 +55,10 @@ export default function NewAssessment() {
   const [orgSize, setOrgSize] = useState('');
   const applicabilityQuestions = questionsForRegulations(formData.scope_regulations);
   const answeredCount = countAnswered(applicabilityQuestions, applicability);
+  // Le domande di ambito decidono se un'intera normativa riguarda l'organizzazione: senza
+  // risposta l'analisi non parte. "Non lo so" e' ammesso e porta la normativa fra le non valutate.
+  const missingScope = unansweredScopeQuestions(applicabilityQuestions, applicability);
+  const scopeComplete = missingScope.length === 0;
 
   const MAX_FILES = 30;
   const MAX_CHARS_PER_FILE = 40000;
@@ -155,6 +160,14 @@ export default function NewAssessment() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!scopeComplete) {
+      toast({
+        title: "Mancano domande obbligatorie",
+        description: `Rispondi a: ${missingScope.map(q => q.regulation).join(', ')}. Se non conosci la risposta, scegli "Non lo so".`,
+        variant: "destructive",
+      });
+      return;
+    }
     setLoading(true);
     let createdAssessmentId: string | null = null;
 
@@ -516,29 +529,37 @@ export default function NewAssessment() {
               {formData.scope_regulations.length > 0 && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <Label>Applicabilità degli obblighi (facoltativo)</Label>
+                    <Label>Applicabilità degli obblighi</Label>
                     <span className="text-xs text-muted-foreground">
                       {answeredCount} di {applicabilityQuestions.length} risposte
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Molti obblighi si applicano solo a certi soggetti: un fornitore di sistemi di IA, un
-                    fabbricante, un'entità finanziaria. Nessun documento aziendale lo dichiara, quindi senza
-                    queste risposte l'analisi può solo segnalarli come da verificare. Rispondendo, gli obblighi
-                    che non vi riguardano vengono esclusi e quelli che vi riguardano diventano gap veri.
-                    Puoi saltare: l'analisi verificherà tutto, con una nota nel report.
+                    Nessun documento aziendale dice se l'organizzazione è un'entità finanziaria, un
+                    fabbricante o un fornitore di sistemi di IA: lo dite voi, qui. Il GDPR riguarda tutti;
+                    DORA, NIS2, CRA, AI Act e Data Act riguardano solo certe categorie di soggetti, e la
+                    domanda che lo stabilisce è obbligatoria. Se non conoscete la risposta scegliete
+                    "Non lo so": quella normativa comparirà nel referto come non valutata, senza carenze
+                    attribuite. Le altre domande sono facoltative e servono a escludere i singoli obblighi
+                    che non vi riguardano.
                   </p>
 
-                  {answeredCount < applicabilityQuestions.length && (
+                  {!scopeComplete && (
                     <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400">
-                      <strong>{applicabilityQuestions.length - answeredCount} domande senza risposta.</strong>{' '}
-                      Gli obblighi che dipendono da quelle condizioni finiranno fra i "da verificare" e resteranno
+                      <strong>
+                        {missingScope.length === 1 ? 'Manca una risposta obbligatoria' : `Mancano ${missingScope.length} risposte obbligatorie`}:
+                      </strong>{' '}
+                      {missingScope.map(q => q.regulation).join(', ')}. Senza sapere se l'organizzazione
+                      rientra in queste normative, l'analisi non può dire se ne rispetta gli obblighi.
+                    </div>
+                  )}
+                  {scopeComplete && answeredCount < applicabilityQuestions.length && (
+                    <div className="rounded-md border p-3 text-xs text-muted-foreground">
+                      {applicabilityQuestions.length - answeredCount === 1
+                        ? 'Una domanda facoltativa senza risposta'
+                        : `${applicabilityQuestions.length - answeredCount} domande facoltative senza risposta`}
+                      : gli obblighi che dipendono da quelle condizioni resteranno fra i "da verificare",
                       fuori dal calcolo della conformità.
-                      {formData.scope_regulations.some(r => r !== 'GDPR') && (
-                        <> Su normative diverse dal GDPR l'effetto è marcato: in una prova interna,
-                        lasciando senza risposta le due domande sull'AI Act, 64 obblighi su 70 sono rimasti
-                        da verificare e la percentuale di conformità è stata calcolata su quattro soli obblighi.</>
-                      )}
                     </div>
                   )}
 
@@ -569,6 +590,15 @@ export default function NewAssessment() {
                               {question.regulation && (
                                 <span className="ml-2 text-xs font-normal text-muted-foreground">
                                   {question.regulation}
+                                </span>
+                              )}
+                              {question.scope && (
+                                <span
+                                  className={`ml-2 text-xs font-normal ${
+                                    picked.length === 0 ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'
+                                  }`}
+                                >
+                                  obbligatoria
                                 </span>
                               )}
                             </p>
@@ -752,7 +782,7 @@ export default function NewAssessment() {
                 type="submit" 
                 className="w-full" 
                 size="lg"
-                disabled={loading || uploadedFiles.length === 0 || formData.scope_regulations.length === 0}
+                disabled={loading || uploadedFiles.length === 0 || formData.scope_regulations.length === 0 || !scopeComplete}
               >
                 {loading ? (
                   <>
@@ -766,6 +796,11 @@ export default function NewAssessment() {
               {formData.scope_regulations.length === 0 && (
                 <p className="text-sm text-destructive text-center">
                   Seleziona almeno una normativa per procedere
+                </p>
+              )}
+              {formData.scope_regulations.length > 0 && !scopeComplete && (
+                <p className="text-sm text-amber-700 dark:text-amber-400 text-center">
+                  Rispondi alle domande obbligatorie su {missingScope.map(q => q.regulation).join(', ')} per avviare l'analisi
                 </p>
               )}
             </form>

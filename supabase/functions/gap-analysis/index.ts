@@ -1,5 +1,6 @@
 import { protect } from '../_shared/access.ts';
 import { aiFetch as fetch, getAIKey, getAIModel } from '../_shared/ai.ts';
+import { regulationScope } from '../_shared/regulation-scope.ts';
 import { serve as denoServe } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.75.0";
 
@@ -1925,9 +1926,22 @@ interface RequirementCheck {
   applicability?: string | null;
   method: 'llm_evidence' | 'keyword' | 'semantic';
   keyword_coverage: number;
+  // La normativa a cui appartiene l'obbligo non e' stata valutata perche' non e' stabilito che
+  // l'organizzazione rientri nel suo ambito (vedi regulationScope): l'obbligo e' "da verificare"
+  // per questo motivo e non per una condizione sua, e resta fuori dalla base di calcolo.
+  scope_undetermined?: boolean;
 }
 
-const CHECKS_VERSION = 'gap-analysis-v26-prove-da-tutti-i-documenti';
+const CHECKS_VERSION = 'gap-analysis-v27-ambito-normative-settoriali';
+// Versione minima di un risultato salvato perche' possa essere riusato su un'analisi nuova.
+// Si alza solo con le correzioni che cambiano la correttezza degli esiti, non con le altre:
+// la v27 smette di produrre gap sulle normative settoriali il cui ambito non e' stabilito.
+const MIN_REUSABLE_ENGINE_VERSION = 27;
+
+function engineVersionNumber(version: unknown): number | null {
+  const m = /-v(\d+)-/.exec(String(version || ''));
+  return m ? Number(m[1]) : null;
+}
 const SEVERITY_RANK: Record<string, number> = { critical: 3, high: 2, medium: 1, low: 0 };
 const RISK_SCORE_MAP: Record<string, number> = { high: 74, medium: 52, low: 28 };
 
@@ -2064,39 +2078,30 @@ function gdprArticleNumber(reference: string): string | null {
   return m ? m[1] : null;
 }
 
-// Alcune normative si rivolgono per intero a una categoria di soggetti: se l'organizzazione
-// dichiara di non rientrarvi, non ha senso cercare gap nei loro obblighi, nemmeno in quelli
-// che il catalogo non marca come condizionali. Il GDPR non ha una porta d'ingresso di questo
-// tipo: riguarda chiunque tratti dati personali.
-const REGULATION_GATES: Array<{ regulation: string; keys: string[]; label_it: string }> = [
-  { regulation: 'AI Act', keys: ['ai_provider', 'ai_deployer', 'ai_importer_distributor'], label_it: 'alcun ruolo rispetto ai sistemi di intelligenza artificiale (né fornitore, né deployer, né importatore o distributore)' },
-  { regulation: 'CRA', keys: ['cra_manufacturer', 'cra_importer_distributor', 'cra_open_source'], label_it: 'alcun ruolo rispetto ai prodotti con elementi digitali (né fabbricante, né importatore o distributore, né gestore di software open source)' },
-  { regulation: 'Data Act', keys: ['da_data_holder', 'da_cloud_provider', 'da_recipient'], label_it: 'alcun ruolo rispetto ai dati generati da prodotti connessi e servizi di trattamento dati' },
-  { regulation: 'DORA', keys: ['dora_financial_entity', 'dora_ctpp'], label_it: 'la qualifica di entità finanziaria né quella di fornitore di servizi TIC per entità finanziarie' },
-  { regulation: 'NIS2', keys: ['nis2_entity', 'nis2_digital_provider'], label_it: 'la qualifica di soggetto essenziale o importante ai fini NIS2' },
-];
-
-function regulationGateExcludes(regulation: string, profile: ApplicabilityProfile | null): string | null {
-  if (!profile?.answers) return null;
-  const gate = REGULATION_GATES.find(g => g.regulation.toLowerCase() === regulation.toLowerCase());
-  if (!gate) return null;
-  const declared = gate.keys.filter(k => k in profile.answers!);
-  if (declared.length === 0) return null;
-  if (!declared.every(k => profile.answers![k] === 'no')) return null;
-  return `L'intero regolamento non si applica in base a quanto dichiarato all'avvio dell'analisi: l'organizzazione ha dichiarato di non avere ${gate.label_it}.`;
-}
+// L'ambito soggettivo delle normative settoriali (DORA, NIS2, CRA, AI Act, Data Act) e' deciso
+// da regulationScope in ../_shared/regulation-scope.ts: esclusa se l'organizzazione ha dichiarato
+// di non rientrarvi, valutata se ha dichiarato di rientrarvi, "non determinata" in ogni altro
+// caso. Una normativa con ambito non determinato non produce gap.
 
 interface ApplicabilityVerdict {
   status: 'applicable' | 'not_applicable' | 'unknown';
   reason_it: string;
-  // 'gate': l'intera normativa non riguarda questo soggetto; 'condition': singola condizione.
+  reason_en?: string;
+  // 'gate': riguarda l'intera normativa; 'condition': una singola condizione dell'obbligo.
   kind?: 'gate' | 'condition';
 }
 
 function applicabilityVerdict(req: RegulatoryRequirement, profile: ApplicabilityProfile | null): ApplicabilityVerdict | null {
+  // L'ambito della normativa viene prima di tutto e vale anche senza questionario: se non e'
+  // stabilito che l'organizzazione vi rientri, nessuno dei suoi obblighi puo' diventare un gap.
+  const scope = regulationScope(req.regulation, profile?.answers);
+  if (scope.status === 'out_of_scope') {
+    return { status: 'not_applicable', reason_it: scope.reason_it, reason_en: scope.reason_en, kind: 'gate' };
+  }
+  if (scope.status === 'undetermined') {
+    return { status: 'unknown', reason_it: scope.reason_it, reason_en: scope.reason_en, kind: 'gate' };
+  }
   if (!profile?.answers) return null;
-  const gateReason = regulationGateExcludes(req.regulation, profile);
-  if (gateReason) return { status: 'not_applicable', reason_it: gateReason, kind: 'gate' };
   if (!req.conditional) return null;
   // Si guarda SOLO la nota di applicabilità, mai la descrizione dell'obbligo: la descrizione
   // nomina spesso un tema senza dipenderne (il registro dell'articolo 30 cita i trasferimenti
@@ -2725,7 +2730,16 @@ denoServe(protect(async (req) => {
       const { data: cachedResult } = isRerun ? { data: null } : await supabase
         .from('gap_analysis_cache').select('result_payload')
         .eq('user_id', user.id).eq('cache_key', cacheFingerprint).maybeSingle();
-      const salvate = Array.isArray(cachedResult?.result_payload?.checks)
+      // Il riuso ignora la versione del motore, con un'eccezione: i risultati prodotti prima di
+      // una correzione di correttezza non si riusano per analisi nuove, altrimenti un errore gia'
+      // corretto continuerebbe a comparire a chi carica gli stessi documenti. Le analisi gia'
+      // concluse restano comunque intatte: il congelamento non passa da qui.
+      const versioneSalvata = engineVersionNumber(cachedResult?.result_payload?.version);
+      const riusabile = versioneSalvata !== null && versioneSalvata >= MIN_REUSABLE_ENGINE_VERSION;
+      if (cachedResult && !riusabile) {
+        console.log(`↻ risultato salvato scartato: prodotto dal motore ${cachedResult?.result_payload?.version || 'sconosciuto'}, precedente all'ultima correzione di correttezza`);
+      }
+      const salvate = riusabile && Array.isArray(cachedResult?.result_payload?.checks)
         ? cachedResult!.result_payload.checks as RequirementCheck[]
         : null;
       const stessoCatalogo = !!salvate && (() => {
@@ -2797,14 +2811,42 @@ denoServe(protect(async (req) => {
       }
     }
 
-    // Obblighi esclusi dalle dichiarazioni rese all'avvio: si risolvono senza leggere i documenti
-    // e senza interrogare il modello, quindi escono subito dalla coda.
-    if (state.pending.length > 0 && applicabilityProfile?.answers) {
+    // Obblighi risolti dalle sole dichiarazioni: escono dalla coda senza leggere i documenti e
+    // senza interrogare il modello. Vale anche quando il questionario non e' stato compilato,
+    // perche' in quel caso le normative settoriali hanno ambito non determinato.
+    if (state.pending.length > 0) {
       const risolti: RequirementCheck[] = [];
       for (const id of state.pending) {
         const req = requirementById.get(id);
         if (!req) continue;
         const verdict = applicabilityVerdict(req, applicabilityProfile);
+        // Ambito della normativa non determinato: nessuna valutazione sulle prove, perche' senza
+        // sapere se l'organizzazione vi rientra ogni carenza trovata sarebbe una carenza falsa.
+        if (verdict?.kind === 'gate' && verdict.status === 'unknown') {
+          risolti.push({
+            requirement_id: req.id,
+            regulation: req.regulation,
+            reference: req.reference,
+            description: isIt ? req.description_it : req.description_en,
+            severity: req.risk_level,
+            remediation_effort: req.remediation_effort,
+            conditional: !!req.conditional,
+            applicability_note: req.applicability_note_it || null,
+            status: 'to_verify',
+            risk_level: null,
+            assessment: isIt ? verdict.reason_it : (verdict.reason_en || verdict.reason_it),
+            evidence: [],
+            missing_elements: [],
+            improvement_suggestions: [],
+            recommended_actions: [],
+            confidence: null,
+            applicability: 'non_determinabile',
+            method: 'llm_evidence',
+            keyword_coverage: 0,
+            scope_undetermined: true,
+          });
+          continue;
+        }
         if (verdict?.status !== 'not_applicable') continue;
         // Rete di sicurezza: se i documenti parlano diffusamente di questo requisito, escluderlo
         // in base a una dichiarazione sarebbe un errore piuttosto che una semplificazione.
@@ -2852,7 +2894,8 @@ denoServe(protect(async (req) => {
         state.done += risolti.length;
         state.updated_at = new Date().toISOString();
         await saveState(supabase, assessmentId, state);
-        console.log(`🚫 ${risolti.length} requisiti esclusi dalle dichiarazioni di applicabilità, ${state.pending.length} restano da valutare`);
+        const nonDeterminati = risolti.filter(c => c.scope_undetermined).length;
+        console.log(`🚫 ${risolti.length - nonDeterminati} requisiti esclusi dalle dichiarazioni, ${nonDeterminati} con ambito della normativa non determinato, ${state.pending.length} restano da valutare`);
       }
     }
 
@@ -3262,6 +3305,21 @@ denoServe(protect(async (req) => {
     const partialCount = checks.filter(c => c.status === 'partial').length;
     const missingCount = checks.filter(c => c.status === 'missing').length;
     const toVerifyCount = checks.filter(c => c.status === 'to_verify').length;
+    // Obblighi di normative il cui ambito non e' stabilito: non sono dubbi su un singolo obbligo
+    // ma una normativa intera non ancora valutata, quindi vengono contati a parte. Mescolarli ai
+    // "da verificare" farebbe dichiarare poco affidabile una percentuale che sulle normative
+    // valutate lo e', solo perche' l'utente ha selezionato anche normative che non lo riguardano.
+    const notAssessedChecks = checks.filter(c => c.scope_undetermined);
+    const ordinaryToVerifyCount = toVerifyCount - notAssessedChecks.length;
+    const notAssessedByRegulation = new Map<string, { regulation: string; count: number; reason: string }>();
+    for (const c of notAssessedChecks) {
+      const entry = notAssessedByRegulation.get(c.regulation)
+        || { regulation: c.regulation, count: 0, reason: c.assessment };
+      entry.count++;
+      notAssessedByRegulation.set(c.regulation, entry);
+    }
+    const regulationsNotAssessed = [...notAssessedByRegulation.values()]
+      .sort((a, b) => a.regulation.localeCompare(b.regulation));
     const notApplicableCount = checks.filter(c => c.status === 'not_applicable').length;
     const keywordCount = checks.filter(c => c.method === 'keyword').length;
     const aiCount = checks.filter(c => c.method === 'llm_evidence').length;
@@ -3369,20 +3427,23 @@ denoServe(protect(async (req) => {
       total: checks.length,
       unreadable_documents: unreadableDocuments,
       documents_analyzed: readableDocuments.map(d => d.name),
-      counts: { covered: coveredCount, partial: partialCount, missing: missingCount, to_verify: toVerifyCount, not_applicable: notApplicableCount },
+      counts: { covered: coveredCount, partial: partialCount, missing: missingCount, to_verify: toVerifyCount, not_applicable: notApplicableCount, not_assessed: notAssessedChecks.length },
+      // Normative selezionate ma non valutate, con il motivo: il referto deve dirlo in chiaro.
+      regulations_not_assessed: regulationsNotAssessed,
       // Su quanti obblighi poggia davvero la percentuale. Senza questo dato una conformita'
       // calcolata su 4 obblighi su 74 si legge come un punteggio, e non lo e'.
       coverage_basis: {
         evaluated: applicableCount,
-        to_verify: toVerifyCount,
+        to_verify: ordinaryToVerifyCount,
+        not_assessed: notAssessedChecks.length,
         not_applicable: notApplicableCount,
         // quota di obblighi che riguardano l'organizzazione e che siamo riusciti a valutare
-        evaluated_share: applicableCount + toVerifyCount === 0
+        evaluated_share: applicableCount + ordinaryToVerifyCount === 0
           ? 1
-          : Math.round((applicableCount / (applicableCount + toVerifyCount)) * 100) / 100,
-        reliable: applicableCount + toVerifyCount === 0
+          : Math.round((applicableCount / (applicableCount + ordinaryToVerifyCount)) * 100) / 100,
+        reliable: applicableCount + ordinaryToVerifyCount === 0
           ? true
-          : applicableCount / (applicableCount + toVerifyCount) >= 0.4,
+          : applicableCount / (applicableCount + ordinaryToVerifyCount) >= 0.4,
         declarations_provided: !!(applicabilityProfile?.answers && Object.keys(applicabilityProfile.answers).length > 0),
       },
       // Quando una chiamata AI non riesce, il requisito ricade sulla verifica a parole chiave:
@@ -3467,6 +3528,8 @@ denoServe(protect(async (req) => {
         missing: missingCount,
         to_verify: toVerifyCount,
         not_applicable: notApplicableCount,
+        not_assessed: notAssessedChecks.length,
+        regulations_not_assessed: regulationsNotAssessed,
         regulations_breakdown: normalizedRegulations.map(reg => ({
           regulation: reg,
           analyzed: checks.filter(c => c.regulation.toLowerCase() === reg.toLowerCase()).length,
