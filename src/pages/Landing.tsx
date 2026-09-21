@@ -172,8 +172,9 @@ const Landing = () => {
           <div className="text-center space-y-4 mb-12 sm:mb-16">
             <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold">Cosa fa RegBrain</h2>
             <p className="text-lg sm:text-xl text-muted-foreground max-w-3xl mx-auto">
-              Quattro agenti specializzati coprono il ciclo della compliance. Il responsabile interviene
-              solo dove serve il giudizio e chiude con la firma.
+              Legge la documentazione privacy e sicurezza di un'organizzazione, la confronta obbligo per
+              obbligo con le norme che la riguardano e ti dice dove è in regola, dove no e perché. Ogni
+              conclusione arriva con la sua prova; il giudizio finale e la firma restano tuoi.
             </p>
           </div>
 
@@ -184,8 +185,9 @@ const Landing = () => {
               </div>
               <h3 className="text-xl sm:text-2xl font-semibold">Capisce cosa ti si applica</h3>
               <p className="text-muted-foreground">
-                Dal profilo dell'organizzazione agli obblighi reali: GDPR, NIS2, DORA, AI Act, CRA e Data Act
-                qualificati sul tuo perimetro, non in generale.
+                Il GDPR riguarda tutti; DORA, NIS2, CRA, AI Act e Data Act solo certi soggetti. Poche domande
+                sul tuo ruolo decidono quali dei 254 obblighi del catalogo entrano nell'analisi: quello che non
+                ti riguarda non diventa una carenza.
               </p>
             </div>
 
@@ -193,10 +195,11 @@ const Landing = () => {
               <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary to-primary-glow flex items-center justify-center">
                 <FileText className="w-6 h-6 text-white" />
               </div>
-              <h3 className="text-xl sm:text-2xl font-semibold">Fa il lavoro</h3>
+              <h3 className="text-xl sm:text-2xl font-semibold">Trova le lacune</h3>
               <p className="text-muted-foreground">
-                Confronta i tuoi documenti con gli obblighi, redige DPIA, RoPA e LIA pronte all'audit
-                con citazione alla fonte, e sorveglia in continuo cosa cambia.
+                Confronta i documenti caricati con ogni obbligo applicabile: documentato, parziale, mancante o
+                da verificare, con le carenze elencate e le azioni per colmarle. Dall'analisi prepara le bozze
+                di DPIA, registro dei trattamenti, LIA e analisi dei rischi.
               </p>
             </div>
 
@@ -206,8 +209,9 @@ const Landing = () => {
               </div>
               <h3 className="text-xl sm:text-2xl font-semibold">Ti dà la prova</h3>
               <p className="text-muted-foreground">
-                Ogni azione dell'agente e ogni decisione umana finiscono in un audit trail immutabile:
-                la catena di evidenza che serve in ispezione.
+                Quando un obbligo risulta coperto, il referto mostra il passaggio esatto che lo prova,
+                ritrovato parola per parola nel file caricato; quando manca, dice che cosa manca. Il referto
+                è datato, non cambia quando lo riapri e si esporta in PDF.
               </p>
             </div>
           </div>
@@ -443,7 +447,7 @@ const Landing = () => {
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Prima, oggi</p>
               <div className="space-y-3">
                 <p className="text-muted-foreground">Ogni DPIA, RoPA e LIA redatta da zero, a mano</p>
-                <p className="text-muted-foreground">Aggiornamenti normativi inseguiti a colpi di newsletter e circolari</p>
+                <p className="text-muted-foreground">Giorni per leggere il fascicolo di un cliente e capire dove manca qualcosa</p>
                 <p className="text-muted-foreground">Nessuna prova strutturata della due diligence in caso di ispezione</p>
                 <p className="text-muted-foreground">
                   Il professionista è limitato dalle sue ore, l'azienda dalla consulenza che può permettersi
@@ -456,15 +460,15 @@ const Landing = () => {
               <div className="space-y-3">
                 <div className="flex gap-3">
                   <CheckCircle2 className="w-5 h-5 text-primary shrink-0 mt-0.5" />
-                  <p className="text-foreground">Documenti generati pronti all'audit, con citazioni alle fonti ufficiali</p>
+                  <p className="text-foreground">Ogni obbligo confrontato con i documenti, con il passaggio esatto che lo prova</p>
                 </div>
                 <div className="flex gap-3">
                   <CheckCircle2 className="w-5 h-5 text-primary shrink-0 mt-0.5" />
-                  <p className="text-foreground">Monitoraggio continuo, già qualificato sul profilo dell'organizzazione</p>
+                  <p className="text-foreground">Bozze di DPIA, registro dei trattamenti e LIA preparate dall'analisi, da rivedere e firmare</p>
                 </div>
                 <div className="flex gap-3">
                   <CheckCircle2 className="w-5 h-5 text-primary shrink-0 mt-0.5" />
-                  <p className="text-foreground">Audit trail immutabile: la catena di evidenza è la prova della due diligence</p>
+                  <p className="text-foreground">Un referto datato ed esportabile, che documenta la verifica fatta e su quali documenti</p>
                 </div>
                 <div className="flex gap-3">
                   <CheckCircle2 className="w-5 h-5 text-primary shrink-0 mt-0.5" />

@@ -373,3 +373,12 @@ analisi fatte con una versione precedente e pulsante per ripeterle. Il server co
 le analisi concluse, a riusare i risultati per documenti identici e a registrare ogni giro in
 `assessment_runs`; il rifacimento resta disponibile solo come chiamata con `rerun: true`, senza
 un punto di accesso nell'interfaccia.
+
+## Homepage: cosa fa RegBrain oggi, 21 settembre
+
+La sezione "Cosa fa RegBrain" e il riquadro "Con RegBrain" descrivono ora solo funzioni esistenti e
+verificate sul codice: ambito degli obblighi dal questionario, esiti per obbligo con carenze e azioni,
+bozze di DPIA, registro dei trattamenti, LIA e analisi dei rischi, citazioni ritrovate parola per
+parola, referto datato ed esportabile. Tolte le affermazioni su quattro agenti, monitoraggio continuo,
+audit trail immutabile e documenti pronti all'audit. Titolo, profili d'uso e motto descrivono ancora
+il prodotto previsto (SITE-08).
