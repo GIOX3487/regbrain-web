@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronDown, History, RefreshCw, AlertTriangle } from "lucide-react";
-import { GAP_ANALYSIS_ENGINE_VERSION, engineVersionLabel } from "@/lib/engine-version";
+import { GAP_ANALYSIS_ENGINE_VERSION } from "@/lib/engine-version";
 
 export type CheckStatus = 'covered' | 'partial' | 'missing' | 'to_verify' | 'not_applicable';
 
@@ -19,68 +19,58 @@ export interface AnalysisRun {
 
 const T = {
   it: {
-    version: 'Versione',
-    of: 'del',
-    producedBy: 'motore',
-    frozen: 'Gli esiti di questa analisi non cambiano piu\': riaprendola si ritrovano sempre questi.',
-    outdated: 'Questa analisi e\' stata prodotta con una versione precedente del motore. Resta valida e non viene toccata: se vuoi vedere cosa cambierebbe oggi, rifalla.',
-    rerun: 'Rifai l\'analisi',
-    rerunning: 'Rifacimento in corso...',
-    compare: (n: number) => n === 1 ? '1 obbligo cambiato rispetto alla versione precedente' : `${n} obblighi cambiati rispetto alla versione precedente`,
-    noChanges: 'Nessun obbligo ha cambiato esito rispetto alla versione precedente.',
-    complianceMoved: 'Conformita\'',
+    outdatedTitle: 'Analisi eseguita con una versione precedente del sistema',
+    outdatedBody: 'Gli esiti restano quelli consegnati. Per vedere il risultato con la versione attuale puoi ripetere l\'analisi sugli stessi documenti: la versione precedente resta consultabile.',
+    rerun: 'Ripeti l\'analisi',
+    rerunning: 'Analisi in corso...',
+    updated: (quando: string, prima: string) => `Analisi aggiornata il ${quando}, rispetto a quella del ${prima}`,
+    changed: (n: number) => n === 1 ? '1 obbligo ha cambiato esito' : `${n} obblighi hanno cambiato esito`,
+    noChanges: 'Nessun obbligo ha cambiato esito',
+    compliance: 'Conformità',
     statuses: { covered: 'documentato', partial: 'parziale', missing: 'mancante', to_verify: 'da verificare', not_applicable: 'non applicabile' } as Record<CheckStatus, string>,
   },
   en: {
-    version: 'Version',
-    of: 'of',
-    producedBy: 'engine',
-    frozen: 'The results of this analysis no longer change: reopening it always shows these.',
-    outdated: 'This analysis was produced with an earlier version of the engine. It stays valid and untouched: to see what would change today, run it again.',
-    rerun: 'Run the analysis again',
-    rerunning: 'Running again...',
-    compare: (n: number) => n === 1 ? '1 requirement changed from the previous version' : `${n} requirements changed from the previous version`,
-    noChanges: 'No requirement changed status from the previous version.',
-    complianceMoved: 'Compliance',
+    outdatedTitle: 'Analysis run with an earlier version of the system',
+    outdatedBody: 'The results stay as delivered. To see the outcome with the current version you can repeat the analysis on the same documents: the earlier version remains available.',
+    rerun: 'Repeat the analysis',
+    rerunning: 'Analysis in progress...',
+    updated: (quando: string, prima: string) => `Analysis updated on ${quando}, compared with the one of ${prima}`,
+    changed: (n: number) => n === 1 ? '1 requirement changed outcome' : `${n} requirements changed outcome`,
+    noChanges: 'No requirement changed outcome',
+    compliance: 'Compliance',
     statuses: { covered: 'documented', partial: 'partial', missing: 'missing', to_verify: 'to verify', not_applicable: 'not applicable' } as Record<CheckStatus, string>,
   },
   es: {
-    version: 'Versión',
-    of: 'del',
-    producedBy: 'motor',
-    frozen: 'Los resultados de este análisis ya no cambian: al reabrirlo se encuentran siempre estos.',
-    outdated: 'Este análisis se produjo con una versión anterior del motor. Sigue siendo válido y no se toca: para ver qué cambiaría hoy, vuelve a ejecutarlo.',
+    outdatedTitle: 'Análisis realizado con una versión anterior del sistema',
+    outdatedBody: 'Los resultados siguen siendo los entregados. Para ver el resultado con la versión actual puedes repetir el análisis sobre los mismos documentos: la versión anterior sigue disponible.',
     rerun: 'Repetir el análisis',
-    rerunning: 'Repitiendo...',
-    compare: (n: number) => n === 1 ? '1 requisito cambiado respecto a la versión anterior' : `${n} requisitos cambiados respecto a la versión anterior`,
-    noChanges: 'Ningún requisito ha cambiado de estado respecto a la versión anterior.',
-    complianceMoved: 'Cumplimiento',
+    rerunning: 'Análisis en curso...',
+    updated: (quando: string, prima: string) => `Análisis actualizado el ${quando}, respecto al del ${prima}`,
+    changed: (n: number) => n === 1 ? '1 requisito cambió de resultado' : `${n} requisitos cambiaron de resultado`,
+    noChanges: 'Ningún requisito cambió de resultado',
+    compliance: 'Cumplimiento',
     statuses: { covered: 'documentado', partial: 'parcial', missing: 'ausente', to_verify: 'por verificar', not_applicable: 'no aplicable' } as Record<CheckStatus, string>,
   },
   fr: {
-    version: 'Version',
-    of: 'du',
-    producedBy: 'moteur',
-    frozen: 'Les résultats de cette analyse ne changent plus : en la rouvrant on retrouve toujours ceux-ci.',
-    outdated: 'Cette analyse a été produite avec une version antérieure du moteur. Elle reste valable et intacte : pour voir ce qui changerait aujourd\'hui, relancez-la.',
-    rerun: 'Relancer l\'analyse',
-    rerunning: 'Relance en cours...',
-    compare: (n: number) => n === 1 ? '1 exigence modifiée par rapport à la version précédente' : `${n} exigences modifiées par rapport à la version précédente`,
-    noChanges: 'Aucune exigence n\'a changé de statut par rapport à la version précédente.',
-    complianceMoved: 'Conformité',
+    outdatedTitle: 'Analyse réalisée avec une version antérieure du système',
+    outdatedBody: 'Les résultats restent ceux qui ont été livrés. Pour voir le résultat avec la version actuelle, vous pouvez répéter l\'analyse sur les mêmes documents : la version antérieure reste consultable.',
+    rerun: 'Répéter l\'analyse',
+    rerunning: 'Analyse en cours...',
+    updated: (quando: string, prima: string) => `Analyse mise à jour le ${quando}, par rapport à celle du ${prima}`,
+    changed: (n: number) => n === 1 ? '1 exigence a changé de résultat' : `${n} exigences ont changé de résultat`,
+    noChanges: 'Aucune exigence n\'a changé de résultat',
+    compliance: 'Conformité',
     statuses: { covered: 'documentée', partial: 'partielle', missing: 'absente', to_verify: 'à vérifier', not_applicable: 'non applicable' } as Record<CheckStatus, string>,
   },
   de: {
-    version: 'Version',
-    of: 'vom',
-    producedBy: 'Engine',
-    frozen: 'Die Ergebnisse dieser Analyse ändern sich nicht mehr: beim erneuten Öffnen erscheinen immer diese.',
-    outdated: 'Diese Analyse wurde mit einer früheren Version der Engine erstellt. Sie bleibt gültig und unverändert: um zu sehen, was sich heute ändern würde, erneut ausführen.',
-    rerun: 'Analyse erneut ausführen',
-    rerunning: 'Wird erneut ausgeführt...',
-    compare: (n: number) => n === 1 ? '1 Anforderung gegenüber der vorherigen Version geändert' : `${n} Anforderungen gegenüber der vorherigen Version geändert`,
-    noChanges: 'Keine Anforderung hat sich gegenüber der vorherigen Version geändert.',
-    complianceMoved: 'Konformität',
+    outdatedTitle: 'Analyse mit einer früheren Version des Systems durchgeführt',
+    outdatedBody: 'Die Ergebnisse bleiben wie ausgeliefert. Um das Ergebnis mit der aktuellen Version zu sehen, können Sie die Analyse mit denselben Dokumenten wiederholen: die frühere Version bleibt einsehbar.',
+    rerun: 'Analyse wiederholen',
+    rerunning: 'Analyse läuft...',
+    updated: (quando: string, prima: string) => `Analyse aktualisiert am ${quando}, im Vergleich zu der vom ${prima}`,
+    changed: (n: number) => n === 1 ? '1 Anforderung hat ihr Ergebnis geändert' : `${n} Anforderungen haben ihr Ergebnis geändert`,
+    noChanges: 'Keine Anforderung hat ihr Ergebnis geändert',
+    compliance: 'Konformität',
     statuses: { covered: 'dokumentiert', partial: 'teilweise', missing: 'fehlend', to_verify: 'zu prüfen', not_applicable: 'nicht anwendbar' } as Record<CheckStatus, string>,
   },
 } as const;
@@ -95,9 +85,12 @@ interface Props {
 }
 
 /**
- * Un'analisi conclusa e' un documento datato. Questo riquadro dice di quale versione si sta
- * guardando l'esito, se e' stata prodotta da un motore precedente, e cosa e' cambiato rispetto
- * alla versione prima. Il rifacimento resta un'azione dell'utente: nulla viene ricalcolato da solo.
+ * Compare solo quando ha qualcosa da dire al lettore del referto:
+ *  - l'analisi e' stata prodotta da una versione precedente del sistema, e allora si offre di
+ *    ripeterla senza farlo da sola;
+ *  - esiste una versione precedente dell'analisi, e allora si mostra cosa e' cambiato.
+ * Nel caso comune, una sola analisi fatta con il sistema attuale, non mostra nulla: numero di
+ * versione e sigla del motore sono dati interni che a un DPO non servono.
  */
 export function AnalysisVersions({ runs, language, onRerun, rerunning }: Props) {
   const t = T[language] || T.it;
@@ -119,58 +112,52 @@ export function AnalysisVersions({ runs, language, onRerun, rerunning }: Props) 
   }, [ultima, precedente]);
 
   if (!ultima) return null;
-
   const vecchia = ultima.engine_version !== GAP_ANALYSIS_ENGINE_VERSION;
-  const data = new Date(ultima.created_at).toLocaleDateString(LOCALE[language] || 'it-IT');
-  const deltaConformita = ultima.compliance_percentage !== null && precedente?.compliance_percentage != null
+  if (!vecchia && !precedente) return null;
+
+  const fmt = (d: string) => new Date(d).toLocaleDateString(LOCALE[language] || 'it-IT');
+  const deltaConformita = precedente && ultima.compliance_percentage !== null && precedente.compliance_percentage !== null
     ? Math.round(ultima.compliance_percentage) - Math.round(precedente.compliance_percentage)
     : null;
 
   return (
     <Card className={`mb-6 ${vecchia ? 'border-amber-500/50' : ''}`}>
       <CardContent className="p-4 space-y-3">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <History className="h-4 w-4 text-muted-foreground shrink-0" />
-          <span className="text-sm font-medium">
-            {t.version} {ultima.run_number} {t.of} {data}
-          </span>
-          <span className="text-xs text-muted-foreground">
-            {t.producedBy} {engineVersionLabel(ultima.engine_version)}
-          </span>
-          {deltaConformita !== null && (
-            <span className="text-xs text-muted-foreground">
-              {t.complianceMoved} {Math.round(precedente!.compliance_percentage!)}%{' '}
-              &rarr; {Math.round(ultima.compliance_percentage!)}%
-              {deltaConformita !== 0 && ` (${deltaConformita > 0 ? '+' : ''}${deltaConformita})`}
-            </span>
-          )}
-          <Button
-            size="sm"
-            variant={vecchia ? 'default' : 'outline'}
-            className="ml-auto"
-            onClick={onRerun}
-            disabled={rerunning}
-          >
-            <RefreshCw className={`mr-2 h-3 w-3 ${rerunning ? 'animate-spin' : ''}`} />
-            {rerunning ? t.rerunning : t.rerun}
-          </Button>
-        </div>
-
-        <p className="text-xs text-muted-foreground flex items-start gap-2">
-          {vecchia && <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />}
-          <span>{vecchia ? t.outdated : t.frozen}</span>
-        </p>
+        {vecchia && (
+          <div className="flex flex-wrap items-start gap-3">
+            <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-[16rem] space-y-1">
+              <p className="text-sm font-medium">{t.outdatedTitle}</p>
+              <p className="text-xs text-muted-foreground">{t.outdatedBody}</p>
+            </div>
+            <Button size="sm" onClick={onRerun} disabled={rerunning}>
+              <RefreshCw className={`mr-2 h-3 w-3 ${rerunning ? 'animate-spin' : ''}`} />
+              {rerunning ? t.rerunning : t.rerun}
+            </Button>
+          </div>
+        )}
 
         {precedente && (
           <Collapsible open={open} onOpenChange={setOpen}>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <History className="h-4 w-4 text-muted-foreground shrink-0" />
+              <span className="text-sm">{t.updated(fmt(ultima.created_at), fmt(precedente.created_at))}</span>
+              {deltaConformita !== null && deltaConformita !== 0 && (
+                <span className="text-xs text-muted-foreground">
+                  {t.compliance} {Math.round(precedente.compliance_percentage!)}% &rarr; {Math.round(ultima.compliance_percentage!)}%
+                </span>
+              )}
+            </div>
             <CollapsibleTrigger asChild>
-              <button className="flex items-center gap-1.5 text-xs font-medium hover:underline">
-                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
-                {cambiati.length === 0 ? t.noChanges : t.compare(cambiati.length)}
+              <button className="mt-1 ml-7 flex items-center gap-1.5 text-xs font-medium hover:underline">
+                {cambiati.length > 0 && (
+                  <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
+                )}
+                {cambiati.length === 0 ? t.noChanges : t.changed(cambiati.length)}
               </button>
             </CollapsibleTrigger>
-            <CollapsibleContent className="pt-2">
-              {cambiati.length > 0 && (
+            {cambiati.length > 0 && (
+              <CollapsibleContent className="pt-2 ml-7">
                 <ul className="space-y-1 text-xs">
                   {cambiati.map(c => (
                     <li key={c.id} className="flex flex-wrap gap-x-2 border-l-2 border-muted pl-2 py-0.5">
@@ -181,8 +168,8 @@ export function AnalysisVersions({ runs, language, onRerun, rerunning }: Props) 
                     </li>
                   ))}
                 </ul>
-              )}
-            </CollapsibleContent>
+              </CollapsibleContent>
+            )}
           </Collapsible>
         )}
       </CardContent>
