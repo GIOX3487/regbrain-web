@@ -40,6 +40,7 @@ import LoadAlbanianDPL from "./pages/LoadAlbanianDPL";
 import UploadISO27001Files from "./pages/UploadISO27001Files";
 import VerifyKnowledgeBase from "./pages/VerifyKnowledgeBase";
 import RagQuality from "./pages/RagQuality";
+import AdminDashboard from "./pages/AdminDashboard";
 import DocumentViewer from "./pages/DocumentViewer";
 import Gamification from "./pages/Gamification";
 import ManageRequirements from "./pages/ManageRequirements";
@@ -70,6 +71,7 @@ const App = () => (
             <Route path="/chat" element={<Chat />} />
             <Route path="/documents" element={<Documents />} />
             <Route path="/audit" element={<Audit />} />
+            <Route path="/admin" element={<AdminDashboard />} />
             <Route path="/admin/load-documents" element={<DocumentLoader />} />
             <Route path="/admin/manage-regulations" element={<ManageRegulations />} />
             <Route path="/admin/batch-upload" element={<BatchUpload />} />

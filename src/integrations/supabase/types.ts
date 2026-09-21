@@ -134,6 +134,21 @@ export type Database = {
           },
         ]
       }
+      admin_allowlist: {
+        Row: {
+          created_at: string
+          email: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+        }
+        Relationships: []
+      }
       ai_models: {
         Row: {
           created_at: string
@@ -213,6 +228,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      app_events: {
+        Row: {
+          actor_email: string | null
+          actor_id: string | null
+          created_at: string
+          details: Json
+          id: number
+          is_demo: boolean
+          kind: string
+          level: string
+          message: string
+        }
+        Insert: {
+          actor_email?: string | null
+          actor_id?: string | null
+          created_at?: string
+          details?: Json
+          id?: number
+          is_demo?: boolean
+          kind: string
+          level?: string
+          message: string
+        }
+        Update: {
+          actor_email?: string | null
+          actor_id?: string | null
+          created_at?: string
+          details?: Json
+          id?: number
+          is_demo?: boolean
+          kind?: string
+          level?: string
+          message?: string
+        }
+        Relationships: []
       }
       assessment_benchmarks: {
         Row: {
@@ -740,6 +791,72 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      feedback: {
+        Row: {
+          assessment_id: string | null
+          author_email: string | null
+          author_id: string | null
+          comment: string | null
+          context: Json
+          created_at: string
+          id: string
+          is_demo: boolean
+          query_log_id: string | null
+          rating: number
+          seen_at: string | null
+          source: string
+          target_key: string
+          updated_at: string
+        }
+        Insert: {
+          assessment_id?: string | null
+          author_email?: string | null
+          author_id?: string | null
+          comment?: string | null
+          context?: Json
+          created_at?: string
+          id?: string
+          is_demo?: boolean
+          query_log_id?: string | null
+          rating: number
+          seen_at?: string | null
+          source: string
+          target_key: string
+          updated_at?: string
+        }
+        Update: {
+          assessment_id?: string | null
+          author_email?: string | null
+          author_id?: string | null
+          comment?: string | null
+          context?: Json
+          created_at?: string
+          id?: string
+          is_demo?: boolean
+          query_log_id?: string | null
+          rating?: number
+          seen_at?: string | null
+          source?: string
+          target_key?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feedback_assessment_id_fkey"
+            columns: ["assessment_id"]
+            isOneToOne: false
+            referencedRelation: "compliance_assessments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "feedback_query_log_id_fkey"
+            columns: ["query_log_id"]
+            isOneToOne: false
+            referencedRelation: "query_log"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       generated_documents: {
         Row: {
@@ -2245,6 +2362,60 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_overview: { Args: never; Returns: Json }
+      admin_recent_assessments: {
+        Args: { p_limit?: number }
+        Returns: {
+          completed_at: string | null
+          compliance: number | null
+          created_at: string
+          documents: number
+          email: string | null
+          feedback_down: number
+          feedback_up: number
+          id: string
+          is_demo: boolean
+          progress: Json | null
+          regulations: string[] | null
+          runs: number
+          status: string
+          title: string
+        }[]
+      }
+      admin_recent_queries: {
+        Args: { p_limit?: number }
+        Returns: {
+          answer: string | null
+          citations: number
+          comment: string | null
+          created_at: string
+          email: string | null
+          id: string
+          is_demo: boolean
+          latency_ms: number | null
+          model: string | null
+          question: string
+          rating: number | null
+        }[]
+      }
+      admin_users: {
+        Args: never
+        Returns: {
+          assessments: number
+          created_at: string
+          demo_expires_at: string | null
+          email: string | null
+          email_confirmed: boolean
+          feedback_down: number
+          feedback_up: number
+          id: string
+          is_admin: boolean
+          is_demo: boolean
+          last_sign_in_at: string | null
+          queries: number
+          sector: string | null
+        }[]
+      }
       can_access_document: { Args: { doc_id: string }; Returns: boolean }
       cleanup_expired_demo_sessions: { Args: never; Returns: undefined }
       get_table_info: {

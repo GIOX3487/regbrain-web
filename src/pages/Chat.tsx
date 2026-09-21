@@ -21,6 +21,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import React from 'react';
 import { extractDocumentText, DocumentExtractionError } from "@/lib/client-document-extract";
+import { FeedbackThumbs } from "@/components/feedback/FeedbackThumbs";
 
 // Walk markdown children and replace plain-text [N] markers with clickable citation buttons.
 function transformChildrenWithCitations(children: React.ReactNode, messageIndex: number): React.ReactNode {
@@ -286,6 +287,10 @@ const Chat = () => {
         </Button>
         {isAdmin && (
           <>
+            <Button variant="ghost" className="w-full justify-start text-amber-600" onClick={() => { navigate('/admin'); setSidebarOpen(false); }}>
+              <Shield className="w-4 h-4 mr-2" />
+              Console di amministrazione
+            </Button>
             <Button variant="ghost" className="w-full justify-start text-amber-600" onClick={() => { navigate('/admin/load-documents'); setSidebarOpen(false); }}>
               <Upload className="w-4 h-4 mr-2" />
               Carica Normative (Admin)
@@ -383,7 +388,7 @@ const Chat = () => {
     navigate('/');
   };
 
-  const [messages, setMessages] = useState<Array<{ role: string; content: string; citations?: any[]; allContextChunks?: any[]; confidence?: { level: string; score: number; explanation: string }; kind?: 'clarification'; questions?: ClarifyQuestion[]; answered?: boolean; nextAction?: NextAction | null }>>([]);
+  const [messages, setMessages] = useState<Array<{ role: string; content: string; citations?: any[]; allContextChunks?: any[]; confidence?: { level: string; score: number; explanation: string }; kind?: 'clarification'; questions?: ClarifyQuestion[]; answered?: boolean; nextAction?: NextAction | null; queryLogId?: string | null; feedbackKey?: string }>>([]);
   const [goal, setGoal] = useState<string | null>(null);
   const [caseContext, setCaseContext] = useState<CaseFact[]>([]);
   const [clarifyDrafts, setClarifyDrafts] = useState<Record<string, string>>({});
@@ -510,7 +515,7 @@ const Chat = () => {
     setCaseContext([]);
     setMessages([
       { role: 'user', content: chat.question },
-      { role: 'assistant', content: chat.answer, citations: (chat.citations as any[]) || [] },
+      { role: 'assistant', content: chat.answer, citations: (chat.citations as any[]) || [], queryLogId: chat.id, feedbackKey: `rag:${chat.id}` },
     ]);
     setSidebarOpen(false);
   };
@@ -619,6 +624,8 @@ const Chat = () => {
         allContextChunks: data.allContextChunks || [],
         confidence: data.confidence || undefined,
         nextAction: data.nextAction || null,
+        queryLogId: typeof data.queryLogId === 'string' ? data.queryLogId : null,
+        feedbackKey: typeof data.queryLogId === 'string' ? `rag:${data.queryLogId}` : `rag:local:${crypto.randomUUID()}`,
       }]);
       // La chat è stata salvata lato server: aggiorna l'elenco delle conversazioni recenti
       loadRecentChats();
@@ -937,6 +944,22 @@ const Chat = () => {
                             messageIndex={idx}
                           />
                         ) : null}
+                        {msg.role === 'assistant' && msg.kind !== 'clarification' && msg.feedbackKey && (
+                          <div className="mt-3 pt-2 border-t">
+                            <FeedbackThumbs
+                              source="rag"
+                              targetKey={msg.feedbackKey}
+                              queryLogId={msg.queryLogId}
+                              context={{
+                                question: (messages[idx - 1]?.role === 'user' ? messages[idx - 1].content : '').slice(0, 2000),
+                                answer: msg.content.slice(0, 6000),
+                                citations: (msg.citations || []).length,
+                                confidence: msg.confidence?.level ?? null,
+                                page: '/chat',
+                              }}
+                            />
+                          </div>
+                        )}
                       </div>
                     </Card>
                   </div>

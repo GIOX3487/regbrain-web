@@ -58,6 +58,14 @@ const Auth = () => {
       // Check if we need to return to a specific page
       const returnPath = sessionStorage.getItem('auth_redirect');
 
+      // La console di amministrazione non richiede il profilo di onboarding:
+      // la pagina stessa verifica il ruolo admin.
+      if (sessionStorage.getItem('auth_redirect') === '/admin') {
+        sessionStorage.removeItem('auth_redirect');
+        navigate('/admin');
+        return;
+      }
+
       // Check if profile exists
       const { data: profile, error } = await supabase
         .from('profiles')

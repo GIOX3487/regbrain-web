@@ -3649,17 +3649,20 @@ REGOLA CRITICA FINALE — RISPOSTE PARZIALI VS MANCANTI:
       !authUser?.user?.email;
     // Conserva le chat nell'audit log per ogni utente autenticato, demo comprese:
     // le righe delle demo vengono eliminate a cascata quando scade l'utente demo.
+    let queryLogId: string | null = null;
     if (authUser?.user && !isAnonymous) {
-      const { error: logError } = await supabase.from("query_log").insert({
+      const { data: logRow, error: logError } = await supabase.from("query_log").insert({
         user_id: authUser.user.id,
         question,
         answer: outputAnswer,
         model: getAIModel(),
         latency_ms: latencyMs,
         citations,
-      });
+      }).select("id").single();
       if (logError) {
         console.error("query_log insert failed:", logError.message);
+      } else {
+        queryLogId = logRow?.id ?? null;
       }
     } else {
       console.warn("query_log skipped: no authenticated user on request");
@@ -3729,6 +3732,7 @@ REGOLA CRITICA FINALE — RISPOSTE PARZIALI VS MANCANTI:
     return new Response(
       JSON.stringify({
         answer: outputAnswer,
+        queryLogId,
         goal: activeGoal,
         nextAction,
         citations,
