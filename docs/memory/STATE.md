@@ -394,3 +394,8 @@ per sopravvivere alla pulizia delle demo. Il ruolo admin si ottiene solo con ema
 in `admin_allowlist` (oggi `cecchinoxsempre@gmail.com`); nessun account di Matteo esisteva il
 21 settembre, quindi va creato registrandosi. L'informativa privacy non dice ancora che il team legge
 conversazioni e feedback.
+
+## Chat: scorrimento all'inizio della risposta, 21 settembre
+
+Su segnalazione di un DPO la chat ora scorre in fondo quando si invia una domanda e porta in alto
+l'inizio della risposta quando arriva. Prima non c'era alcuno scorrimento automatico.
