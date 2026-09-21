@@ -27,7 +27,7 @@ export interface RegulationGate {
   regulation: string;
   /** Qualifiche che fanno rientrare l'organizzazione nell'ambito della normativa. */
   keys: string[];
-  /** Chi ricade nella normativa, per le motivazioni mostrate all'utente. */
+  /** Chi ricade nella normativa, al plurale, per le motivazioni mostrate all'utente ("rientrare fra ..."). */
   subject_it: string;
   subject_en: string;
 }
@@ -36,31 +36,31 @@ export const REGULATION_GATES: RegulationGate[] = [
   {
     regulation: 'AI Act',
     keys: ['ai_provider', 'ai_deployer', 'ai_importer_distributor'],
-    subject_it: 'fornitore, deployer, importatore o distributore di sistemi di intelligenza artificiale',
+    subject_it: 'i fornitori, i deployer, gli importatori o i distributori di sistemi di intelligenza artificiale',
     subject_en: 'provider, deployer, importer or distributor of AI systems',
   },
   {
     regulation: 'CRA',
     keys: ['cra_manufacturer', 'cra_importer_distributor', 'cra_open_source'],
-    subject_it: 'fabbricante, importatore o distributore di prodotti con elementi digitali, o gestore di software open source',
+    subject_it: 'i fabbricanti, gli importatori o i distributori di prodotti con elementi digitali e i gestori di software open source',
     subject_en: 'manufacturer, importer or distributor of products with digital elements, or open-source software steward',
   },
   {
     regulation: 'Data Act',
     keys: ['da_data_holder', 'da_cloud_provider', 'da_recipient'],
-    subject_it: 'titolare dei dati di prodotti connessi, fornitore di servizi di trattamento dati o destinatario di dati',
+    subject_it: 'i titolari dei dati di prodotti connessi, i fornitori di servizi di trattamento dati o i destinatari di dati',
     subject_en: 'data holder for connected products, data processing service provider or data recipient',
   },
   {
     regulation: 'DORA',
     keys: ['dora_financial_entity', 'dora_ctpp'],
-    subject_it: 'entità finanziaria o fornitore di servizi TIC per entità finanziarie',
+    subject_it: 'le entità finanziarie o i fornitori di servizi TIC per entità finanziarie',
     subject_en: 'financial entity or ICT service provider to financial entities',
   },
   {
     regulation: 'NIS2',
     keys: ['nis2_entity', 'nis2_digital_provider'],
-    subject_it: 'soggetto essenziale o importante ai fini NIS2',
+    subject_it: 'i soggetti essenziali o importanti ai fini NIS2',
     subject_en: 'essential or important entity under NIS2',
   },
 ];
@@ -92,14 +92,14 @@ export function regulationScope(
   if (values.some(v => v === 'si')) {
     return {
       status: 'in_scope',
-      reason_it: `Normativa applicabile: l'organizzazione ha dichiarato di essere ${gate.subject_it}.`,
+      reason_it: `Normativa applicabile: l'organizzazione ha dichiarato di rientrare fra ${gate.subject_it}.`,
       reason_en: `Regulation applicable: the organisation declared it is a ${gate.subject_en}.`,
     };
   }
   if (values.length > 0 && values.every(v => v === 'no')) {
     return {
       status: 'out_of_scope',
-      reason_it: `L'intera normativa non si applica: l'organizzazione ha dichiarato di non essere ${gate.subject_it}.`,
+      reason_it: `L'intera normativa non si applica: l'organizzazione ha dichiarato di non rientrare fra ${gate.subject_it}.`,
       reason_en: `The whole regulation does not apply: the organisation declared it is not a ${gate.subject_en}.`,
     };
   }
@@ -107,8 +107,8 @@ export function regulationScope(
   return {
     status: 'undetermined',
     reason_it: saidUnknown
-      ? `${gate.regulation} non valutata: all'avvio dell'analisi è stato risposto "non lo so" alla domanda se l'organizzazione sia ${gate.subject_it}. Finché non è stabilito, nessun obbligo di questa normativa viene trattato come carenza.`
-      : `${gate.regulation} non valutata: all'avvio dell'analisi non è stato indicato se l'organizzazione sia ${gate.subject_it}. Finché non è stabilito, nessun obbligo di questa normativa viene trattato come carenza.`,
+      ? `${gate.regulation} non valutata: all'avvio dell'analisi è stato risposto «non lo so» alla domanda se l'organizzazione rientri fra ${gate.subject_it}. Finché non è stabilito, nessun obbligo di questa normativa viene trattato come carenza.`
+      : `${gate.regulation} non valutata: all'avvio dell'analisi non è stato indicato se l'organizzazione rientri fra ${gate.subject_it}. Finché non è stabilito, nessun obbligo di questa normativa viene trattato come carenza.`,
     reason_en: saidUnknown
       ? `${gate.regulation} not assessed: the answer to whether the organisation is a ${gate.subject_en} was "don't know". Until this is established, no obligation of this regulation is treated as a gap.`
       : `${gate.regulation} not assessed: it was not stated whether the organisation is a ${gate.subject_en}. Until this is established, no obligation of this regulation is treated as a gap.`,
