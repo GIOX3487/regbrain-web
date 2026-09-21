@@ -100,6 +100,11 @@ const Chat = () => {
   const [profile, setProfile] = useState<any>(null);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Scorrimento della conversazione: alla domanda si va in fondo (domanda e indicatore di attesa),
+  // all'arrivo della risposta si porta in alto il suo inizio, così si legge dalla prima riga.
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const lastMessageRef = useRef<HTMLDivElement>(null);
+  const previousMessageCount = useRef(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [tipsDialogOpen, setTipsDialogOpen] = useState(false);
@@ -389,6 +394,23 @@ const Chat = () => {
   };
 
   const [messages, setMessages] = useState<Array<{ role: string; content: string; citations?: any[]; allContextChunks?: any[]; confidence?: { level: string; score: number; explanation: string }; kind?: 'clarification'; questions?: ClarifyQuestion[]; answered?: boolean; nextAction?: NextAction | null; queryLogId?: string | null; feedbackKey?: string }>>([]);
+
+  useEffect(() => {
+    const added = messages.length > previousMessageCount.current;
+    const fromEmpty = previousMessageCount.current === 0;
+    previousMessageCount.current = messages.length;
+    if (!added || messages.length === 0) return;
+    const last = messages[messages.length - 1];
+    const smooth = !fromEmpty;
+    requestAnimationFrame(() => {
+      if (last.role === 'assistant') {
+        lastMessageRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
+      } else {
+        const box = messagesContainerRef.current;
+        if (box) box.scrollTo({ top: box.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+      }
+    });
+  }, [messages]);
   const [goal, setGoal] = useState<string | null>(null);
   const [caseContext, setCaseContext] = useState<CaseFact[]>([]);
   const [clarifyDrafts, setClarifyDrafts] = useState<Record<string, string>>({});
@@ -760,7 +782,7 @@ const Chat = () => {
       {/* Main Chat Area */}
       <main className="flex-1 flex flex-col pt-16 lg:pt-0">
         {/* Chat Messages */}
-        <div className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6 space-y-3 sm:space-y-4 mobile-scroll">
+        <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6 space-y-3 sm:space-y-4 mobile-scroll">
           <div className="max-w-3xl mx-auto space-y-3 sm:space-y-4 w-full">
             {messages.length === 0 ? (
               <div className="text-center py-8 lg:py-12 px-4">
@@ -794,7 +816,11 @@ const Chat = () => {
                   </div>
                 )}
                 {messages.map((msg, idx) => (
-                  <div key={idx} className={msg.role === 'user' ? 'text-right' : 'text-left'}>
+                  <div
+                    key={idx}
+                    ref={idx === messages.length - 1 ? lastMessageRef : undefined}
+                    className={`scroll-mt-4 ${msg.role === 'user' ? 'text-right' : 'text-left'}`}
+                  >
                     <Card className={`inline-block max-w-[85%] lg:max-w-none ${msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-card'}`}>
                       <div className="p-3 lg:p-4">
                         {msg.role === 'user' ? (
