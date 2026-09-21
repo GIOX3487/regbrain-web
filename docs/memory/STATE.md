@@ -364,3 +364,12 @@ salvati prima della v27 non vengono riusati per analisi nuove.
 Misurato in produzione: senza risposte 11 gap e 79 per cento; tutte "no" 82 per cento; DORA "si"
 DORA valutata con 38 gap veri per un'entita' finanziaria; DORA "non lo so" non valutata. Otto test
 nuovi, fra cui uno che fallisce se le domande del frontend e le porte del server divergono.
+
+## Pagina dell'analisi senza riquadro delle versioni, 21 settembre
+
+Su richiesta, la pagina dell'analisi non mostra piu' il riquadro delle versioni in nessun caso:
+niente numero di versione, sigla del motore, confronto con l'analisi precedente, avviso sulle
+analisi fatte con una versione precedente e pulsante per ripeterle. Il server continua a congelare
+le analisi concluse, a riusare i risultati per documenti identici e a registrare ogni giro in
+`assessment_runs`; il rifacimento resta disponibile solo come chiamata con `rerun: true`, senza
+un punto di accesso nell'interfaccia.
