@@ -346,3 +346,21 @@ scritta: corretto e riprovato.
 
 Il riuso resta per utente (GAP-11) e l'oscillazione del modello resta quando il ricalcolo avviene
 davvero, ma e' datata e visibile invece che silenziosa.
+
+## Normative settoriali: nessun gap senza ambito stabilito, 21 settembre
+
+L'analisi sulle sei normative trattava come applicabile ogni normativa settoriale su cui
+l'organizzazione non aveva risposto alla domanda di ambito. Su Meridiana, azienda manifatturiera
+con documentazione GDPR completa, questo produceva 57 gap di cui 29 su DORA e portava la conformita'
+dal 78 al 42 per cento.
+
+Ora DORA, NIS2, CRA, AI Act e Data Act seguono una regola a tre stati
+(`supabase/functions/_shared/regulation-scope.ts`): valutate se l'organizzazione dichiara di
+rientrarvi, escluse se dichiara di no, altrimenti "non valutate", senza gap e fuori dalla base di
+calcolo. Le cinque domande di ambito sono obbligatorie nella nuova valutazione, "Non lo so" e'
+ammesso. Pagina dell'analisi e PDF elencano le normative non valutate con il motivo. I risultati
+salvati prima della v27 non vengono riusati per analisi nuove.
+
+Misurato in produzione: senza risposte 11 gap e 79 per cento; tutte "no" 82 per cento; DORA "si"
+DORA valutata con 38 gap veri per un'entita' finanziaria; DORA "non lo so" non valutata. Otto test
+nuovi, fra cui uno che fallisce se le domande del frontend e le porte del server divergono.
