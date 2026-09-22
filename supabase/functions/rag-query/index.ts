@@ -1313,11 +1313,11 @@ const regulationConfigs: RegulationConfig[] = [
     codes: ["OSS_LICENSES"],
   },
   {
-    pattern: /legge\s+(sull.?)?intelligenza\s+artificiale|132\/2025|legge\s+italiana\s+(sull.?)?ia/i,
-    searchTerms: ["L. 132/2025", "intelligenza artificiale"],
+    pattern: /legge\s+(sull.?)?intelligenza\s+artificiale|132\/2025|160\/2026|legge\s+italiana\s+(sull.?)?ia|responsabilità\s+(civile|penale).*(ia|intelligenza\s+artificiale)/i,
+    searchTerms: ["L. 132/2025", "D.Lgs. 160/2026", "intelligenza artificiale"],
     keyArticles: ["11", "12", "13", "14"],
     keyTopics: ["lavoro", "professioni intellettuali", "informazione"],
-    codes: ["LEGGE_IA"],
+    codes: ["LEGGE_IA", "DLGS_160_2026"],
   },
   {
     pattern: /perimetro\s+(di\s+)?sicurezza\s+nazionale|105\/2019|90\/2024|whistleblowing|24\/2023|segnalazion[ei]\s+di\s+illeciti/i,

@@ -9,7 +9,7 @@
 // Autenticazione: chiave di servizio oppure utente admin.
 // Invocazione:
 //   POST {source, offset?, limit?, reset?, dryRun?}            fonte del catalogo, scaricata qui
-//   POST {source, content, contentType: 'akn'|'markdown'|'text', offset?, limit?, reset?}
+//   POST {source, content, contentType: 'akn'|'nmd'|'markdown'|'text', offset?, limit?, reset?}
 //        testo fornito dall'amministratore per una fonte del catalogo (per esempio l'XML di
 //        Normattiva, che non si può scaricare dai server di Supabase)
 // Per i PDF l'avanzamento è per pagine: offset e limit sono numeri di pagina.
@@ -26,7 +26,7 @@ const corsHeaders = {
 };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: corsHeaders });
 
-type Kind = "garante" | "html" | "pdf" | "markdown" | "text" | "akn";
+type Kind = "garante" | "html" | "pdf" | "markdown" | "text" | "akn" | "nmd";
 
 interface Part {
   url?: string;
@@ -47,6 +47,11 @@ interface SourceSpec {
 
 const G = (id: string): Part => ({ url: `https://www.garanteprivacy.it/home/docweb/-/docweb-display/docweb/${id}`, kind: "garante" });
 const ASVS = (file: string): Part => ({ url: `https://raw.githubusercontent.com/OWASP/ASVS/master/5.0/en/${file}`, kind: "markdown" });
+// Testi vigenti di Normattiva convertiti in Markdown dal progetto italia-corpus (dataciviclab, MIT),
+// aggiornato ogni giorno dall'API OpenData di Normattiva. Normattiva non è raggiungibile dai server
+// di Supabase: questa è la copia pubblica più vicina alla fonte. Si sostituisce con l'XML ufficiale
+// caricato dall'amministratore quando serve.
+const NMD = (path: string): Part => ({ url: `https://raw.githubusercontent.com/dataciviclab/italia-corpus/main/${path.split("/").map(encodeURIComponent).join("/")}`, kind: "nmd" });
 const SPDX = (id: string): Part => ({ url: `https://raw.githubusercontent.com/spdx/license-list-data/main/text/${id}.txt`, kind: "text", label: id });
 
 const SOURCES: Record<string, SourceSpec> = {
@@ -211,7 +216,7 @@ const SOURCES: Record<string, SourceSpec> = {
   CODICE_PRIVACY: {
     regulation: "CODICE_PRIVACY", lang: "IT", jurisdiction: "IT", validFrom: "2018-09-19",
     title: "Codice privacy - D.Lgs. 196/2003 (Codice in materia di protezione dei dati personali)",
-    cite: "Codice privacy", sourceUrl: "https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:decreto.legislativo:2003-06-30;196", parts: [],
+    cite: "Codice privacy", sourceUrl: "https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:decreto.legislativo:2003-06-30;196", parts: [NMD("Codici/2003-07-29_003G0218_VIGENZA_2026-03-03_V0.md")],
   },
   STATUTO_LAVORATORI: {
     regulation: "STATUTO_LAVORATORI", lang: "IT", jurisdiction: "IT", validFrom: "1970-05-20",
@@ -226,12 +231,12 @@ const SOURCES: Record<string, SourceSpec> = {
   DLGS_138_2024: {
     regulation: "DLGS_138_2024", lang: "IT", jurisdiction: "IT", validFrom: "2024-10-16",
     title: "D.Lgs. 138/2024 - Recepimento Direttiva NIS2", cite: "D.Lgs. 138/2024",
-    sourceUrl: "https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:decreto.legislativo:2024-09-04;138", parts: [],
+    sourceUrl: "https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:decreto.legislativo:2024-09-04;138", parts: [NMD("Decreti Legislativi/2024-10-01_24G00155_ORIGINALE_V0.md")],
   },
   DLGS_82_2022: {
     regulation: "DLGS_82_2022", lang: "IT", jurisdiction: "IT", validFrom: "2022-07-01",
     title: "D.Lgs. 82/2022 - Recepimento European Accessibility Act (accessibilità)", cite: "D.Lgs. 82/2022",
-    sourceUrl: "https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:decreto.legislativo:2022-05-27;82", parts: [],
+    sourceUrl: "https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:decreto.legislativo:2022-05-27;82", parts: [NMD("Atti di recepimento direttive UE/2022-07-01_22G00089_VIGENZA_2026-02-12_V0.md")],
   },
   LEGGE_STANCA: {
     regulation: "LEGGE_STANCA", lang: "IT", jurisdiction: "IT", validFrom: "2004-01-09",
@@ -241,17 +246,17 @@ const SOURCES: Record<string, SourceSpec> = {
   CAD: {
     regulation: "CAD", lang: "IT", jurisdiction: "IT", validFrom: "2005-03-07",
     title: "CAD - Codice dell'amministrazione digitale, D.Lgs. 82/2005", cite: "CAD",
-    sourceUrl: "https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:decreto.legislativo:2005-03-07;82", parts: [],
+    sourceUrl: "https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:decreto.legislativo:2005-03-07;82", parts: [NMD("Codici/2005-05-16_005G0104_VIGENZA_2026-05-09_V0.md")],
   },
   CODICE_CONSUMO: {
     regulation: "CODICE_CONSUMO", lang: "IT", jurisdiction: "IT", validFrom: "2005-09-06",
     title: "Codice del consumo - D.Lgs. 206/2005", cite: "Codice del consumo",
-    sourceUrl: "https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:decreto.legislativo:2005-09-06;206", parts: [],
+    sourceUrl: "https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:decreto.legislativo:2005-09-06;206", parts: [NMD("Codici/2005-10-08_005G0232_VIGENZA_2026-06-19_V0.md")],
   },
   DLGS_218_2017: {
     regulation: "DLGS_218_2017", lang: "IT", jurisdiction: "IT", validFrom: "2018-01-13",
     title: "D.Lgs. 218/2017 - Recepimento PSD2 (servizi di pagamento)", cite: "D.Lgs. 218/2017",
-    sourceUrl: "https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:decreto.legislativo:2017-12-15;218", parts: [],
+    sourceUrl: "https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:decreto.legislativo:2017-12-15;218", parts: [NMD("Atti di recepimento direttive UE/2018-01-13_18G00004_VIGENZA_2025-06-12_V0.md")],
   },
   PERIMETRO_CYBER: {
     regulation: "PERIMETRO_CYBER", lang: "IT", jurisdiction: "IT", validFrom: "2019-11-20",
@@ -266,7 +271,14 @@ const SOURCES: Record<string, SourceSpec> = {
   WHISTLEBLOWING: {
     regulation: "WHISTLEBLOWING", lang: "IT", jurisdiction: "IT", validFrom: "2023-03-30",
     title: "Whistleblowing - D.Lgs. 24/2023", cite: "D.Lgs. 24/2023",
-    sourceUrl: "https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:decreto.legislativo:2023-03-10;24", parts: [],
+    sourceUrl: "https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:decreto.legislativo:2023-03-10;24", parts: [NMD("Atti di recepimento direttive UE/2023-03-15_23G00032_VIGENZA_2026-02-12_V0.md")],
+  },
+  DLGS_160_2026: {
+    regulation: "DLGS_160_2026", lang: "IT", jurisdiction: "IT", validFrom: "2026-09-16",
+    title: "D.Lgs. 160/2026 - Adeguamento all'AI Act: intelligenza artificiale per attività di polizia e responsabilità civile e penale",
+    cite: "D.Lgs. 160/2026",
+    sourceUrl: "https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:decreto.legislativo:2026-09-09;160",
+    parts: [NMD("Decreti Legislativi/2026-09-15_26G00179_ORIGINALE_V0.md")],
   },
   LEGGE_AUTORE: {
     regulation: "LEGGE_AUTORE", lang: "IT", jurisdiction: "IT", validFrom: "1941-04-22",
@@ -417,6 +429,78 @@ function aknToUnits(xml: string, spec: SourceSpec, key: string): Unit[] {
   return units;
 }
 
+/** Markdown di italia-corpus: "### Art. N." per articolo, commi come paragrafi che iniziano con "N.". */
+function nmdToUnits(md: string, spec: SourceSpec, key: string): Unit[] {
+  const clean = (t: string) => cleanText(t)
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/\(\(|\)\)/g, "")
+    .replace(/[ \t]+/g, " ")
+    .trim();
+  const body = md.replace(/^---[\s\S]*?---\s*/, "");
+  const units: Unit[] = [];
+  let section: string | null = null;
+  const blocks = body.split(/\n(?=#{2,3} )/);
+  for (const block of blocks) {
+    const firstLine = block.split("\n", 1)[0];
+    if (/^## /.test(firstLine)) { section = clean(firstLine.replace(/^## /, "")).slice(0, 200); }
+    const artHead = /^### Art\.\s*([0-9]+(?:[-.][a-z]+(?:[-.][a-z0-9]+)?)?)\.?\s*(?:—\s*(.*))?$/i.exec(firstLine);
+    if (!artHead) continue;
+    const label = artHead[1].replace(/\.$/, "");
+    const artNumber = /^\d+$/.test(label) ? parseInt(label, 10) : null;
+    const tidy = (r: string) => r.replace(/^[\s(]+|[\s).]+$/g, "").trim();
+    let rubrica = artHead[2] ? tidy(clean(artHead[2])) : "";
+    const paras = block.split("\n").slice(1).join("\n").split(/\n\s*\n/).map((p) => clean(p)).filter(Boolean);
+    if (!rubrica && paras.length && /^\(.*\)\.?$/.test(paras[0])) rubrica = tidy(paras.shift()!);
+    const header = `${spec.cite}, art. ${label}${rubrica ? ` (${rubrica.slice(0, 160)})` : ""}`;
+    // Raggruppa i paragrafi per comma: "1." da solo o all'inizio del paragrafo apre un comma.
+    const commi: Array<{ n: string | null; text: string[] }> = [];
+    for (const p of paras) {
+      const m = /^(\d+(?:-[a-z]+)?)\.(?:\s+([\s\S]*))?$/.exec(p);
+      if (m && (m[2] === undefined || m[2].length > 0 || true)) {
+        commi.push({ n: m[1], text: m[2] ? [m[2]] : [] });
+      } else if (commi.length) commi[commi.length - 1].text.push(p);
+      else commi.push({ n: null, text: [p] });
+    }
+    const nonEmpty = commi.filter((c) => c.text.join(" ").length >= 15);
+    if (nonEmpty.length === 0) continue;
+    const onlyOne = nonEmpty.length === 1 && nonEmpty[0].n === null;
+    for (const c of nonEmpty) {
+      const text = (c.n ? `${c.n}. ` : "") + c.text.join("\n");
+      const pieces: string[] = [];
+      let cur = "";
+      for (const line of text.split("\n")) {
+        if (cur.length + line.length + 1 > 1800 && cur.length > 200) { pieces.push(cur); cur = ""; }
+        cur += (cur ? "\n" : "") + line;
+      }
+      if (cur) pieces.push(cur);
+      pieces.forEach((piece, i) => {
+        const suffix = pieces.length > 1 ? ` (parte ${i + 1}/${pieces.length})` : "";
+        const commaKey = c.n ? `:c${c.n}` : "";
+        units.push({
+          chunk_key: `web:${key}:art${label}${commaKey}${pieces.length > 1 ? `:p${i + 1}` : ""}`,
+          citation_label: `${spec.cite}, art. ${label}${c.n && !onlyOne ? `, comma ${c.n}` : ""}${suffix}`,
+          context_header: `[${header}${c.n ? `. Comma ${c.n}` : ""}${suffix ? `. Parte ${i + 1}/${pieces.length}` : ""}]`,
+          unit_type: c.n ? "paragrafo" : "articolo",
+          article_number: artNumber,
+          article_reference: `Art. ${label}`,
+          paragraph: c.n,
+          section_hierarchy: section,
+          text: piece,
+        });
+      });
+    }
+  }
+  // Chiavi univoche anche se il testo ripete un numero di comma nello stesso articolo.
+  const seen = new Map<string, number>();
+  for (const u of units) {
+    const n = (seen.get(u.chunk_key) || 0) + 1;
+    seen.set(u.chunk_key, n);
+    if (n > 1) u.chunk_key = `${u.chunk_key}:d${n}`;
+  }
+  return units;
+}
+
 interface Unit {
   chunk_key: string;
   citation_label: string;
@@ -521,6 +605,7 @@ Deno.serve(async (req) => {
       const ct = String(body.contentType ?? "akn");
       partsTotal = 1;
       if (ct === "akn") units = aknToUnits(body.content, spec, key);
+      else if (ct === "nmd") units = nmdToUnits(body.content, spec, key);
       else if (ct === "markdown") units = blocksToUnits(linesToBlocks(body.content.split("\n").map((l: string) => l.trim()).filter(Boolean), markdownHeading), spec, key, 0, undefined);
       else units = blocksToUnits(linesToBlocks(body.content.split("\n").map((l: string) => l.trim()).filter(Boolean), pdfHeading), spec, key, 0, undefined);
       const slice = units.slice(offset, offset + limit);
@@ -543,6 +628,12 @@ Deno.serve(async (req) => {
         else if (part + 1 < spec.parts.length) nextPart = part + 1;
       } else {
         const raw = await fetchText(p.url!);
+        if (p.kind === "nmd") {
+          const all = nmdToUnits(raw, spec, key);
+          units = all.slice(offset, offset + limit);
+          if (offset + units.length < all.length) nextOffset = offset + units.length;
+          else if (part + 1 < spec.parts.length) nextPart = part + 1;
+        } else {
         let lines: string[];
         let isHeading = markdownHeading;
         if (p.kind === "garante") {
@@ -567,6 +658,7 @@ Deno.serve(async (req) => {
         units = all.slice(offset, offset + limit);
         if (offset + units.length < all.length) nextOffset = offset + units.length;
         else if (part + 1 < spec.parts.length) nextPart = part + 1;
+        }
       }
     }
 
