@@ -465,3 +465,17 @@ predefiniti). Il codice non viene
 salvato (restano nomi dei file, impronta SHA-256 e le righe citate, con i segreti mascherati) ma
 viene inviato al fornitore del modello: l'informativa privacy va aggiornata. Il RAG resta uno solo
 per chat, gap analysis e verifica del codice: nessuna copia dedicata al Compliance Hub.
+
+## Quanto sbaglia la verifica del codice, 22 settembre
+
+Misurata su tre basi di codice invece che sui soli file scritti apposta. Su RegBrain (264 file) le
+segnalazioni passano da 110 con 51 sbagliate a 69 con una sola sbagliata; su otto file presi da
+Juice Shop, Express e Next.js le sbagliate passano da sei a zero e restano le falle vere di Juice
+Shop (chiave privata, due SQL injection, MD5 sulle password, eval, cookie senza attributi,
+`Math.random` per un segreto). Le correzioni: le parole dentro le stringhe non contano, i token nel
+browser solo se la chiave è davvero una credenziale, gli indirizzi http solo dentro una chiamata,
+i cookie solo con il nome scritto nel codice, MD5 ignorato per impronte di file, CORS aperto a
+rischio basso senza credenziali, file di prova con un gradino di rischio in meno. Due regole nuove
+(dati fuori dall'UE, raccolta dell'indirizzo IP): 23 in tutto. Il banco di prova con 50 righe
+marcate gira in CI (`npm run test:backend`), insieme alla prova che due esecuzioni danno lo stesso
+esito.

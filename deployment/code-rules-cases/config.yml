@@ -1,0 +1,6 @@
+server:
+  debug: true #! SEC-09
+  port: 8080 #! -
+database:
+  password: "Pr0duzione2026" #! SEC-01
+  host: db.internal #! -
