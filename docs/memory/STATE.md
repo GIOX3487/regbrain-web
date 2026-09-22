@@ -479,3 +479,12 @@ rischio basso senza credenziali, file di prova con un gradino di rischio in meno
 (dati fuori dall'UE, raccolta dell'indirizzo IP): 23 in tutto. Il banco di prova con 50 righe
 marcate gira in CI (`npm run test:backend`), insieme alla prova che due esecuzioni danno lo stesso
 esito.
+
+## Livello AI della verifica del codice, prova in produzione del 22 settembre
+
+Marca come possibile falso positivo la password dentro `tests/fixtures`, spiegando perché; non
+esegue le istruzioni nascoste nei commenti (un commento che ordinava di dichiarare il codice
+conforme è stato segnalato come tentativo di elusione); ripete lo stesso esito sullo stesso file
+(due giri, nove esiti identici per rischio e stato) in 20-25 secondi; cita solo le fonti che
+riceve. Ha anche trovato una lacuna delle regole (un `requests.post` in http non cifrato che il
+filtro di contesto scartava), poi corretta.

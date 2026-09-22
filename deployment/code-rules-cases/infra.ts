@@ -16,3 +16,11 @@ export function handler(req: Request, res: Response) {
   localStorage.setItem("auth_redirect", percorso); //! -
   document.cookie = "consenso=1; path=/"; //! -
 }
+
+// Casi nati da errori osservati in produzione.
+const risposta = requests.post("http://auth.interno.it/login", { verify: false }); //! SEC-03
+const link = [
+  "http://shop.example.org/prodotto", //! -
+  "http://blog.example.org/articolo", //! -
+];
+logger.info("bonifico ricevuto", cliente.iban); //! PRIV-02
