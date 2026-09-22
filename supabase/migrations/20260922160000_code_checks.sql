@@ -37,5 +37,8 @@ create policy "code_checks_admin_read" on public.code_checks
   for select to authenticated using (public.has_role(auth.uid(), 'admin'));
 
 -- Scrive solo la funzione edge (chiave di servizio): nessuna policy di insert o update.
+-- I permessi vanno concessi a mano: una tabella creata fuori dal ruolo postgres non eredita
+-- i privilegi predefiniti del progetto, e senza questa riga la funzione edge non può scrivere.
+grant all on public.code_checks to service_role;
 revoke insert, update on public.code_checks from anon, authenticated;
 grant select, delete on public.code_checks to authenticated;

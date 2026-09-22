@@ -458,7 +458,10 @@ esito con profilo di rischio alto, medio o basso, le righe che lo provano, il te
 collegate preso dal RAG e un report PDF. Decide una regola scritta (21 regole, stesso codice stesso
 esito); il modello spiega, propone gli interventi, segnala possibili falsi positivi, aggiunge al
 massimo sei problemi marcati "da verificare" e fa fino a cinque domande per completare la verifica.
-Un problema aggiunto dal modello entra solo se file e riga esistono davvero. Il codice non viene
+Un problema aggiunto dal modello entra solo se file e riga esistono davvero. Provata in produzione
+il 22 settembre: 22 secondi su un file, esiti salvati in `code_checks` (la tabella ha avuto bisogno
+di `grant all ... to service_role`: creata fuori dal ruolo `postgres` non eredita i privilegi
+predefiniti). Il codice non viene
 salvato (restano nomi dei file, impronta SHA-256 e le righe citate, con i segreti mascherati) ma
 viene inviato al fornitore del modello: l'informativa privacy va aggiornata. Il RAG resta uno solo
 per chat, gap analysis e verifica del codice: nessuna copia dedicata al Compliance Hub.
