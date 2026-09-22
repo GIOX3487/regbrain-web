@@ -253,10 +253,12 @@ const SOURCES: Record<string, SourceSpec> = {
     title: "Codice del consumo - D.Lgs. 206/2005", cite: "Codice del consumo",
     sourceUrl: "https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:decreto.legislativo:2005-09-06;206", parts: [NMD("Codici/2005-10-08_005G0232_VIGENZA_2026-06-19_V0.md")],
   },
-  DLGS_218_2017: {
-    regulation: "DLGS_218_2017", lang: "IT", jurisdiction: "IT", validFrom: "2018-01-13",
-    title: "D.Lgs. 218/2017 - Recepimento PSD2 (servizi di pagamento)", cite: "D.Lgs. 218/2017",
-    sourceUrl: "https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:decreto.legislativo:2017-12-15;218", parts: [NMD("Atti di recepimento direttive UE/2018-01-13_18G00004_VIGENZA_2025-06-12_V0.md")],
+  // Il D.Lgs. 218/2017 recepisce la PSD2 modificando altri atti: il testo da consultare è il
+  // D.Lgs. 11/2010 vigente, che contiene le regole sui servizi di pagamento così modificate.
+  DLGS_11_2010: {
+    regulation: "DLGS_11_2010", lang: "IT", jurisdiction: "IT", validFrom: "2018-01-13",
+    title: "D.Lgs. 11/2010 - Servizi di pagamento (recepimento PSD2, come modificato dal D.Lgs. 218/2017)", cite: "D.Lgs. 11/2010",
+    sourceUrl: "https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:decreto.legislativo:2010-01-27;11", parts: [NMD("Atti di recepimento direttive UE/2010-02-13_010G0027_VIGENZA_2025-06-12_V0.md")],
   },
   PERIMETRO_CYBER: {
     regulation: "PERIMETRO_CYBER", lang: "IT", jurisdiction: "IT", validFrom: "2019-11-20",
@@ -443,8 +445,9 @@ function nmdToUnits(md: string, spec: SourceSpec, key: string): Unit[] {
   const blocks = body.split(/\n(?=#{2,3} )/);
   for (const block of blocks) {
     const firstLine = block.split("\n", 1)[0];
-    if (/^## /.test(firstLine)) { section = clean(firstLine.replace(/^## /, "")).slice(0, 200); }
-    const artHead = /^### Art\.\s*([0-9]+(?:[-.][a-z]+(?:[-.][a-z0-9]+)?)?)\.?\s*(?:—\s*(.*))?$/i.exec(firstLine);
+    // Alcuni atti hanno gli articoli al secondo livello ("## Art. 1."), altri al terzo sotto i capi.
+    if (/^## /.test(firstLine) && !/^## Art\./.test(firstLine)) { section = clean(firstLine.replace(/^## /, "")).slice(0, 200); }
+    const artHead = /^#{2,3} Art\.\s*([0-9]+(?:[-.][a-z]+(?:[-.][a-z0-9]+)?)?)\.?\s*(?:—\s*(.*))?$/i.exec(firstLine);
     if (!artHead) continue;
     const label = artHead[1].replace(/\.$/, "");
     const artNumber = /^\d+$/.test(label) ? parseInt(label, 10) : null;

@@ -1257,11 +1257,11 @@ const regulationConfigs: RegulationConfig[] = [
     codes: ["EAA", "WAD", "DLGS_82_2022", "LEGGE_STANCA", "AGID_ACC_SERVIZI", "AGID_ACC_PA", "WCAG22"],
   },
   {
-    pattern: /psd2|2015\/2366|218\/2017|autenticazione\s+forte|strong\s+customer|\bsca\b|servizi\s+di\s+pagamento|collegamento\s+dinamico/i,
-    searchTerms: ["PSD2", "D.Lgs. 218/2017"],
+    pattern: /psd2|2015\/2366|218\/2017|11\/2010|autenticazione\s+forte|strong\s+customer|\bsca\b|servizi\s+di\s+pagamento|collegamento\s+dinamico/i,
+    searchTerms: ["PSD2", "D.Lgs. 11/2010"],
     keyArticles: ["97", "98", "4", "5"],
     keyTopics: ["autenticazione forte del cliente", "collegamento dinamico", "esenzioni"],
-    codes: ["PSD2", "PSD2_SCA", "DLGS_218_2017"],
+    codes: ["PSD2", "PSD2_SCA", "DLGS_11_2010"],
   },
   {
     pattern: /eidas|910\/2014|2024\/1183|firma\s+(elettronica|digitale)|identità\s+digitale|wallet|portafoglio\s+europeo|spid|\bcie\b/i,
