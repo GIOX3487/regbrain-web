@@ -2230,9 +2230,8 @@ export default function AssessmentDetail() {
                           </Button>
                         </CollapsibleTrigger>
                         <CollapsibleContent className="mt-2">
-                          <div className="bg-muted/50 border border-border rounded-lg p-3 text-xs text-muted-foreground italic leading-relaxed">
+                          <div className="bg-muted/50 border border-border rounded-lg p-3 text-xs text-muted-foreground leading-relaxed whitespace-pre-line max-h-80 overflow-y-auto">
                             {gap.article_text_excerpt}
-                            {gap.article_text_excerpt.length >= 295 && '...'}
                           </div>
                         </CollapsibleContent>
                       </Collapsible>
