@@ -414,3 +414,10 @@ La gap analysis non usava il corpus normativo nel giudizio: il lato norma viene 
 22 settembre ogni obbligo ha nel catalogo il testo ufficiale dei suoi paragrafi (254 su 254), usato
 come fonte normativa mostrata nei gap al posto di un frammento scelto a caso. Il testo nel prompt è
 pronto ma spento finché non è misurato (GAP-13).
+
+## Testo della norma nel prompt: misurato, non attivato, 22 settembre
+
+Su Meridiana, tre giri con e tre senza: conformità 80-82 contro 76-77 per cento, stesse omissioni
+trovate, stessa instabilità (2 obblighi su 51). Corregge art. 5 e art. 34 ma introduce errori su
+art. 13 (falso negativo reale), art. 6 e art. 28. Resta spento. Fonte normativa dei gap di
+Meridiana riallineata.
