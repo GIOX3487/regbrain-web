@@ -1,0 +1,56 @@
+name: Carica corpus normativo nel RAG
+# Quando su main cambia un testo in corpus/ (leggi italiane in XML Akoma Ntoso o Markdown),
+# lo carica nel RAG tramite la funzione ingest-web-source con la chiave di servizio,
+# letta al momento dall'API di gestione Supabase e mai scritta nei log.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'corpus/**'
+  workflow_dispatch:
+    inputs:
+      files:
+        description: 'File da caricare (separati da spazio). Vuoto: tutti quelli in corpus/'
+        required: false
+        default: ''
+concurrency:
+  group: corpus-ingest
+  cancel-in-progress: false
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      PROJECT_REF: ndwozjlasabsdfqcyeoy
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Attendi il deploy delle funzioni
+        # Se lo stesso push aggiorna anche le funzioni, il caricamento parte dopo il loro deploy.
+        run: sleep 150
+      - name: Scegli i file
+        id: pick
+        env:
+          INPUT_FILES: ${{ github.event.inputs.files }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ -n "$INPUT_FILES" ]; then files="$INPUT_FILES"; else files=$(find corpus -type f \( -name '*.xml' -o -name '*.md' \) ! -name 'README.md' | sort | tr '\n' ' '); fi
+          else
+            files=$(git diff --name-only HEAD~1 HEAD -- corpus | grep -E '\.(xml|md)$' | grep -v 'README.md' | tr '\n' ' ' || true)
+          fi
+          echo "files=$files" >> "$GITHUB_OUTPUT"
+          echo "File: $files"
+      - name: Carica
+        if: steps.pick.outputs.files != ''
+        env:
+          FILES: ${{ steps.pick.outputs.files }}
+        run: |
+          keys=$(curl -sf -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" "https://api.supabase.com/v1/projects/$PROJECT_REF/api-keys?reveal=true")
+          SERVICE_KEY=$(printf '%s' "$keys" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const k=JSON.parse(s);const r=k.find(x=>x.name==="service_role")||k.find(x=>x.type==="secret");process.stdout.write(r?.api_key||"")})')
+          if [ -z "$SERVICE_KEY" ]; then echo "::error::Chiave di servizio non disponibile"; exit 1; fi
+          echo "::add-mask::$SERVICE_KEY"
+          SUPABASE_URL="https://$PROJECT_REF.supabase.co" SERVICE_KEY="$SERVICE_KEY" node scripts/ingest-corpus.mjs $FILES

@@ -436,3 +436,26 @@ Codice privacy, CAD, Codice del consumo, D.Lgs. 82/2022, 11/2010 (pagamenti), 24
 D.Lgs. 138/2024 (testo originale) vengono dalla copia pubblica italia-corpus di Normattiva; aggiunto
 il D.Lgs. 160/2026 sull'IA. Mancano ancora L. 300/1970, L. 132/2025, L. 4/2004, DL 105/2019,
 L. 90/2024 e L. 633/1941, da fornire in XML Normattiva.
+
+## L. 132/2025 e L. 90/2024 dai PDF della Gazzetta, 22 settembre
+
+Convertite in XML Akoma Ntoso dai fascicoli della Gazzetta forniti da Matteo e caricate nel RAG
+(28 articoli e 90 commi la prima, 24 e 46 la seconda). I testi versionati stanno in `corpus/leggi`
+e si caricano da soli a ogni push su `main` (workflow `corpus-ingest.yml`, script
+`scripts/ingest-corpus.mjs`): il nome del file è il codice della fonte. È il testo pubblicato in
+Gazzetta, senza le modifiche successive, e la L. 90/2024 è già stata modificata dall'art. 28 della
+L. 132/2025. Restano fuori L. 300/1970, L. 633/1941, L. 4/2004 e DL 105/2019: i PDF forniti sono
+scansioni o testi originari ormai riscritti, e caricarli darebbe risposte sbagliate dall'aria
+fondata. Servono le esportazioni "vigente" di Normattiva.
+
+## Verifica del codice nel Compliance Hub, 22 settembre
+
+Pagina `/compliance/code-check`: si incolla il codice o si caricano fino a 40 file e si ottiene un
+esito con profilo di rischio alto, medio o basso, le righe che lo provano, il testo delle norme
+collegate preso dal RAG e un report PDF. Decide una regola scritta (21 regole, stesso codice stesso
+esito); il modello spiega, propone gli interventi, segnala possibili falsi positivi, aggiunge al
+massimo sei problemi marcati "da verificare" e fa fino a cinque domande per completare la verifica.
+Un problema aggiunto dal modello entra solo se file e riga esistono davvero. Il codice non viene
+salvato (restano nomi dei file, impronta SHA-256 e le righe citate, con i segreti mascherati) ma
+viene inviato al fornitore del modello: l'informativa privacy va aggiornata. Il RAG resta uno solo
+per chat, gap analysis e verifica del codice: nessuna copia dedicata al Compliance Hub.

@@ -451,6 +451,54 @@ export type Database = {
           },
         ]
       }
+      code_checks: {
+        Row: {
+          context: Json
+          counts: Json
+          created_at: string
+          duration_ms: number | null
+          files: Json
+          findings: Json
+          id: string
+          model: string | null
+          overall_risk: string
+          rules_version: string | null
+          summary: Json
+          title: string
+          user_id: string
+        }
+        Insert: {
+          context?: Json
+          counts?: Json
+          created_at?: string
+          duration_ms?: number | null
+          files?: Json
+          findings?: Json
+          id?: string
+          model?: string | null
+          overall_risk?: string
+          rules_version?: string | null
+          summary?: Json
+          title?: string
+          user_id: string
+        }
+        Update: {
+          context?: Json
+          counts?: Json
+          created_at?: string
+          duration_ms?: number | null
+          files?: Json
+          findings?: Json
+          id?: string
+          model?: string | null
+          overall_risk?: string
+          rules_version?: string | null
+          summary?: Json
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       compliance_assessments: {
         Row: {
           analysis_progress: Json | null

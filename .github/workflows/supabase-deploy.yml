@@ -29,7 +29,7 @@ jobs:
           failed=""
           for fn in \
             rag-query ingest-eurlex-formex ingest-web-source index-normative-documents \
-            verify-site-password start-demo gap-analysis ai-compliance-copilot \
+            verify-site-password start-demo gap-analysis code-compliance ai-compliance-copilot \
             process-document predictive-analytics generate-audit-document \
             generate-policy generate-risk-register generate-benchmark \
             generate-acn-report translate-content initialize-monitoring \

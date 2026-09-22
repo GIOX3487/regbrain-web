@@ -21,7 +21,8 @@ import {
   Target,
   Zap,
   Globe,
-  Trash2
+  Trash2,
+  Code2
 } from "lucide-react";
 import { RISK_STYLE, riskProfileOf, overallRiskProfile, type RiskProfile } from "@/components/compliance/RiskScoreExplanation";
 import {
@@ -207,7 +208,7 @@ export default function ComplianceHub() {
             </Button>
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-2">Compliance hub</h1>
             <p className="text-sm sm:text-base text-muted-foreground">
-              Le tue gap analysis: documenti confrontati con i requisiti delle normative, con evidenze e profilo di rischio
+              Gap analysis dei documenti e verifica del codice sorgente, confrontati con le normative, con evidenze e profilo di rischio
             </p>
           </div>
           <div className="flex gap-2 flex-wrap w-full lg:w-auto">
@@ -218,6 +219,15 @@ export default function ComplianceHub() {
             >
               <Plus className="mr-2 h-4 w-4" />
               Nuova gap analysis
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => navigate('/compliance/code-check')}
+              size="sm"
+              className="w-full sm:w-auto min-h-[44px]"
+            >
+              <Code2 className="mr-2 h-4 w-4" />
+              Verifica del codice
             </Button>
           </div>
         </div>
