@@ -319,7 +319,9 @@ function linesToBlocks(lines: string[], isHeading: (l: string) => string | null)
   };
   for (const l of lines) {
     const h = isHeading(l);
-    if (h) { flush(); heading = h.slice(0, 200); continue; }
+    // Il titolo apre un nuovo blocco ma resta anche nel testo: nulla del documento va perso e
+    // le citazioni restano verificabili parola per parola.
+    if (h) { flush(); heading = h.slice(0, 200); buf.push(h); continue; }
     buf.push(l);
   }
   flush();
@@ -331,13 +333,19 @@ const markdownHeading = (l: string): string | null => {
   return m ? m[1].replace(/[*_`]/g, "").trim() : null;
 };
 
-// Titoli nei PDF: righe brevi numerate ("3.2 Titolo", "Articolo 5", "ALLEGATO 2") o tutte maiuscole.
+// Titoli nei PDF e nei provvedimenti: numerazione a più livelli ("3.2 Titolo"), numero seguito da
+// titolo in maiuscolo ("2 ANALISI"), rubriche ("Articolo 5", "ALLEGATO 2") o righe tutte maiuscole.
+// Non sono titoli i paragrafi numerati ("29. Il RGPD adotta...") né le note a piè di pagina
+// ("12 Gruppo di lavoro..., «Linee guida»"), che iniziano allo stesso modo ma sono frasi.
 const pdfHeading = (l: string): string | null => {
   const t = l.trim();
-  if (t.length < 3 || t.length > 140) return null;
-  if (/^(\d+(\.\d+){0,3})\.?\s+[A-ZÀ-Ý][^.;:]{2,}$/.test(t) && !/\d{4}$/.test(t)) return t;
-  if (/^(Articolo|Art\.|ALLEGATO|Allegato|CAPO|Capo|SEZIONE|Sezione|PARTE|Parte|Annex|ANNEX|Chapter|CHAPTER)\b/.test(t) && t.length < 100) return t;
-  if (/^[A-ZÀ-Ý0-9 ,'’()\-]{6,90}$/.test(t) && /[A-ZÀ-Ý]{4}/.test(t)) return t;
+  if (t.length < 3 || t.length > 110) return null;
+  if (/^\d+(\.\d+)+\.?\s+[A-ZÀ-Ýa-zà-ý]/.test(t) && !/[.;«»“”]$/.test(t) && !/[«»“”]/.test(t)) return t;
+  if (/[«»“”,;]/.test(t) && !/^(Articolo|Art\.|ALLEGATO|Allegato)\b/.test(t)) return null;
+  if (/^\d+\.?\s+[A-ZÀ-Ý][A-ZÀ-Ý'’ ]{3,}/.test(t)) return t;
+  if (/^\d+\.\s+[A-ZÀ-Ý][^.:]{2,65}$/.test(t)) return t;
+  if (/^(Articolo|Art\.|ALLEGATO|Allegato|CAPO|Capo|SEZIONE|Sezione|PARTE|Parte|Annex|ANNEX|Chapter|CHAPTER)\s+[0-9IVXLA-Z]/.test(t) && t.length < 100) return t;
+  if (/^[A-ZÀ-Ý0-9 '’()\-]{6,90}$/.test(t) && /[A-ZÀ-Ý]{4}/.test(t)) return t;
   return null;
 };
 
