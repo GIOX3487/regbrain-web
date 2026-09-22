@@ -162,8 +162,10 @@ export const RULES: Rule[] = [
       if (/(xmlns|namespace|\bns\b|\buri\b|rdf|owl:|@prefix|schema_?id|\/resource\/)/i.test(line)) return null;
       // Un indirizzo dentro un elenco di link non è una connessione: serve un contesto di chiamata
       // o di configurazione.
-      const contesto = line.replace(/https?:\/\/\S*/gi, "");
-      if (!/(fetch|axios|\brequest\b|http\.(get|post|request)|urlopen|curl|client|endpoint|\burl\b|\buri\b|host|base_?url|\bapi\b|webhook|proxy|origin|src\s*=|href\s*=|action\s*=|connect|websocket|\bws\b)/i.test(contesto)) return null;
+      // Un indirizzo da solo dentro un elenco di link non è una connessione; se invece è
+      // argomento di una chiamata, valore di una variabile o attributo, lo è.
+      const resto = line.replace(m[0], "").trim();
+      if (/^[\s'"`,;\[\]()]*$/.test(resto)) return null;
       return /pass|token|login|auth|api/i.test(m[0] + line) ? { risk: "high", note: m[0].slice(0, 80) } : { note: m[0].slice(0, 80) };
     },
   },
@@ -218,6 +220,7 @@ export const RULES: Rule[] = [
       // personale, mentre user.email lo è.
       const code = stripLiterals(line);
       if (SECRET_WORDS.test(code)) return { risk: "high", note: "credenziali o dati di pagamento nel log" };
+      if (/\b(iban|carta_?credito|card_?number|cardnumber|cvv|conto_?corrente)\b/i.test(code)) return { risk: "high", note: "dati bancari nel log" };
       if (PII_WORDS.test(code)) return { note: "dati personali nel log" };
       return null;
     },

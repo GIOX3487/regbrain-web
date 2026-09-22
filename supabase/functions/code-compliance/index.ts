@@ -217,7 +217,16 @@ const handler = async (req: Request): Promise<Response> => {
         status: "da_verificare",
       });
     }
-    questions = (Array.isArray(ai.questions) ? ai.questions : []).map((q: unknown) => String(q).trim()).filter(Boolean).slice(0, 5);
+    // Alcuni modelli restituiscono le domande come oggetti invece che come testo.
+    questions = (Array.isArray(ai.questions) ? ai.questions : []).map((q: unknown) => {
+      if (typeof q === "string") return q.trim();
+      if (q && typeof q === "object") {
+        const o = q as Record<string, unknown>;
+        const v = o.domanda ?? o.question ?? o.testo ?? o.text ?? o.q ?? Object.values(o).find((x) => typeof x === "string");
+        return typeof v === "string" ? v.trim() : "";
+      }
+      return "";
+    }).filter(Boolean).slice(0, 5);
     summary = typeof ai.summary === "string" ? ai.summary.trim().slice(0, 2000) : "";
   }
 
