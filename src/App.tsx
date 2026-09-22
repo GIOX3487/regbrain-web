@@ -15,6 +15,7 @@ import ManageRegulations from "./pages/ManageRegulations";
 import BatchUpload from "./pages/BatchUpload";
 import ComplianceHub from "./pages/ComplianceHub";
 import NewAssessment from "./pages/NewAssessment";
+import CodeCheck from "./pages/CodeCheck";
 import AssessmentDetail from "./pages/AssessmentDetail";
 import ComplianceAnalysis from "./pages/ComplianceAnalysis";
 import PredictiveAnalytics from "./pages/PredictiveAnalytics";
@@ -96,6 +97,7 @@ const App = () => (
             <Route path="/compliance" element={<ComplianceHub />} />
             <Route path="/compliance/analysis" element={<ComplianceAnalysis />} />
             <Route path="/compliance/new-assessment" element={<NewAssessment />} />
+            <Route path="/compliance/code-check" element={<CodeCheck />} />
             <Route path="/compliance/assessment/:id" element={<AssessmentDetail />} />
             <Route path="/compliance/predictive-analytics" element={<PredictiveAnalytics />} />
             <Route path="/compliance/market-intelligence" element={<MarketIntelligence />} />

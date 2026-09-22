@@ -139,6 +139,15 @@ const Chat = () => {
         });
       }
 
+      // Domanda precompilata da un'altra pagina (per esempio "Chiedi alla chat" nella verifica
+      // del codice): si scrive nel campo, l'utente la legge e decide se inviarla.
+      const prefill = searchParams.get('q');
+      if (prefill) {
+        setMessage(prefill.slice(0, 2000));
+        searchParams.delete('q');
+        navigate('/chat', { replace: true });
+      }
+
       // Check for continuing a conversation from audit trail
       const continueParam = searchParams.get('continue');
       if (continueParam === 'true') {

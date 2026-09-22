@@ -72,6 +72,9 @@ verify_jwt = false
 [functions.gap-analysis]
 verify_jwt = false
 
+[functions.code-compliance]
+verify_jwt = false
+
 [functions.ai-compliance-copilot]
 verify_jwt = false
 

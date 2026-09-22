@@ -400,12 +400,29 @@ async function fetchPdfPages(url: string, from: number, to: number): Promise<{ t
 }
 
 /** Akoma Ntoso (Normattiva): un'unità per comma, o per articolo se non ha commi. */
+function splitLong(text: string, max: number): string[] {
+  if (text.length <= max) return [text];
+  const out: string[] = [];
+  let cur = "";
+  for (const sentence of text.split(/(?<=[.;:])\s+(?=[«"a-zA-Z0-9(])/)) {
+    if (cur.length + sentence.length + 1 > max && cur.length > 200) { out.push(cur); cur = ""; }
+    cur += (cur ? " " : "") + sentence;
+    while (cur.length > max * 1.5) { out.push(cur.slice(0, max)); cur = cur.slice(max); }
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
 function aknToUnits(xml: string, spec: SourceSpec, key: string): Unit[] {
   const units: Unit[] = [];
   const strip = (f: string) => cleanText(decodeEntities(f.replace(/<(authorialNote|note|ref)\b[^>]*>([\s\S]*?)<\/\1>/g, (_m, tag, inner) => tag === "ref" ? inner : "").replace(/<[^>]+>/g, " "))).replace(/\s+/g, " ").trim();
   const artRe = /<article\b([^>]*)>([\s\S]*?)<\/article>/g;
+  // Capo, titolo o sezione in cui si trova l'articolo: l'ultima intestazione che lo precede.
+  const chapters = [...xml.matchAll(/<(chapter|title|section|part)\b[^>]*>\s*(?:<num\b[^>]*>([\s\S]*?)<\/num>\s*)?<heading\b[^>]*>([\s\S]*?)<\/heading>/g)]
+    .map((c) => ({ at: c.index ?? 0, text: strip(`${c[2] ? c[2] + " " : ""}${c[3]}`).slice(0, 200) }));
   for (const m of xml.matchAll(artRe)) {
     const inner = m[2];
+    const chapter = chapters.filter((c) => c.at < (m.index ?? 0)).pop()?.text || null;
     const numRaw = strip((/<num\b[^>]*>([\s\S]*?)<\/num>/.exec(inner) || [])[1] || "");
     const heading = strip((/<heading\b[^>]*>([\s\S]*?)<\/heading>/.exec(inner) || [])[1] || "");
     const artNumMatch = /(\d+)(?:[-\s]*(bis|ter|quater|quinquies|sexies|septies|octies|novies|decies|undecies|duodecies|terdecies|quaterdecies|quinquiesdecies|sexiesdecies))?/i.exec(numRaw);
@@ -417,7 +434,7 @@ function aknToUnits(xml: string, spec: SourceSpec, key: string): Unit[] {
     if (paras.length === 0) {
       const text = strip(inner.replace(/<num\b[^>]*>[\s\S]*?<\/num>/, "").replace(/<heading\b[^>]*>[\s\S]*?<\/heading>/, ""));
       if (text.length < 15) continue;
-      units.push({ chunk_key: `web:${key}:art${artLabel}`, citation_label: `${spec.cite}, art. ${artLabel}`, context_header: `[${header}]`, unit_type: "articolo", article_number: artNumber, article_reference: `Art. ${artLabel}`, paragraph: null, section_hierarchy: heading || null, text });
+      units.push({ chunk_key: `web:${key}:art${artLabel}`, citation_label: `${spec.cite}, art. ${artLabel}`, context_header: `[${header}]`, unit_type: "articolo", article_number: artNumber, article_reference: `Art. ${artLabel}`, paragraph: null, section_hierarchy: chapter || heading || null, text });
       continue;
     }
     for (const p of paras) {
@@ -425,7 +442,13 @@ function aknToUnits(xml: string, spec: SourceSpec, key: string): Unit[] {
       const body = strip(p[1].replace(/<num\b[^>]*>[\s\S]*?<\/num>/, ""));
       if (body.length < 15) continue;
       const par = pNum || String(paras.indexOf(p) + 1);
-      units.push({ chunk_key: `web:${key}:art${artLabel}:c${par.replace(/\s+/g, "")}`, citation_label: `${spec.cite}, art. ${artLabel}, comma ${par}`, context_header: `[${header}. Comma ${par}]`, unit_type: "paragrafo", article_number: artNumber, article_reference: `Art. ${artLabel}`, paragraph: par, section_hierarchy: heading || null, text: `${par}. ${body}` });
+      // I commi che modificano altre leggi possono superare i 10.000 caratteri: si spezzano
+      // ai confini di frase, come per gli altri formati, perché l'embedding legge 8.000 caratteri.
+      const pieces = splitLong(`${par}. ${body}`, 1800);
+      pieces.forEach((piece, i) => {
+        const suffix = pieces.length > 1 ? ` (parte ${i + 1}/${pieces.length})` : "";
+        units.push({ chunk_key: `web:${key}:art${artLabel}:c${par.replace(/\s+/g, "")}${pieces.length > 1 ? `:p${i + 1}` : ""}`, citation_label: `${spec.cite}, art. ${artLabel}, comma ${par}${suffix}`, context_header: `[${header}. Comma ${par}${suffix ? `. Parte ${i + 1}/${pieces.length}` : ""}]`, unit_type: "paragrafo", article_number: artNumber, article_reference: `Art. ${artLabel}`, paragraph: par, section_hierarchy: chapter || heading || null, text: piece });
+      });
     }
   }
   return units;
