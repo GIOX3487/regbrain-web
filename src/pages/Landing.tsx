@@ -110,15 +110,15 @@ const Landing = () => {
               GDPR · NIS2 · DORA · AI Act · CRA · Data Act
             </Badge>
             <h1 className="text-3xl sm:text-5xl md:text-6xl font-bold tracking-tight px-2 leading-tight">
-              Automazione della compliance: dove gli agenti fanno il lavoro e{" "}
+              Automazione della compliance: l'AI fa il lavoro,{" "}
               <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-                tu firmi.
+                tu firmi il referto.
               </span>
             </h1>
 
             <p className="text-base sm:text-xl md:text-2xl text-muted-foreground max-w-3xl mx-auto px-4">
-              Il SaaS di compliance cyber e privacy in cui gli agenti AI eseguono il lavoro di routine
-              e chi è responsabile supervisiona e firma.
+              Carichi i documenti dell'organizzazione: RegBrain li confronta obbligo per obbligo con le
+              norme che la riguardano e ti mostra dove è in regola e dove no, con la frase esatta che lo prova.
             </p>
 
             <p className="text-sm sm:text-base text-muted-foreground/80 max-w-2xl mx-auto px-4">
@@ -403,7 +403,7 @@ const Landing = () => {
             <div className="document-card space-y-3">
               <h3 className="text-lg font-semibold">DPO interno</h3>
               <p className="text-sm text-muted-foreground">
-                Presidi la conformità di una sola organizzazione. Gli agenti coprono il lavoro di routine,
+                Presidi la conformità di una sola organizzazione. L'AI copre il lavoro di routine,
                 tu ti concentri sulle decisioni.
               </p>
               <p className="text-xs font-semibold uppercase tracking-wider text-primary">Presidio supervisionato</p>
@@ -426,7 +426,7 @@ const Landing = () => {
             <div className="document-card space-y-3">
               <h3 className="text-lg font-semibold">PMI</h3>
               <p className="text-sm text-muted-foreground">
-                Il referente interno, titolare, IT manager o responsabile qualità, guida gli agenti e firma.
+                Il referente interno, titolare, IT manager o responsabile qualità, verifica i risultati e firma il referto.
                 Il consulente esterno entra sullo stesso fascicolo.
               </p>
               <p className="text-xs font-semibold uppercase tracking-wider text-primary">Presidio interno assistito</p>
@@ -700,7 +700,7 @@ const Landing = () => {
                 <span className="font-semibold text-lg">RegBrain</span>
               </div>
               <p className="text-sm text-muted-foreground max-w-xs">
-                Compliance cyber e privacy: gli agenti fanno il lavoro, chi è responsabile supervisiona e firma.
+                Compliance cyber e privacy: l'AI fa il lavoro, chi è responsabile verifica e firma il referto.
               </p>
             </div>
 
