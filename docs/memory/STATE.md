@@ -399,3 +399,11 @@ conversazioni e feedback.
 
 Su segnalazione di un DPO la chat ora scorre in fondo quando si invia una domanda e porta in alto
 l'inizio della risposta quando arriva. Prima non c'era alcuno scorrimento automatico.
+
+## Homepage: titolo senza agenti, 22 settembre
+
+Titolo "Automazione della compliance: l'AI fa il lavoro, tu firmi il referto." Sottotitolo su come
+funziona (confronto obbligo per obbligo, frase esatta come prova). Motto e schede DPO interno e PMI
+senza agenti. Restano non vere le schede multi-cliente e team con ruoli e il consulente sullo stesso
+fascicolo (SITE-08). Nel prodotto non esiste una funzione di firma: "firmi il referto" si riferisce al
+PDF esportato.
