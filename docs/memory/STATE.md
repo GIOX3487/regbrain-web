@@ -442,7 +442,10 @@ L. 90/2024 e L. 633/1941, da fornire in XML Normattiva.
 Convertite in XML Akoma Ntoso dai fascicoli della Gazzetta forniti da Matteo e caricate nel RAG
 (28 articoli e 90 commi la prima, 24 e 46 la seconda). I testi versionati stanno in `corpus/leggi`
 e si caricano da soli a ogni push su `main` (workflow `corpus-ingest.yml`, script
-`scripts/ingest-corpus.mjs`): il nome del file è il codice della fonte. È il testo pubblicato in
+`scripts/ingest-corpus.mjs`): il nome del file è il codice della fonte. Il workflow legge dall'API
+di gestione Supabase tutte le chiavi segrete del progetto, le maschera e usa la prima che
+`ingest-web-source` accetta: la sola chiamata `service_role` non bastava e il primo caricamento è
+fallito con 401. È il testo pubblicato in
 Gazzetta, senza le modifiche successive, e la L. 90/2024 è già stata modificata dall'art. 28 della
 L. 132/2025. Restano fuori L. 300/1970, L. 633/1941, L. 4/2004 e DL 105/2019: i PDF forniti sono
 scansioni o testi originari ormai riscritti, e caricarli darebbe risposte sbagliate dall'aria

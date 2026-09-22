@@ -49,8 +49,13 @@ jobs:
         env:
           FILES: ${{ steps.pick.outputs.files }}
         run: |
-          keys=$(curl -sf -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" "https://api.supabase.com/v1/projects/$PROJECT_REF/api-keys?reveal=true")
-          SERVICE_KEY=$(printf '%s' "$keys" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const k=JSON.parse(s);const r=k.find(x=>x.name==="service_role")||k.find(x=>x.type==="secret");process.stdout.write(r?.api_key||"")})')
-          if [ -z "$SERVICE_KEY" ]; then echo "::error::Chiave di servizio non disponibile"; exit 1; fi
-          echo "::add-mask::$SERVICE_KEY"
+          code=$(curl -s -o keys.json -w '%{http_code}' -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" "https://api.supabase.com/v1/projects/$PROJECT_REF/api-keys?reveal=true")
+          echo "api-keys: HTTP $code"
+          # Elenca solo nome e tipo delle chiavi, mai il valore.
+          node -e 'const k=require("./keys.json");if(!Array.isArray(k)){console.log("risposta inattesa");process.exit(1)}for(const x of k)console.log(" chiave:",x.name,x.type,x.api_key?"(valore disponibile)":"(valore non rivelato)")'
+          # Tutte le chiavi segrete candidate, mascherate: lo script tiene la prima accettata.
+          SERVICE_KEY=$(node -e 'const k=require("./keys.json");const c=k.filter(x=>x.api_key&&x.type!=="publishable"&&!String(x.name).includes("anon"));process.stdout.write(c.map(x=>x.api_key).join("\n"))')
+          rm -f keys.json
+          if [ -z "$SERVICE_KEY" ]; then echo "::error::Nessuna chiave di servizio disponibile"; exit 1; fi
+          while IFS= read -r k; do [ -n "$k" ] && echo "::add-mask::$k"; done <<< "$SERVICE_KEY"
           SUPABASE_URL="https://$PROJECT_REF.supabase.co" SERVICE_KEY="$SERVICE_KEY" node scripts/ingest-corpus.mjs $FILES

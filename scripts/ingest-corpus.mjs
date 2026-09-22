@@ -10,7 +10,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const url = process.env.SUPABASE_URL;
-const key = process.env.SERVICE_KEY;
+// Una o più chiavi candidate (una per riga): il progetto può avere sia la chiave di servizio
+// storica sia le nuove chiavi segrete, e solo alcune sono note alla funzione.
+const candidates = (process.env.SERVICE_KEY || '').split('\n').map((k) => k.trim()).filter(Boolean);
+let key = candidates[0];
 const dryRun = process.argv.includes('--dry-run');
 const files = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 if (!url || !key) { console.error('SUPABASE_URL e SERVICE_KEY sono obbligatori'); process.exit(1); }
@@ -18,26 +21,46 @@ if (files.length === 0) { console.log('Nessun file da caricare.'); process.exit(
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+async function post(body, useKey) {
+  const res = await fetch(`${url}/functions/v1/ingest-web-source`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${useKey}`, apikey: useKey },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(170_000),
+  });
+  const text = await res.text();
+  let data; try { data = JSON.parse(text); } catch { data = { error: text.slice(0, 300) }; }
+  return { ok: res.ok, status: res.status, data };
+}
+
+/** Prova le chiavi candidate con una chiamata a vuoto e tiene la prima accettata. */
+async function pickKey() {
+  for (let i = 0; i < candidates.length; i++) {
+    const probe = await post({ source: 'LEGGE_IA', content: '<akomaNtoso></akomaNtoso>', contentType: 'akn', dryRun: true }, candidates[i]);
+    if (probe.status !== 401) { key = candidates[i]; console.log(`Chiave ${i + 1} di ${candidates.length} accettata.`); return true; }
+    console.log(`Chiave ${i + 1} di ${candidates.length} rifiutata dalla funzione.`);
+  }
+  return false;
+}
+
 async function call(body) {
   for (let attempt = 1; attempt <= 4; attempt++) {
     try {
-      const res = await fetch(`${url}/functions/v1/ingest-web-source`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}`, apikey: key },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(170_000),
-      });
-      const text = await res.text();
-      let data; try { data = JSON.parse(text); } catch { data = { error: text.slice(0, 300) }; }
-      if (res.ok) return data;
-      if (res.status < 500 || attempt === 4) throw new Error(`${res.status}: ${data.error || text.slice(0, 300)}`);
-      console.warn(`  tentativo ${attempt} fallito (${res.status}), riprovo`);
+      const { ok, status, data } = await post(body, key);
+      if (ok) return data;
+      if (status < 500 || attempt === 4) throw new Error(`${status}: ${data.error || 'errore senza dettaglio'}`);
+      console.warn(`  tentativo ${attempt} fallito (${status}), riprovo`);
     } catch (e) {
       if (attempt === 4) throw e;
       console.warn(`  tentativo ${attempt} fallito (${e.message}), riprovo`);
     }
     await sleep(5000 * attempt);
   }
+}
+
+if (!await pickKey()) {
+  console.error('::error::Nessuna delle chiavi disponibili è accettata da ingest-web-source. Verificare che la chiave di servizio del progetto sia fra quelle note alla funzione.');
+  process.exit(1);
 }
 
 let failed = 0;
