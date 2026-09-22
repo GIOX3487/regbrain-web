@@ -13,7 +13,10 @@ import { protect } from "../_shared/access.ts";
 import { aiConfig, aiFetch } from "../_shared/ai.ts";
 import { embedTexts } from "../_shared/embeddings.ts";
 import { REFS, type Risk, RULES_VERSION, SECRET_VALUE_MASKS } from "./rules.ts";
-import { type Ctx, type Finding, type InputFile, mask, RISK_LABEL, RISK_ORDER, scan, type Source } from "./scan.ts";
+import { type Ctx, ctxList, type Finding, type InputFile, mask, RISK_LABEL, RISK_ORDER, scan, type Source } from "./scan.ts";
+import { describeInferred, inferContext, type InferredContext } from "./infer.ts";
+import { buildExcerpts, type Excerpt, EXCERPT_BUDGET, excerptsToText, lineFromExcerpts } from "./excerpts.ts";
+import { RULES } from "./rules.ts";
 
 const headers = { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type" };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers });
@@ -21,7 +24,9 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 const MAX_FILES = 40;
 const MAX_FILE_CHARS = 150_000;
 const MAX_TOTAL_CHARS = 400_000;
-const AI_CODE_BUDGET = 60_000;
+const MAX_INVENTORY = 5000;
+const MAX_FINDINGS = 60;
+const MAX_OCCURRENCES = 8;
 
 const SOFTWARE_CORPUS = new Set([
   "GDPR", "EPRIVACY", "CODICE_PRIVACY", "GARANTE_COOKIE", "GARANTE_ADS", "GARANTE_METADATI", "GARANTE_EMAIL_INTERNET",
@@ -79,40 +84,31 @@ const LABELS: Record<string, string> = {
   consumatori: "consumatori", dipendenti: "dipendenti dell'organizzazione", business: "clienti business", minori: "anche minori",
 };
 
-function contextText(ctx: Ctx): string {
+function contextText(ctx: Ctx, inferred?: InferredContext | null): string {
+  const lab = (v: string) => LABELS[v] || v;
   const rows = [
-    ["Tipo di applicazione", LABELS[String(ctx.appType)] || ctx.appType], ["Dati personali trattati", LABELS[String(ctx.personalData)] || ctx.personalData], ["Settore", LABELS[String(ctx.sector)] || ctx.sector],
-    ["Usa servizi di IA", LABELS[String(ctx.usesAI)] || ctx.usesAI], ["Utenti", LABELS[String(ctx.audience)] || ctx.audience], ["Note", ctx.notes],
+    ["Tipo di applicazione", ctxList(ctx, "appTypes").map(lab).join(", ")],
+    ["Dati personali trattati", LABELS[String(ctx.personalData)] || ctx.personalData],
+    ["Settore o regime", ctxList(ctx, "sectors").map(lab).join(", ")],
+    ["Usa servizi di IA", LABELS[String(ctx.usesAI)] || ctx.usesAI],
+    ["Utenti", ctxList(ctx, "audiences").map(lab).join(", ")],
+    ["Note", ctx.notes],
   ].filter(([, v]) => v && String(v).trim()).map(([k, v]) => `- ${k}: ${String(v).slice(0, 400)}`);
   for (const a of ctx.answers || []) if (a?.q && a?.a) rows.push(`- Domanda: ${String(a.q).slice(0, 300)} Risposta: ${String(a.a).slice(0, 600)}`);
-  return rows.join("\n") || "- Nessun contesto indicato";
-}
-
-function codeForAI(files: InputFile[], masks: RegExp[]): string {
-  let budget = AI_CODE_BUDGET;
-  const parts: string[] = [];
-  for (const f of files) {
-    if (budget <= 0) { parts.push(`\n### ${f.name}\n[omesso per limiti di lunghezza]`); continue; }
-    let content = f.content.split(/\r?\n/).map((l, i) => `${i + 1}: ${l.length > 400 ? l.slice(0, 400) + "…" : l}`).join("\n");
-    for (const re of SECRET_VALUE_MASKS) content = content.replace(re, "[SEGRETO RIMOSSO]");
-    for (const re of masks) content = content.replace(new RegExp(re.source, "g"), "[SEGRETO RIMOSSO]");
-    const slice = content.slice(0, budget);
-    budget -= slice.length;
-    parts.push(`\n### ${f.name}\n${slice}${slice.length < content.length ? "\n[troncato]" : ""}`);
-  }
-  return parts.join("\n");
+  const declared = rows.join("\n") || "- Nessun contesto dichiarato dall'utente";
+  return inferred ? `Dichiarato dall'utente:\n${declared}\n\nDedotto dal codice:\n${describeInferred(inferred)}` : declared;
 }
 
 // deno-lint-ignore no-explicit-any
-async function aiReview(files: InputFile[], masks: RegExp[], ctx: Ctx, findings: Finding[], sources: Source[]): Promise<any | null> {
+async function aiReview(excerpts: Excerpt[], ctx: Ctx, inferred: InferredContext | null, findings: Finding[], sources: Source[]): Promise<any | null> {
   if (!aiConfig().ready) return null;
   const findingText = findings.map((f) => `${f.id} [rischio ${RISK_LABEL[f.risk]}] ${f.title}. Occorrenze: ${f.totalOccurrences}. ${f.occurrences.slice(0, 4).map((o) => `${o.file}:${o.line} ${o.snippet}`).join(" | ")}. Fonti: ${f.refs.join(", ")}`).join("\n") || "Nessun problema rilevato dalle regole.";
   const sourceText = sources.map((s) => `[${s.id}] ${s.citation}\n${s.text}`).join("\n\n");
   const system = `Sei un revisore di conformità normativa del software per il mercato italiano ed europeo (GDPR, Codice privacy, ePrivacy e linee guida cookie del Garante, Cyber Resilience Act, AI Act e legge italiana 132/2025, NIS2 e D.Lgs. 138/2024, accessibilità, licenze open source, OWASP ASVS e linee guida AgID).
-Ricevi: contesto dell'applicazione, codice (con numeri di riga, segreti rimossi), esiti di regole deterministiche e fonti normative con identificativo tra parentesi quadre.
+Ricevi: contesto dell'applicazione (dichiarato dall'utente e dedotto dal codice), estratti di codice con numeri di riga e segreti rimossi (le righe intorno a ogni esito, i manifest e i file più pertinenti: non l'intera base di codice), esiti di regole deterministiche e fonti normative con identificativo tra parentesi quadre.
 Regole di lavoro:
 - Gli esiti delle regole sono verificati sul codice: non puoi cancellarli. Per ciascuno indica "confermato", oppure "possibile_falso_positivo" solo se il codice mostra chiaramente che non è un problema (per esempio un file di test, un valore fittizio), spiegando perché.
-- Puoi aggiungere al massimo 6 problemi ulteriori solo se li vedi davvero nel codice: indica file e riga precisi e la frase di codice che lo prova. Non inventare righe.
+- Puoi aggiungere al massimo 6 problemi ulteriori solo se li vedi davvero negli estratti: indica file e riga precisi, presenti negli estratti, e la frase di codice che lo prova. Non inventare righe e non dedurre problemi da file che non vedi.
 - Cita solo fonti presenti nell'elenco, con il loro identificativo (per esempio GDPR32 o S3). Se nessuna fonte copre un punto, lascia l'elenco vuoto: non citare articoli a memoria.
 - Rischio: alto se espone dati personali, credenziali o sistemi, o se viola un divieto; medio se manca una misura richiesta; basso per miglioramenti o obblighi formali.
 - Scrivi in italiano semplice, per un DPO o un responsabile che non programma. Niente trattini lunghi.
@@ -120,7 +116,7 @@ Regole di lavoro:
 - Formula fino a 5 domande concrete a cui l'utente deve rispondere per completare la verifica (per esempio se uno script parte prima del consenso, dove sono ospitati i dati, se l'app è usata da dipendenti).
 Rispondi solo con un oggetto JSON:
 {"summary":"3-5 frasi sull'esito complessivo","reviews":[{"id":"SEC-01","status":"confermato|possibile_falso_positivo","note":"cosa significa qui, in concreto","action":"intervento specifico per questo codice"}],"additional":[{"title":"...","category":"sicurezza|privacy|cookie|accessibilita|ai|licenze","risk":"high|medium|low","file":"...","line":12,"evidence":"riga di codice","why":"...","action":"...","sources":["GDPR32"]}],"questions":["..."]}`;
-  const user = `CONTESTO\n${contextText(ctx)}\n\nESITI DELLE REGOLE\n${findingText}\n\nFONTI\n${sourceText}\n\nCODICE\n${codeForAI(files, masks)}`;
+  const user = `CONTESTO\n${contextText(ctx, inferred)}\n\nESITI DELLE REGOLE\n${findingText}\n\nFONTI\n${sourceText}\n\nESTRATTI DI CODICE\n${excerptsToText(excerpts)}`;
   try {
     const res = await aiFetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -150,42 +146,121 @@ const handler = async (req: Request): Promise<Response> => {
   // deno-lint-ignore no-explicit-any
   let body: any;
   try { body = await req.json(); } catch { return json({ error: "Richiesta non valida." }, 400); }
-  const rawFiles: unknown[] = Array.isArray(body?.files) ? body.files : [];
-  if (rawFiles.length === 0) return json({ error: "Incolla del codice o carica almeno un file." }, 400);
-  if (rawFiles.length > MAX_FILES) return json({ error: `Puoi verificare al massimo ${MAX_FILES} file per volta.` }, 400);
-  const files: InputFile[] = [];
-  let total = 0;
-  for (const f of rawFiles as Array<{ name?: unknown; content?: unknown }>) {
-    const name = String(f?.name || "codice-incollato.txt").replace(/[^\w.\-/ ]/g, "_").slice(0, 200);
-    const content = typeof f?.content === "string" ? f.content : "";
-    if (!content.trim()) continue;
-    if (content.includes("\u0000")) return json({ error: `Il file ${name} non è un file di testo.` }, 400);
-    if (content.length > MAX_FILE_CHARS) return json({ error: `Il file ${name} supera ${MAX_FILE_CHARS.toLocaleString("it-IT")} caratteri.` }, 400);
-    total += content.length;
-    files.push({ name, content });
-  }
-  if (files.length === 0) return json({ error: "I file inviati sono vuoti." }, 400);
-  if (total > MAX_TOTAL_CHARS) return json({ error: `Il codice supera ${MAX_TOTAL_CHARS.toLocaleString("it-IT")} caratteri in totale: dividi la verifica in più parti.` }, 400);
   const ctx: Ctx = typeof body?.context === "object" && body.context ? body.context : {};
-  const title = String(body?.title || "").trim().slice(0, 160) || (files.length === 1 ? files[0].name : `${files.length} file`);
 
-  const { findings, masks } = scan(files);
+  // Due modi di arrivare qui. Con "files" il codice viene qui e le regole girano nella funzione
+  // (testo incollato o pochi file). Con "scan" le regole sono già girate nel browser sull'intera
+  // base di codice, e arrivano solo esiti, inventario, contesto dedotto ed estratti mascherati:
+  // il codice non lascia mai il computer dell'utente.
+  let files: InputFile[] = [];
+  let findings: Finding[];
+  let masks: RegExp[] = [];
+  let excerpts: Excerpt[];
+  let inferred: InferredContext | null = null;
+  let inventory: Array<{ name: string; lines: number; chars: number; sha256: string }>;
+  let scanMode: "funzione" | "browser";
+  let title: string;
+
+  if (body?.scan && typeof body.scan === "object") {
+    scanMode = "browser";
+    const sc = body.scan;
+    if (sc.rulesVersion && sc.rulesVersion !== RULES_VERSION) {
+      return json({ error: `La pagina usa una versione delle regole (${sc.rulesVersion}) diversa da quella del servizio (${RULES_VERSION}): ricarica la pagina e riprova.` }, 409);
+    }
+    const ruleById = new Map(RULES.map((r) => [r.id, r]));
+    const rawFindings: unknown[] = Array.isArray(sc.findings) ? sc.findings : [];
+    if (rawFindings.length > MAX_FINDINGS) return json({ error: "Troppi esiti in una sola verifica." }, 400);
+    findings = [];
+    for (const raw of rawFindings as Array<Record<string, unknown>>) {
+      const rule = ruleById.get(String(raw?.ruleId ?? raw?.id));
+      if (!rule) continue;
+      const occ = (Array.isArray(raw.occurrences) ? raw.occurrences : []).slice(0, MAX_OCCURRENCES)
+        .filter((o: Record<string, unknown>) => o && typeof o.file === "string" && Number.isInteger(o.line) && typeof o.snippet === "string")
+        .map((o: Record<string, unknown>) => ({ file: String(o.file).slice(0, 300), line: Number(o.line), snippet: mask(String(o.snippet)).slice(0, 240), note: typeof o.note === "string" ? o.note.slice(0, 160) : undefined }));
+      if (occ.length === 0) continue;
+      const risk = (["high", "medium", "low"] as const).includes(raw.risk as Risk) ? raw.risk as Risk : rule.risk;
+      // Titolo, spiegazione, azione e fonti vengono dalla regola sul server, non dal client.
+      findings.push({
+        id: rule.id, ruleId: rule.id, source: "regola", title: rule.title, category: rule.category, risk,
+        why: typeof raw.why === "string" && raw.why.startsWith(rule.why) ? raw.why.slice(0, 1200) : rule.why,
+        action: rule.action, occurrences: occ, totalOccurrences: Math.max(occ.length, Number(raw.totalOccurrences) | 0),
+        refs: [...rule.refs], status: raw.status === "da_verificare" ? "da_verificare" : "confermato",
+      });
+    }
+    findings.sort((a, b) => RISK_ORDER[b.risk] - RISK_ORDER[a.risk] || a.id.localeCompare(b.id));
+    const rawEx: unknown[] = Array.isArray(sc.excerpts) ? sc.excerpts : [];
+    let used = 0;
+    excerpts = [];
+    for (const e of rawEx as Array<Record<string, unknown>>) {
+      if (!e || typeof e.file !== "string" || typeof e.text !== "string" || !Number.isInteger(e.from) || !Number.isInteger(e.to)) continue;
+      const text = mask(e.text).slice(0, 40_000);
+      if (used + text.length > EXCERPT_BUDGET) break;
+      used += text.length;
+      excerpts.push({ file: e.file.slice(0, 300), from: Number(e.from), to: Number(e.to), text });
+    }
+    const rawInv: unknown[] = Array.isArray(sc.inventory) ? sc.inventory : [];
+    inventory = (rawInv as Array<Record<string, unknown>>).slice(0, MAX_INVENTORY)
+      .filter((f) => f && typeof f.name === "string")
+      .map((f) => ({ name: String(f.name).slice(0, 300), lines: Number(f.lines) | 0, chars: Number(f.chars) | 0, sha256: /^[0-9a-f]{64}$/.test(String(f.sha256)) ? String(f.sha256) : "" }));
+    if (inventory.length === 0) return json({ error: "Nessun file nell'inventario della scansione." }, 400);
+    inferred = sc.inferred && typeof sc.inferred === "object" ? sc.inferred as InferredContext : null;
+    title = String(body?.title || "").trim().slice(0, 160) || `${inventory.length} file`;
+  } else {
+    scanMode = "funzione";
+    const rawFiles: unknown[] = Array.isArray(body?.files) ? body.files : [];
+    if (rawFiles.length === 0) return json({ error: "Incolla del codice o carica almeno un file." }, 400);
+    if (rawFiles.length > MAX_FILES) return json({ error: `Da questa via si verificano al massimo ${MAX_FILES} file: per una base di codice intera usa "Scegli una cartella", che analizza nel browser.` }, 400);
+    let total = 0;
+    for (const f of rawFiles as Array<{ name?: unknown; content?: unknown }>) {
+      const name = String(f?.name || "codice-incollato.txt").replace(/[^\w.\-/ ]/g, "_").slice(0, 200);
+      const content = typeof f?.content === "string" ? f.content : "";
+      if (!content.trim()) continue;
+      if (content.includes("\u0000")) return json({ error: `Il file ${name} non è un file di testo.` }, 400);
+      if (content.length > MAX_FILE_CHARS) return json({ error: `Il file ${name} supera ${MAX_FILE_CHARS.toLocaleString("it-IT")} caratteri.` }, 400);
+      total += content.length;
+      files.push({ name, content });
+    }
+    if (files.length === 0) return json({ error: "I file inviati sono vuoti." }, 400);
+    if (total > MAX_TOTAL_CHARS) return json({ error: `Il codice supera ${MAX_TOTAL_CHARS.toLocaleString("it-IT")} caratteri in totale: usa "Scegli una cartella" per analizzare tutto nel browser.` }, 400);
+    title = String(body?.title || "").trim().slice(0, 160) || (files.length === 1 ? files[0].name : `${files.length} file`);
+    const result = scan(files);
+    findings = result.findings; masks = result.masks;
+    inferred = inferContext(files);
+    excerpts = buildExcerpts(files, findings, masks);
+    inventory = await Promise.all(files.map(async (f) => ({
+      name: f.name, lines: f.content.split(/\r?\n/).length, chars: f.content.length,
+      sha256: Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(f.content)))).map((b) => b.toString(16).padStart(2, "0")).join(""),
+    })));
+  }
+
+  // Il contesto dedotto dal codice integra quello dichiarato quando l'utente non ha risposto.
+  const hasList = (k: "appTypes" | "sectors" | "audiences") => ctxList(ctx, k).length > 0;
+  if (inferred) {
+    const sure = (l: InferredContext["sectors"]) => l.filter((a) => a.confidence === "alta").map((a) => a.value);
+    if (!hasList("appTypes") && inferred.appTypes.length) ctx.appTypes = inferred.appTypes.map((a) => a.value);
+    if (!hasList("sectors") && sure(inferred.sectors).length) ctx.sectors = sure(inferred.sectors);
+    if (!hasList("audiences") && sure(inferred.audiences).length) ctx.audiences = sure(inferred.audiences);
+    if ((!ctx.personalData || ctx.personalData === "non_so") && inferred.personalData.length) ctx.personalData = "si";
+    if ((!ctx.usesAI || ctx.usesAI === "non_so") && inferred.usesAI.length) ctx.usesAI = "si";
+  }
+  ctx.inferred = inferred;
+  const sectors = ctxList(ctx, "sectors"), audiences = ctxList(ctx, "audiences");
 
   const refIds = [...new Set(findings.flatMap((f) => f.refs))];
   if (ctx.usesAI === "si" && !refIds.includes("AIACT50_1")) refIds.push("AIACT50_1", "LEGGE_IA_4");
-  if (ctx.audience === "dipendenti" && refIds.some((r) => r.startsWith("AIACT") || r === "LEGGE_IA_4")) refIds.push("LEGGE_IA_11");
-  if (ctx.sector === "nis2") refIds.push("NIS2_IT_24");
-  if (ctx.sector === "cra") refIds.push("CRA_ANNEX1", "CRA_ANNEX1B");
+  if (audiences.includes("dipendenti") && refIds.some((r) => r.startsWith("AIACT") || r === "LEGGE_IA_4")) refIds.push("LEGGE_IA_11");
+  if (sectors.includes("nis2")) refIds.push("NIS2_IT_24");
+  if (sectors.includes("cra")) refIds.push("CRA_ANNEX1", "CRA_ANNEX1B");
   if (ctx.personalData === "si" && !refIds.includes("GDPR25")) refIds.push("GDPR25");
   const refSources = await resolveRefs(db, refIds);
   for (const f of findings) f.refs = f.refs.filter((r) => refSources.has(r));
 
-  const query = `Verifica di conformità di codice sorgente. ${contextText(ctx)}\nProblemi: ${findings.map((f) => f.title).join("; ") || "nessuno rilevato dalle regole"}.\nFile: ${files.map((f) => f.name).join(", ")}`;
+  const query = `Verifica di conformità di codice sorgente. ${contextText(ctx, inferred)}\nProblemi: ${findings.map((f) => f.title).join("; ") || "nessuno rilevato dalle regole"}.`;
   const semantic = await semanticSources(db, query);
   const sources: Source[] = [...refSources.values(), ...semantic];
   const sourceById = new Map(sources.map((s) => [s.id, s]));
 
-  const ai = await aiReview(files, masks, ctx, findings, sources);
+  const ai = await aiReview(excerpts, ctx, inferred, findings, sources);
   const allFindings: Finding[] = [...findings];
   let questions: string[] = [];
   let summary = "";
@@ -197,15 +272,13 @@ const handler = async (req: Request): Promise<Response> => {
       if (typeof r.note === "string" && r.note.trim()) f.aiNote = r.note.trim().slice(0, 1200);
       if (typeof r.action === "string" && r.action.trim()) f.action = r.action.trim().slice(0, 1200);
     }
-    const lineCounts = new Map(files.map((f) => [f.name, f.content.split(/\r?\n/).length]));
     let n = 0;
     for (const a of (Array.isArray(ai.additional) ? ai.additional : []).slice(0, 6)) {
       const file = String(a?.file || "");
       const line = Number(a?.line) | 0;
-      // Un esito dell'AI senza un punto preciso e verificabile del codice non entra nel report.
-      if (!lineCounts.has(file) || line < 1 || line > (lineCounts.get(file) || 0)) continue;
-      const actual = files.find((f) => f.name === file)!.content.split(/\r?\n/)[line - 1] || "";
-      if (!actual.trim()) continue;
+      // Un esito dell'AI senza un punto preciso e verificabile negli estratti non entra nel report.
+      const actual = lineFromExcerpts(excerpts, file, line);
+      if (!actual || !actual.trim()) continue;
       n++;
       const risk: Risk = ["high", "medium", "low"].includes(a.risk) ? a.risk : "medium";
       allFindings.push({
@@ -241,25 +314,20 @@ const handler = async (req: Request): Promise<Response> => {
   const overall = counts.high ? "high" : counts.medium ? "medium" : counts.low ? "low" : "none";
   if (!summary) {
     summary = counted.length === 0
-      ? "Le regole automatiche non hanno trovato problemi nel codice inviato. Questo non certifica la conformità: le regole coprono solo i casi più comuni e il resto richiede una revisione."
+      ? "Le regole automatiche non hanno trovato problemi nel codice analizzato. Questo non certifica la conformità: le regole coprono solo i casi più comuni e il resto richiede una revisione."
       : `Le regole automatiche hanno trovato ${counted.length} tipi di problema: ${counts.high} a rischio alto, ${counts.medium} medio e ${counts.low} basso. La revisione con l'AI non è disponibile in questo momento, quindi gli esiti non sono commentati.`;
   }
   const usedSourceIds = new Set(allFindings.flatMap((f) => f.refs));
   const citedSources = sources.filter((s) => usedSourceIds.has(s.id));
-  const fileMeta = await Promise.all(files.map(async (f) => ({
-    name: f.name, lines: f.content.split(/\r?\n/).length, chars: f.content.length,
-    sha256: Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(f.content)))).map((b) => b.toString(16).padStart(2, "0")).join(""),
-  })));
-
   const record = {
-    user_id: user.id, title, context: ctx, files: fileMeta, findings: allFindings,
-    summary: { text: summary, questions, sources: citedSources, aiUsed: !!ai },
+    user_id: user.id, title, context: ctx, files: inventory, findings: allFindings,
+    summary: { text: summary, questions, sources: citedSources, aiUsed: !!ai, scanMode, excerptChars: excerpts.reduce((n, e) => n + e.text.length, 0) },
     overall_risk: overall, counts, rules_version: RULES_VERSION, model: ai?.model ?? null, duration_ms: Date.now() - started,
   };
   const { data: saved, error } = await db.from("code_checks").insert(record).select("id, created_at").single();
   if (error) console.warn("[code-compliance] salvataggio non riuscito:", error.message);
   try {
-    await db.rpc("log_app_event", { p_kind: "code_check", p_level: "info", p_actor: user.id, p_message: `Verifica del codice: ${files.length} file, rischio ${overall}`, p_details: { id: saved?.id ?? null, counts, files: files.length } });
+    await db.rpc("log_app_event", { p_kind: "code_check", p_level: "info", p_actor: user.id, p_message: `Verifica del codice: ${inventory.length} file, rischio ${overall}`, p_details: { id: saved?.id ?? null, counts, files: inventory.length, scanMode } });
   } catch { /* il registro non deve bloccare la risposta */ }
 
   return json({ id: saved?.id ?? null, created_at: saved?.created_at ?? new Date().toISOString(), ...record, user_id: undefined });

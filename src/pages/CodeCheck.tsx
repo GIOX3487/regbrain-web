@@ -12,34 +12,58 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { MobileNav } from "@/components/MobileNav";
 import { RISK_STYLE } from "@/components/compliance/RiskScoreExplanation";
+import { cn } from "@/lib/utils";
 import {
-  ArrowLeft, Code2, Download, FileCode, Loader2, MessageSquare, RefreshCw, ShieldCheck, Trash2, Upload, X,
+  ArrowLeft, Check, Code2, Download, FileCode, FolderOpen, Loader2, MessageSquare, RefreshCw, ShieldCheck, Trash2, Upload, X,
 } from "lucide-react";
 import {
   CATEGORY_TEXT, type CodeCheckResult, type CodeFinding, exportCodeCheckPdf, RISK_TEXT, STATUS_TEXT,
 } from "@/lib/code-check-report";
+import {
+  CODE_EXTENSIONS, collectDropped, collectFiles, collectZip, type CollectResult, type LocalScan, MAX_FILES, runLocalScan,
+} from "@/lib/code-check/local-scan";
+import type { InputFile } from "../../supabase/functions/code-compliance/scan.ts";
 
-const MAX_FILES = 40;
-const MAX_FILE_CHARS = 150_000;
-const MAX_TOTAL_CHARS = 400_000;
-const CODE_EXTENSIONS = [
-  ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".py", ".java", ".kt", ".kts", ".swift", ".go", ".rb", ".php", ".cs",
-  ".c", ".cc", ".cpp", ".h", ".hpp", ".rs", ".scala", ".dart", ".html", ".htm", ".vue", ".svelte", ".astro", ".css", ".scss",
-  ".sql", ".sh", ".bash", ".ps1", ".yml", ".yaml", ".json", ".xml", ".gradle", ".properties", ".toml", ".ini", ".cfg", ".conf",
-  ".tf", ".txt", ".md", ".erb", ".ejs", ".hbs", ".twig", ".cshtml", ".plist",
-];
-const CODE_NAMES = ["Dockerfile", "Makefile", "Procfile", "Gemfile", ".htaccess", "nginx.conf"];
+type Context = { appTypes: string[]; personalData: string; sectors: string[]; usesAI: string; audiences: string[]; notes: string };
+const EMPTY_CONTEXT: Context = { appTypes: [], personalData: "", sectors: [], usesAI: "", audiences: [], notes: "" };
 
-type SourceFile = { name: string; content: string };
-type Context = { appType: string; personalData: string; sector: string; usesAI: string; audience: string; notes: string };
-const EMPTY_CONTEXT: Context = { appType: "", personalData: "", sector: "", usesAI: "", audience: "", notes: "" };
+const APP_TYPE_OPTIONS = [["web", "Applicazione web"], ["mobile", "App mobile"], ["backend", "Backend o API"], ["desktop", "Software desktop"], ["libreria", "Libreria o componente"]] as const;
+const SECTOR_OPTIONS = [["pa", "Pubblica amministrazione"], ["sanita", "Sanità"], ["finanza", "Finanza e pagamenti"], ["nis2", "Soggetto NIS2"], ["cra", "Prodotto venduto nell'UE (CRA)"]] as const;
+const AUDIENCE_OPTIONS = [["consumatori", "Consumatori"], ["dipendenti", "Dipendenti"], ["business", "Clienti business"], ["minori", "Anche minori"]] as const;
 
 interface HistoryRow { id: string; title: string; overall_risk: string; counts: CodeCheckResult["counts"]; created_at: string }
 
-const isCodeFile = (name: string) => CODE_NAMES.includes(name) || CODE_EXTENSIONS.some((ext) => name.toLowerCase().endsWith(ext));
-
 function riskKey(risk: string): "high" | "medium" | "low" | "none" {
   return risk === "high" || risk === "medium" || risk === "low" ? risk : "none";
+}
+
+/** Bottoni a scelta multipla: le voci dedotte dal codice hanno un segno e una prova. */
+function Chips({ options, value, onChange, detected }: { options: ReadonlyArray<readonly [string, string]>; value: string[]; onChange: (v: string[]) => void; detected?: Record<string, string> }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {options.map(([k, label]) => {
+        const on = value.includes(k);
+        const proof = detected?.[k];
+        return (
+          <button
+            key={k}
+            type="button"
+            aria-pressed={on}
+            title={proof ? `Rilevato nel codice: ${proof}` : undefined}
+            onClick={() => onChange(on ? value.filter((v) => v !== k) : [...value, k])}
+            className={cn(
+              "inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs transition-colors",
+              on ? "border-primary bg-primary/10 text-primary" : "border-muted-foreground/30 text-muted-foreground hover:border-primary/60",
+            )}
+          >
+            {on && <Check className="h-3 w-3" />}
+            {label}
+            {proof && <span className="ml-0.5 rounded bg-primary/15 px-1 text-[10px] leading-4">{proof.startsWith("probabile") ? "forse" : "dal codice"}</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 export default function CodeCheck() {
@@ -50,16 +74,21 @@ export default function CodeCheck() {
   const [title, setTitle] = useState("");
   const [pasted, setPasted] = useState("");
   const [pastedName, setPastedName] = useState("");
-  const [files, setFiles] = useState<SourceFile[]>([]);
-  const [skipped, setSkipped] = useState<string[]>([]);
+  const [mode, setMode] = useState<"folder" | "paste">("folder");
+  const [collected, setCollected] = useState<CollectResult | null>(null);
+  const [localScan, setLocalScan] = useState<LocalScan | null>(null);
+  const [reading, setReading] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [context, setContext] = useState<Context>(EMPTY_CONTEXT);
+  const [touched, setTouched] = useState<Set<keyof Context>>(new Set());
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<CodeCheckResult | null>(null);
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [history, setHistory] = useState<HistoryRow[]>([]);
-  const [lastInput, setLastInput] = useState<SourceFile[] | null>(null);
-  const fileInput = useRef<HTMLInputElement>(null);
+  const [lastInput, setLastInput] = useState<{ scan: LocalScan } | { files: InputFile[] } | null>(null);
+  const folderInput = useRef<HTMLInputElement>(null);
+  const zipInput = useRef<HTMLInputElement>(null);
+  const filesInput = useRef<HTMLInputElement>(null);
   const resultRef = useRef<HTMLDivElement>(null);
 
   const loadHistory = useCallback(async () => {
@@ -79,45 +108,95 @@ export default function CodeCheck() {
     });
   }, [loadHistory]);
 
-  const addFiles = async (list: FileList | File[]) => {
-    const incoming = Array.from(list);
-    const next = [...files];
-    const rejected: string[] = [];
-    for (const file of incoming) {
-      const name = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
-      if (!isCodeFile(file.name)) { rejected.push(`${name}: formato non supportato`); continue; }
-      if (next.length >= MAX_FILES) { rejected.push(`${name}: superato il limite di ${MAX_FILES} file`); continue; }
-      if (file.size > MAX_FILE_CHARS * 2) { rejected.push(`${name}: file troppo grande`); continue; }
-      const text = await file.text();
-      if (text.includes("\u0000")) { rejected.push(`${name}: non è un file di testo`); continue; }
-      if (text.length > MAX_FILE_CHARS) { rejected.push(`${name}: supera ${MAX_FILE_CHARS.toLocaleString("it-IT")} caratteri`); continue; }
-      const existing = next.findIndex((f) => f.name === name);
-      if (existing >= 0) next[existing] = { name, content: text }; else next.push({ name, content: text });
+  // Il contesto dedotto dal codice riempie le voci che l'utente non ha ancora toccato.
+  const applyInferred = (ls: LocalScan) => {
+    setContext((c) => {
+      const next = { ...c };
+      // Le voci sicure si preselezionano; quelle solo probabili restano suggerimenti da confermare.
+      const sure = (l: Array<{ value: string; confidence: string }>) => l.filter((a) => a.confidence === "alta").map((a) => a.value);
+      if (!touched.has("appTypes")) next.appTypes = ls.inferred.appTypes.map((a) => a.value);
+      if (!touched.has("sectors")) next.sectors = sure(ls.inferred.sectors);
+      if (!touched.has("audiences")) next.audiences = sure(ls.inferred.audiences);
+      if (!touched.has("personalData")) next.personalData = ls.inferred.personalData.length ? "si" : c.personalData;
+      if (!touched.has("usesAI")) next.usesAI = ls.inferred.usesAI.length ? "si" : "no";
+      return next;
+    });
+  };
+
+  const analyzeLocally = async (col: CollectResult) => {
+    setCollected(col);
+    setLocalScan(null);
+    if (col.files.length === 0) {
+      toast({ title: "Nessun file di codice", description: "Nella cartella non ci sono file di testo riconosciuti come codice.", variant: "destructive" });
+      return;
     }
-    setFiles(next);
-    setSkipped(rejected);
+    setReading("Analisi nel browser in corso");
+    try {
+      const ls = await runLocalScan(col.files, (step) => setReading(`Analisi nel browser: ${step}`));
+      setLocalScan(ls);
+      applyInferred(ls);
+      if (!title.trim() && col.root) setTitle(col.root.replace(/[-_]?(main|master)$/, ""));
+    } finally {
+      setReading(null);
+    }
   };
 
-  const collectInput = (): SourceFile[] => {
-    const all = [...files];
-    if (pasted.trim()) all.unshift({ name: pastedName.trim() || "codice-incollato.txt", content: pasted });
-    return all;
+  const onFolderPicked = async (list: FileList | File[]) => {
+    setReading("Lettura dei file");
+    try {
+      const col = await collectFiles(list, (n) => setReading(`Lettura dei file: ${n}`));
+      await analyzeLocally(col);
+    } catch (e) {
+      setReading(null);
+      toast({ title: "Lettura non riuscita", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+    }
   };
 
-  const run = async (input: SourceFile[], withAnswers?: Array<{ q: string; a: string }>) => {
-    const total = input.reduce((n, f) => n + f.content.length, 0);
-    if (input.length === 0) { toast({ title: "Nessun codice", description: "Incolla del codice o carica almeno un file.", variant: "destructive" }); return; }
-    if (total > MAX_TOTAL_CHARS) { toast({ title: "Troppo codice in una volta", description: `Il limite è ${MAX_TOTAL_CHARS.toLocaleString("it-IT")} caratteri: dividi la verifica in più parti.`, variant: "destructive" }); return; }
+  const onZipPicked = async (file: File) => {
+    setReading("Apertura dell'archivio");
+    try {
+      const col = await collectZip(file, (n) => setReading(`Apertura dell'archivio: ${n} voci`));
+      await analyzeLocally(col);
+    } catch (e) {
+      setReading(null);
+      toast({ title: "Archivio non leggibile", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+    }
+  };
+
+  const onDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    const items = e.dataTransfer.items;
+    const zip = Array.from(e.dataTransfer.files).find((f) => /\.zip$/i.test(f.name));
+    if (zip && e.dataTransfer.files.length === 1) return onZipPicked(zip);
+    if (items && items.length && items[0].webkitGetAsEntry) {
+      setReading("Lettura della cartella");
+      const files = await collectDropped(items);
+      return onFolderPicked(files);
+    }
+    return onFolderPicked(e.dataTransfer.files);
+  };
+
+  const pastedFiles = (): InputFile[] => (pasted.trim() ? [{ name: pastedName.trim() || "codice-incollato.txt", content: pasted }] : []);
+
+  const invoke = async (payload: Record<string, unknown>) => {
+    const { data, error } = await supabase.functions.invoke("code-compliance", { body: payload });
+    if (error) {
+      const details = error.context instanceof Response ? await error.context.clone().json().catch(() => null) : null;
+      throw new Error(details?.error || error.message);
+    }
+    return data as CodeCheckResult;
+  };
+
+  const run = async (input: { scan: LocalScan } | { files: InputFile[] }, withAnswers?: Array<{ q: string; a: string }>) => {
     setRunning(true);
     try {
-      const { data, error } = await supabase.functions.invoke("code-compliance", {
-        body: { title: title.trim() || undefined, files: input, context: { ...context, answers: withAnswers } },
-      });
-      if (error) {
-        const details = error.context instanceof Response ? await error.context.clone().json().catch(() => null) : null;
-        throw new Error(details?.error || error.message);
-      }
-      setResult(data as CodeCheckResult);
+      const ctx = { ...context, answers: withAnswers };
+      const body = "scan" in input
+        ? { title: title.trim() || undefined, context: ctx, scan: { rulesVersion: input.scan.rulesVersion, findings: input.scan.findings, inferred: input.scan.inferred, excerpts: input.scan.excerpts, inventory: input.scan.inventory } }
+        : { title: title.trim() || undefined, context: ctx, files: input.files };
+      const data = await invoke(body);
+      setResult(data);
       setLastInput(input);
       setAnswers({});
       loadHistory();
@@ -127,6 +206,16 @@ export default function CodeCheck() {
     } finally {
       setRunning(false);
     }
+  };
+
+  const startVerification = () => {
+    if (mode === "folder") {
+      if (!localScan) { toast({ title: "Nessun codice", description: "Scegli una cartella, un archivio zip o dei file.", variant: "destructive" }); return; }
+      return run({ scan: localScan });
+    }
+    const files = pastedFiles();
+    if (files.length === 0) { toast({ title: "Nessun codice", description: "Incolla del codice.", variant: "destructive" }); return; }
+    return run({ files });
   };
 
   const openHistory = async (id: string) => {
@@ -173,9 +262,15 @@ export default function CodeCheck() {
     );
   }
 
-  const input = collectInput();
-  const totalChars = input.reduce((n, f) => n + f.content.length, 0);
-  const setCtx = (k: keyof Context) => (v: string) => setContext((c) => ({ ...c, [k]: v }));
+  const setCtx = <K extends keyof Context>(k: K) => (v: Context[K]) => {
+    setTouched((t) => new Set(t).add(k));
+    setContext((c) => ({ ...c, [k]: v }));
+  };
+  const detectedMap = (list: Array<{ value: string; evidence: Array<{ file: string; line: number }>; confidence: string }> | undefined) =>
+    Object.fromEntries((list || []).map((d) => [d.value, `${d.confidence === "alta" ? "" : "probabile, da confermare: "}${d.evidence.map((e) => `${e.file}:${e.line}`).slice(0, 2).join(", ")}`]));
+  const inf = localScan?.inferred;
+  const ready = mode === "folder" ? !!localScan : pasted.trim().length > 0;
+  const localCounts = localScan ? { high: localScan.findings.filter((f) => f.risk === "high").length, medium: localScan.findings.filter((f) => f.risk === "medium").length, low: localScan.findings.filter((f) => f.risk === "low").length } : null;
 
   return (
     <div className="min-h-screen bg-background pb-20 lg:pb-0">
@@ -186,66 +281,72 @@ export default function CodeCheck() {
         </Button>
         <h1 className="text-2xl sm:text-3xl font-bold mb-2 flex items-center gap-2"><Code2 className="h-7 w-7 text-primary" />Verifica del codice</h1>
         <p className="text-sm sm:text-base text-muted-foreground mb-6">
-          Incolla il codice o carica i file: RegBrain lo controlla con regole fisse (stesso codice, stesso esito), recupera dal RAG
-          il testo delle norme collegate e ti restituisce i problemi con rischio alto, medio o basso, dove si trovano e come correggerli.
+          Scegli la cartella del progetto: le regole girano nel browser sull'intera base di codice, il codice non lascia il tuo computer.
+          Al servizio arrivano solo gli esiti, l'elenco dei file e le righe che servono per la revisione, con i segreti mascherati.
         </p>
 
         <Card className="mb-6 border-primary/30 bg-primary/5">
           <CardContent className="pt-6 text-sm space-y-2">
-            <p><strong>Cosa controlla:</strong> credenziali nel codice, crittografia debole, connessioni non cifrate, SQL injection, cookie e strumenti di tracciamento senza consenso, dati personali nei log, geolocalizzazione, dati sanitari o biometrici, uso di servizi di IA, accessibilità, licenze copyleft.</p>
+            <p><strong>Cosa controlla:</strong> credenziali nel codice, crittografia debole, connessioni non cifrate, SQL injection, cookie e strumenti di tracciamento senza consenso, dati personali nei log, geolocalizzazione, dati sanitari o biometrici, dati fuori dall'UE, uso di servizi di IA, accessibilità, licenze copyleft.</p>
             <p><strong>Fonti:</strong> GDPR, Codice privacy, ePrivacy e linee guida cookie del Garante, Cyber Resilience Act, AI Act e L. 132/2025, D.Lgs. 138/2024, WCAG 2.2 ed European Accessibility Act, OWASP ASVS, linee guida AgID sullo sviluppo sicuro, testi delle licenze.</p>
-            <p><strong>Cosa resta salvato:</strong> l'esito, i nomi dei file e le poche righe citate come prova, con i segreti mascherati. Il codice non viene conservato. Per la revisione viene inviato al fornitore del modello AI, come i documenti della gap analysis.</p>
+            <p><strong>Cosa resta salvato:</strong> l'esito, i nomi dei file con la loro impronta e le righe citate come prova, con i segreti mascherati. Il codice intero non viene né conservato né inviato: alla revisione del modello arrivano solo gli estratti.</p>
           </CardContent>
         </Card>
 
         <Card className="mb-6">
           <CardHeader>
             <CardTitle className="text-lg">1. Il codice</CardTitle>
-            <CardDescription>Fino a {MAX_FILES} file di testo e {MAX_TOTAL_CHARS.toLocaleString("it-IT")} caratteri per verifica. Non caricare file .env reali: se lo fai, i valori vengono mascherati nel report ma la chiave va comunque ruotata.</CardDescription>
+            <CardDescription>Una cartella intera (fino a {MAX_FILES.toLocaleString("it-IT")} file di testo), un archivio zip come quello che esporta GitHub, oppure del codice incollato. Cartelle come node_modules, .git, dist e vendor vengono saltate da sole.</CardDescription>
           </CardHeader>
           <CardContent>
-            <Tabs defaultValue="paste">
+            <Tabs value={mode} onValueChange={(v) => setMode(v as "folder" | "paste")}>
               <TabsList className="mb-4">
+                <TabsTrigger value="folder">Cartella, zip o file</TabsTrigger>
                 <TabsTrigger value="paste">Incolla</TabsTrigger>
-                <TabsTrigger value="upload">Carica file{files.length ? ` (${files.length})` : ""}</TabsTrigger>
               </TabsList>
-              <TabsContent value="paste" className="space-y-3">
-                <Input placeholder="Nome del file (facoltativo, aiuta a riconoscere il linguaggio: es. server.js)" value={pastedName} onChange={(e) => setPastedName(e.target.value)} />
-                <Textarea
-                  value={pasted}
-                  onChange={(e) => setPasted(e.target.value)}
-                  placeholder="Incolla qui il codice"
-                  className="font-mono text-xs min-h-[260px]"
-                  spellCheck={false}
-                />
-              </TabsContent>
-              <TabsContent value="upload" className="space-y-3">
+              <TabsContent value="folder" className="space-y-3">
                 <div
                   onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
                   onDragLeave={() => setDragging(false)}
-                  onDrop={(e) => { e.preventDefault(); setDragging(false); addFiles(e.dataTransfer.files); }}
-                  onClick={() => fileInput.current?.click()}
-                  className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${dragging ? "border-primary bg-primary/5" : "border-muted-foreground/30 hover:border-primary/60"}`}
+                  onDrop={onDrop}
+                  className={`border-2 border-dashed rounded-lg p-6 sm:p-8 text-center transition-colors ${dragging ? "border-primary bg-primary/5" : "border-muted-foreground/30"}`}
                 >
-                  <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                  <p className="text-sm font-medium">Trascina qui i file o clicca per sceglierli</p>
-                  <p className="text-xs text-muted-foreground mt-1">JavaScript, TypeScript, Python, Java, Kotlin, Swift, Go, PHP, C#, HTML, SQL, configurazioni e altri file di testo</p>
-                  <input ref={fileInput} type="file" multiple className="hidden" accept={CODE_EXTENSIONS.join(",")} onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
+                  <FolderOpen className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                  <p className="text-sm font-medium">Trascina qui la cartella del progetto o un file .zip</p>
+                  <p className="text-xs text-muted-foreground mt-1 mb-3">JavaScript, TypeScript, Python, Java, Kotlin, Swift, Go, PHP, C#, HTML, SQL, configurazioni e altri file di testo</p>
+                  <div className="flex flex-wrap justify-center gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={() => folderInput.current?.click()} disabled={!!reading}><FolderOpen className="mr-2 h-4 w-4" />Scegli una cartella</Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => zipInput.current?.click()} disabled={!!reading}><Upload className="mr-2 h-4 w-4" />Carica uno zip</Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => filesInput.current?.click()} disabled={!!reading}><FileCode className="mr-2 h-4 w-4" />File singoli</Button>
+                  </div>
+                  <input ref={folderInput} type="file" multiple className="hidden" {...({ webkitdirectory: "", directory: "" } as Record<string, string>)} onChange={(e) => { if (e.target.files?.length) onFolderPicked(e.target.files); e.target.value = ""; }} />
+                  <input ref={zipInput} type="file" accept=".zip" className="hidden" onChange={(e) => { if (e.target.files?.[0]) onZipPicked(e.target.files[0]); e.target.value = ""; }} />
+                  <input ref={filesInput} type="file" multiple className="hidden" accept={CODE_EXTENSIONS.join(",")} onChange={(e) => { if (e.target.files?.length) onFolderPicked(e.target.files); e.target.value = ""; }} />
                 </div>
-                {files.length > 0 && (
-                  <ul className="divide-y rounded-md border text-sm">
-                    {files.map((f) => (
-                      <li key={f.name} className="flex items-center justify-between gap-2 px-3 py-2">
-                        <span className="flex items-center gap-2 min-w-0"><FileCode className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="truncate">{f.name}</span></span>
-                        <span className="flex items-center gap-2 shrink-0 text-xs text-muted-foreground">
-                          {f.content.split(/\r?\n/).length} righe
-                          <button type="button" aria-label={`Rimuovi ${f.name}`} onClick={() => setFiles((l) => l.filter((x) => x.name !== f.name))} className="p-1 rounded hover:bg-muted"><X className="h-3.5 w-3.5" /></button>
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
+                {reading && <p className="text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" />{reading}</p>}
+                {collected && !reading && (
+                  <div className="rounded-md border bg-muted/30 p-3 text-sm space-y-1">
+                    <p><strong>{collected.files.length.toLocaleString("it-IT")} file di codice</strong>, {collected.chars.toLocaleString("it-IT")} caratteri
+                      {collected.skipped.ignoredDirs + collected.skipped.notCode + collected.skipped.binary + collected.skipped.tooLarge > 0 && (
+                        <span className="text-muted-foreground"> · saltati: {collected.skipped.ignoredDirs} in cartelle escluse, {collected.skipped.notCode} non di codice, {collected.skipped.binary} binari, {collected.skipped.tooLarge} troppo grandi</span>
+                      )}
+                    </p>
+                    {localScan && localCounts && (
+                      <p className="text-muted-foreground">
+                        Regole eseguite nel browser: {localScan.findings.length} tipi di problema ({localCounts.high} alti, {localCounts.medium} medi, {localCounts.low} bassi). Alla revisione andranno {localScan.excerpts.length} estratti per {localScan.excerpts.reduce((n, e) => n + e.text.length, 0).toLocaleString("it-IT")} caratteri.
+                      </p>
+                    )}
+                    {inf && (
+                      <p className="text-muted-foreground">
+                        Dal codice: {Object.entries(inf.languages).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([l, n]) => `${l} (${n})`).join(", ")}{inf.frameworks.length ? `; ${inf.frameworks.join(", ")}` : ""}.
+                      </p>
+                    )}
+                  </div>
                 )}
-                {skipped.length > 0 && <p className="text-xs text-destructive">Non caricati: {skipped.join("; ")}</p>}
+              </TabsContent>
+              <TabsContent value="paste" className="space-y-3">
+                <Input placeholder="Nome del file (facoltativo, aiuta a riconoscere il linguaggio: es. server.js)" value={pastedName} onChange={(e) => setPastedName(e.target.value)} />
+                <Textarea value={pasted} onChange={(e) => setPasted(e.target.value)} placeholder="Incolla qui il codice" className="font-mono text-xs min-h-[260px]" spellCheck={false} />
               </TabsContent>
             </Tabs>
           </CardContent>
@@ -254,87 +355,65 @@ export default function CodeCheck() {
         <Card className="mb-6">
           <CardHeader>
             <CardTitle className="text-lg">2. Il contesto</CardTitle>
-            <CardDescription>Facoltativo, ma cambia il peso dei problemi e le norme applicabili.</CardDescription>
+            <CardDescription>
+              {inf ? "Compilato dal codice: le voci con il segno \"dal codice\" hanno una prova (passa il mouse per vederla). Correggi solo se serve." : "Facoltativo: dopo la lettura di una cartella si compila da solo. Cambia il peso dei problemi e le norme applicabili."}
+            </CardDescription>
           </CardHeader>
-          <CardContent className="grid sm:grid-cols-2 gap-4">
+          <CardContent className="space-y-4">
             <div className="space-y-1.5">
-              <Label>Tipo di software</Label>
-              <Select value={context.appType} onValueChange={setCtx("appType")}>
-                <SelectTrigger><SelectValue placeholder="Scegli" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="web">Applicazione web</SelectItem>
-                  <SelectItem value="mobile">App mobile</SelectItem>
-                  <SelectItem value="backend">Backend o API</SelectItem>
-                  <SelectItem value="desktop">Software desktop</SelectItem>
-                  <SelectItem value="libreria">Libreria o componente</SelectItem>
-                  <SelectItem value="altro">Altro</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label>Tipo di software (anche più di uno)</Label>
+              <Chips options={APP_TYPE_OPTIONS} value={context.appTypes} onChange={setCtx("appTypes")} detected={detectedMap(inf?.appTypes)} />
             </div>
             <div className="space-y-1.5">
-              <Label>Tratta dati personali?</Label>
-              <Select value={context.personalData} onValueChange={setCtx("personalData")}>
-                <SelectTrigger><SelectValue placeholder="Scegli" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="si">Sì</SelectItem>
-                  <SelectItem value="no">No</SelectItem>
-                  <SelectItem value="non_so">Non so</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label>Chi lo usa (anche più di uno)</Label>
+              <Chips options={AUDIENCE_OPTIONS} value={context.audiences} onChange={setCtx("audiences")} detected={detectedMap(inf?.audiences)} />
             </div>
             <div className="space-y-1.5">
-              <Label>Settore o regime</Label>
-              <Select value={context.sector} onValueChange={setCtx("sector")}>
-                <SelectTrigger><SelectValue placeholder="Scegli" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="generico">Nessuno in particolare</SelectItem>
-                  <SelectItem value="pa">Pubblica amministrazione</SelectItem>
-                  <SelectItem value="sanita">Sanità</SelectItem>
-                  <SelectItem value="finanza">Finanza e pagamenti</SelectItem>
-                  <SelectItem value="nis2">Soggetto NIS2 (essenziale o importante)</SelectItem>
-                  <SelectItem value="cra">Prodotto venduto nell'UE (Cyber Resilience Act)</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label>Settore o regime (anche più di uno)</Label>
+              <Chips options={SECTOR_OPTIONS} value={context.sectors} onChange={setCtx("sectors")} detected={detectedMap(inf?.sectors)} />
             </div>
-            <div className="space-y-1.5">
-              <Label>Usa servizi di intelligenza artificiale?</Label>
-              <Select value={context.usesAI} onValueChange={setCtx("usesAI")}>
-                <SelectTrigger><SelectValue placeholder="Scegli" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="si">Sì</SelectItem>
-                  <SelectItem value="no">No</SelectItem>
-                  <SelectItem value="non_so">Non so</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Chi lo usa</Label>
-              <Select value={context.audience} onValueChange={setCtx("audience")}>
-                <SelectTrigger><SelectValue placeholder="Scegli" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="consumatori">Consumatori</SelectItem>
-                  <SelectItem value="dipendenti">Dipendenti dell'organizzazione</SelectItem>
-                  <SelectItem value="business">Clienti business</SelectItem>
-                  <SelectItem value="minori">Anche minori</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="cc-title">Nome della verifica</Label>
-              <Input id="cc-title" placeholder="Es. Backend app prenotazioni" value={title} onChange={(e) => setTitle(e.target.value)} />
-            </div>
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="cc-notes">Note (facoltative)</Label>
-              <Textarea id="cc-notes" rows={2} placeholder="Es. i dati sono ospitati su AWS Francoforte; il login usa Google" value={context.notes} onChange={(e) => setContext((c) => ({ ...c, notes: e.target.value.slice(0, 1000) }))} />
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label>Tratta dati personali?</Label>
+                <Select value={context.personalData} onValueChange={setCtx("personalData")}>
+                  <SelectTrigger><SelectValue placeholder="Scegli" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="si">Sì</SelectItem>
+                    <SelectItem value="no">No</SelectItem>
+                    <SelectItem value="non_so">Non so</SelectItem>
+                  </SelectContent>
+                </Select>
+                {inf && inf.personalData.length > 0 && <p className="text-xs text-muted-foreground">Nel codice: {inf.personalData.map((d) => d.value).join(", ")}</p>}
+              </div>
+              <div className="space-y-1.5">
+                <Label>Usa servizi di intelligenza artificiale?</Label>
+                <Select value={context.usesAI} onValueChange={setCtx("usesAI")}>
+                  <SelectTrigger><SelectValue placeholder="Scegli" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="si">Sì</SelectItem>
+                    <SelectItem value="no">No</SelectItem>
+                    <SelectItem value="non_so">Non so</SelectItem>
+                  </SelectContent>
+                </Select>
+                {inf && inf.usesAI.length > 0 && <p className="text-xs text-muted-foreground">Nel codice: {inf.usesAI.map((d) => d.value).join(", ")}</p>}
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="cc-title">Nome della verifica</Label>
+                <Input id="cc-title" placeholder="Es. Backend app prenotazioni" value={title} onChange={(e) => setTitle(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="cc-notes">Note (facoltative)</Label>
+                <Textarea id="cc-notes" rows={2} placeholder="Es. i dati sono ospitati su AWS Francoforte; il login usa Google" value={context.notes} onChange={(e) => setCtx("notes")(e.target.value.slice(0, 1000))} />
+              </div>
             </div>
           </CardContent>
         </Card>
 
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-10">
-          <Button size="lg" disabled={running || input.length === 0} onClick={() => run(input)} className="min-h-[44px]">
-            {running ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Verifica in corso, può richiedere un minuto</> : <><ShieldCheck className="mr-2 h-4 w-4" />Verifica il codice</>}
+          <Button size="lg" disabled={running || !ready || !!reading} onClick={startVerification} className="min-h-[44px]">
+            {running ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Revisione in corso, può richiedere un minuto</> : <><ShieldCheck className="mr-2 h-4 w-4" />Verifica il codice</>}
           </Button>
-          <span className="text-xs text-muted-foreground">{input.length} {input.length === 1 ? "file" : "file"}, {totalChars.toLocaleString("it-IT")} caratteri</span>
+          {mode === "folder" && localScan && <span className="text-xs text-muted-foreground">{localScan.stats.files.toLocaleString("it-IT")} file analizzati nel browser</span>}
         </div>
 
         {result && (
