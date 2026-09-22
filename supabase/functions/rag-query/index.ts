@@ -690,6 +690,9 @@ interface RegulationConfig {
   searchTerms: string[];
   keyArticles: string[];
   keyTopics: string[];
+  // Codici di structured_chunks da interrogare quando la configurazione scatta
+  // (fonti caricate con ingest-eurlex-formex o ingest-web-source).
+  codes?: string[];
 }
 
 const regulationConfigs: RegulationConfig[] = [
@@ -1146,6 +1149,182 @@ const regulationConfigs: RegulationConfig[] = [
       "Albania",
       "norme vincolanti impresa",
     ],
+  },
+  // ── Fonti per la conformità del software (caricate il 22 settembre 2026) ──
+  {
+    pattern: /e-?privacy|2002\/58|cookie|tracciament|tracker|pixel\s+di\s+tracciamento|fingerprint/i,
+    searchTerms: ["ePrivacy", "Linee guida cookie", "Linee guida 2/2023", "Codice privacy"],
+    keyArticles: ["5", "6", "9", "13"],
+    keyTopics: ["cookie", "consenso", "strumenti di tracciamento", "terminale", "banner"],
+    codes: ["EPRIVACY", "GARANTE_COOKIE", "EDPB_2_2023", "CODICE_PRIVACY"],
+  },
+  {
+    pattern: /codice\s+(della\s+)?privacy|d\.?\s*lgs\.?\s*196\s*\/\s*2003|196\/2003|comunicazioni\s+indesiderate|telemarketing/i,
+    searchTerms: ["Codice privacy", "196/2003"],
+    keyArticles: ["122", "130", "113", "114"],
+    keyTopics: ["cookie", "comunicazioni indesiderate", "controllo a distanza"],
+    codes: ["CODICE_PRIVACY"],
+  },
+  {
+    pattern: /amministrator[ei]\s+di\s+sistema|accessi\s+privilegiat|log\s+(degli\s+)?accessi|access\s+log/i,
+    searchTerms: ["Amministratori di sistema"],
+    keyArticles: [],
+    keyTopics: ["log degli accessi", "amministratori di sistema", "verifica annuale"],
+    codes: ["GARANTE_ADS"],
+  },
+  {
+    pattern: /metadati|posta\s+elettronica|e-?mail\s+(aziendal|dei\s+(dipendenti|lavoratori))|navigazione\s+internet|monitoraggio\s+(dei\s+)?(dipendenti|lavoratori)|controllo\s+a\s+distanza|statuto\s+dei\s+lavoratori|300\/1970/i,
+    searchTerms: ["metadati", "posta elettronica e internet", "Statuto dei lavoratori", "Codice privacy"],
+    keyArticles: ["4"],
+    keyTopics: ["controllo a distanza", "metadati", "posta elettronica", "strumenti di lavoro"],
+    codes: ["GARANTE_METADATI", "GARANTE_EMAIL_INTERNET", "STATUTO_LAVORATORI", "CODICE_PRIVACY"],
+  },
+  {
+    pattern: /dossier\s+sanitario|fascicolo\s+sanitario|cartella\s+clinica|ehds|2025\/327|dati\s+sanitari/i,
+    searchTerms: ["dossier sanitario", "EHDS", "GDPR"],
+    keyArticles: [],
+    keyTopics: ["oscuramento", "accessi", "sanitario"],
+    codes: ["GARANTE_DOSSIER", "EHDS", "GDPR"],
+  },
+  {
+    pattern: /privacy\s+by\s+(design|default)|by\s+design|by\s+default|fin\s+dalla\s+progettazione|impostazione\s+predefinita/i,
+    searchTerms: ["Linee guida 4/2019", "GDPR"],
+    keyArticles: ["25"],
+    keyTopics: ["protezione dei dati fin dalla progettazione", "impostazione predefinita"],
+    codes: ["EDPB_4_2019", "GDPR"],
+  },
+  {
+    pattern: /dark\s+pattern|ingannevol|deceptive|interfacce?\s+(utente\s+)?manipolat/i,
+    searchTerms: ["Linee guida 3/2022", "DSA", "GDPR"],
+    keyArticles: ["25"],
+    keyTopics: ["interfacce ingannevoli", "modelli di progettazione"],
+    codes: ["EDPB_3_2022", "DSA", "GDPR"],
+  },
+  {
+    pattern: /\bconsenso\b|\bconsent\b/i,
+    searchTerms: ["Linee guida 05/2020", "GDPR"],
+    keyArticles: ["7"],
+    keyTopics: ["consenso", "revoca"],
+    codes: ["EDPB_5_2020", "GDPR"],
+  },
+  {
+    pattern: /diritto\s+di\s+accesso|right\s+of\s+access|richiesta\s+di\s+accesso/i,
+    searchTerms: ["Guidelines 01/2022", "GDPR"],
+    keyArticles: ["15"],
+    keyTopics: ["diritto di accesso", "copia dei dati"],
+    codes: ["EDPB_1_2022", "GDPR"],
+  },
+  {
+    pattern: /data\s*breach|violazion[ei]\s+(dei\s+)?dati|notifica\s+(della\s+)?violazione/i,
+    searchTerms: ["Guidelines 9/2022", "GDPR"],
+    keyArticles: ["33", "34"],
+    keyTopics: ["violazione", "notifica", "72 ore"],
+    codes: ["EDPB_9_2022", "GDPR"],
+  },
+  {
+    pattern: /digital\s+services\s+act|\bdsa\b|2022\/2065|piattaform[ae]\s+online|marketplace/i,
+    searchTerms: ["DSA"],
+    keyArticles: ["14", "16", "25", "26", "27", "28", "39"],
+    keyTopics: ["interfacce ingannevoli", "pubblicità", "minori", "termini e condizioni"],
+    codes: ["DSA"],
+  },
+  {
+    pattern: /2024\/2690|regolamento\s+di\s+esecuzione\s+(nis|2024\/2690)|fornitor[ei]\s+di\s+servizi\s+(cloud|dns|di\s+data\s*center)|misure\s+tecniche\s+nis/i,
+    searchTerms: ["2024/2690"],
+    keyArticles: ["1", "2", "3"],
+    keyTopics: ["misure tecniche", "gestione del rischio", "controllo degli accessi", "crittografia"],
+    codes: ["NIS2_IR"],
+  },
+  {
+    pattern: /specifiche\s+di\s+base|obblighi\s+di\s+base|misure\s+di\s+(sicurezza\s+di\s+)?base\s+nis|determinazione\s+acn/i,
+    searchTerms: ["Specifiche di base NIS", "Determinazione obblighi di base"],
+    keyArticles: [],
+    keyTopics: ["misure di sicurezza di base", "incidenti significativi"],
+    codes: ["ACN_NIS_BASE", "DLGS_138_2024"],
+  },
+  {
+    pattern: /2024\/1774|2024\/1772|2024\/2956|rts\s+dora|norme\s+tecniche\s+(di\s+regolamentazione\s+)?dora|registro\s+(delle\s+)?informazioni.*fornitor/i,
+    searchTerms: ["2024/1774", "2024/1772", "2024/2956"],
+    keyArticles: [],
+    keyTopics: ["gestione dei rischi informatici", "classificazione degli incidenti", "registro delle informazioni"],
+    codes: ["DORA_RTS_ICT", "DORA_RTS_INC", "DORA_ITS_REG"],
+  },
+  {
+    pattern: /accessibilit|european\s+accessibility|2019\/882|82\/2022|wcag|legge\s+stanca|4\/2004|2016\/2102|screen\s*reader|wai-aria|\baria\b/i,
+    searchTerms: ["European Accessibility Act", "D.Lgs. 82/2022", "Legge Stanca", "accessibilità", "WCAG"],
+    keyArticles: ["4", "13", "14"],
+    keyTopics: ["requisiti di accessibilità", "servizi digitali", "dichiarazione di accessibilità"],
+    codes: ["EAA", "WAD", "DLGS_82_2022", "LEGGE_STANCA", "AGID_ACC_SERVIZI", "AGID_ACC_PA", "WCAG22"],
+  },
+  {
+    pattern: /psd2|2015\/2366|218\/2017|autenticazione\s+forte|strong\s+customer|\bsca\b|servizi\s+di\s+pagamento|collegamento\s+dinamico/i,
+    searchTerms: ["PSD2", "D.Lgs. 218/2017"],
+    keyArticles: ["97", "98", "4", "5"],
+    keyTopics: ["autenticazione forte del cliente", "collegamento dinamico", "esenzioni"],
+    codes: ["PSD2", "PSD2_SCA", "DLGS_218_2017"],
+  },
+  {
+    pattern: /eidas|910\/2014|2024\/1183|firma\s+(elettronica|digitale)|identità\s+digitale|wallet|portafoglio\s+europeo|spid|\bcie\b/i,
+    searchTerms: ["eIDAS", "CAD"],
+    keyArticles: ["5a", "25", "26", "64"],
+    keyTopics: ["firma elettronica qualificata", "identità digitale", "portafoglio europeo"],
+    codes: ["EIDAS", "CAD"],
+  },
+  {
+    pattern: /prodott[io]\s+difettos|2024\/2853|responsabilità\s+(del\s+)?produttore|danno\s+da\s+prodott/i,
+    searchTerms: ["Prodotti difettosi"],
+    keyArticles: ["4", "6", "7", "8", "10", "11"],
+    keyTopics: ["difetto", "software", "aggiornamenti", "onere della prova"],
+    codes: ["PLD"],
+  },
+  {
+    pattern: /contenuti\s+digitali|2019\/770|conformità\s+(dei\s+)?servizi\s+digitali|aggiornamenti\s+(di\s+sicurezza|del\s+software)|codice\s+del\s+consumo|206\/2005/i,
+    searchTerms: ["Contenuti digitali", "Codice del consumo"],
+    keyArticles: ["7", "8", "14"],
+    keyTopics: ["aggiornamenti", "conformità", "rimedi"],
+    codes: ["DCD", "CODICE_CONSUMO"],
+  },
+  {
+    pattern: /dispositiv[io]\s+medic|2017\/745|\bmdr\b|software\s+(come\s+)?(dispositivo\s+)?medic/i,
+    searchTerms: ["MDR"],
+    keyArticles: ["2", "10", "51"],
+    keyTopics: ["software", "classificazione", "requisiti generali di sicurezza"],
+    codes: ["MDR"],
+  },
+  {
+    pattern: /diritto\s+d.?autore|copyright|programm[ai]\s+per\s+elaboratore|2009\/24|2019\/790|text\s+and\s+data\s+mining|\btdm\b|633\/1941/i,
+    searchTerms: ["Diritto d'autore", "L. 633/1941"],
+    keyArticles: ["4", "5", "6"],
+    keyTopics: ["programmi per elaboratore", "estrazione di testo e di dati", "decompilazione"],
+    codes: ["SW_DIR", "DSM_COPYRIGHT", "LEGGE_AUTORE"],
+  },
+  {
+    pattern: /owasp|asvs|sicurezza\s+(del\s+)?(codice|applicazion|software)|sviluppo\s+sicuro|secure\s+coding|injection|xss|csrf|crittografi|cifratura|hash(ing)?\s+(delle\s+)?password|vulnerabilit/i,
+    searchTerms: ["OWASP ASVS", "sviluppo del software sicuro", "Misure minime", "GDPR", "Cyber Resilience Act"],
+    keyArticles: [],
+    keyTopics: ["validazione dell'input", "autenticazione", "gestione della sessione", "crittografia", "logging"],
+    codes: ["OWASP_ASVS", "AGID_SW_SICURO", "AGID_MISURE_MINIME", "GDPR", "CRA"],
+  },
+  {
+    pattern: /licenz[ae]\s+(open\s*source|software)|\bgpl\b|agpl|lgpl|copyleft|open\s*source|apache\s*2|\bmpl\b|eupl/i,
+    searchTerms: ["Licenze open source"],
+    keyArticles: [],
+    keyTopics: ["copyleft", "attribuzione", "distribuzione", "codice sorgente"],
+    codes: ["OSS_LICENSES"],
+  },
+  {
+    pattern: /legge\s+(sull.?)?intelligenza\s+artificiale|132\/2025|legge\s+italiana\s+(sull.?)?ia/i,
+    searchTerms: ["L. 132/2025", "intelligenza artificiale"],
+    keyArticles: ["11", "12", "13", "14"],
+    keyTopics: ["lavoro", "professioni intellettuali", "informazione"],
+    codes: ["LEGGE_IA"],
+  },
+  {
+    pattern: /perimetro\s+(di\s+)?sicurezza\s+nazionale|105\/2019|90\/2024|whistleblowing|24\/2023|segnalazion[ei]\s+di\s+illeciti/i,
+    searchTerms: ["Perimetro di sicurezza nazionale", "Legge 90/2024", "Whistleblowing"],
+    keyArticles: [],
+    keyTopics: ["perimetro", "canali di segnalazione", "riservatezza"],
+    codes: ["PERIMETRO_CYBER", "LEGGE_90_2024", "WHISTLEBLOWING"],
   },
 ];
 
@@ -2099,6 +2278,10 @@ denoServe(protect(async (req) => {
     let structuredChunksFound = 0;
     const detectedRegulationCodes: string[] = [];
     for (const config of detectedConfigs) {
+      if (config.codes && config.codes.length > 0) {
+        detectedRegulationCodes.push(...config.codes);
+        continue;
+      }
       // Map config search terms to regulation codes
       const term = config.searchTerms[0]?.toLowerCase() || "";
       if (term.includes("gdpr") || term.includes("2016/679")) {

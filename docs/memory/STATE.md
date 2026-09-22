@@ -421,3 +421,11 @@ Su Meridiana, tre giri con e tre senza: conformità 80-82 contro 76-77 per cento
 trovate, stessa instabilità (2 obblighi su 51). Corregge art. 5 e art. 34 ma introduce errori su
 art. 13 (falso negativo reale), art. 6 e art. 28. Resta spento. Fonte normativa dei gap di
 Meridiana riallineata.
+
+## Fonti per la conformità del software, 22 settembre
+
+Il corpus si estende oltre i sei atti UE: 17 atti UE via Formex e fonti non legislative (Garante,
+EDPB, AgID, ACN, OWASP ASVS 5.0, WCAG 2.2, licenze SPDX) via `ingest-web-source`. Le leggi italiane
+(Codice privacy, Statuto dei lavoratori, L. 132/2025, D.Lgs. 138/2024, 82/2022, L. 4/2004, CAD,
+Codice del consumo, D.Lgs. 218/2017, perimetro cyber, L. 90/2024, D.Lgs. 24/2023, L. 633/1941) non
+sono scaricabili dai server di Supabase: vanno fornite in XML Akoma Ntoso da Normattiva (RAG-10).
