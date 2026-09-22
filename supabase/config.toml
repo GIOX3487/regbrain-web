@@ -4,6 +4,10 @@ project_id = "ndwozjlasabsdfqcyeoy"
 [functions.index-normative-documents]
 verify_jwt = false
 
+# Ingestione di provvedimenti, linee guida e leggi italiane: valida chiave di servizio o ruolo admin.
+[functions.ingest-web-source]
+verify_jwt = false
+
 [api]
 enabled = true
 port = 54321
