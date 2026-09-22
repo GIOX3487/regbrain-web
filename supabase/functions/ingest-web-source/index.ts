@@ -281,6 +281,14 @@ const SOURCES: Record<string, SourceSpec> = {
 
 interface Block { heading: string | null; text: string; page?: number }
 
+// Postgres rifiuta il carattere nullo e alcuni PDF contengono caratteri di controllo o surrogati
+// spaiati: vanno tolti prima di salvare.
+function cleanText(s: string): string {
+  return s
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, " ")
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, " ");
+}
+
 function decodeEntities(s: string): string {
   return s
     .replace(/&nbsp;|&#160;/g, " ")
@@ -313,7 +321,7 @@ function linesToBlocks(lines: string[], isHeading: (l: string) => string | null)
   let heading: string | null = null;
   let buf: string[] = [];
   const flush = () => {
-    const text = buf.join("\n").trim();
+    const text = cleanText(buf.join("\n")).trim();
     if (text.length >= 40) blocks.push({ heading, text });
     buf = [];
   };
@@ -372,7 +380,7 @@ async function fetchPdfPages(url: string, from: number, to: number): Promise<{ t
       if (item.hasEOL) { lines.push(line); line = ""; }
     }
     if (line) lines.push(line);
-    pages.push({ n, text: lines.map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean).join("\n") });
+    pages.push({ n, text: lines.map((l) => cleanText(l).replace(/\s+/g, " ").trim()).filter(Boolean).join("\n") });
   }
   return { total, pages };
 }
@@ -380,7 +388,7 @@ async function fetchPdfPages(url: string, from: number, to: number): Promise<{ t
 /** Akoma Ntoso (Normattiva): un'unità per comma, o per articolo se non ha commi. */
 function aknToUnits(xml: string, spec: SourceSpec, key: string): Unit[] {
   const units: Unit[] = [];
-  const strip = (f: string) => decodeEntities(f.replace(/<(authorialNote|note|ref)\b[^>]*>([\s\S]*?)<\/\1>/g, (_m, tag, inner) => tag === "ref" ? inner : "").replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
+  const strip = (f: string) => cleanText(decodeEntities(f.replace(/<(authorialNote|note|ref)\b[^>]*>([\s\S]*?)<\/\1>/g, (_m, tag, inner) => tag === "ref" ? inner : "").replace(/<[^>]+>/g, " "))).replace(/\s+/g, " ").trim();
   const artRe = /<article\b([^>]*)>([\s\S]*?)<\/article>/g;
   for (const m of xml.matchAll(artRe)) {
     const inner = m[2];
@@ -632,7 +640,9 @@ Deno.serve(async (req) => {
     return json({ success: true, source: key, documentId, part, partsTotal, pdfPagesTotal, offset, inserted,
       embedded: vectors.filter(Boolean).length, nextPart, nextOffset, done, ms: Date.now() - started });
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const message = e instanceof Error ? e.message
+      : (e && typeof e === "object" && "message" in e) ? String((e as { message: unknown }).message)
+      : JSON.stringify(e);
     console.error("[web] errore", message);
     return json({ error: message }, 500);
   }
