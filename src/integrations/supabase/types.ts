@@ -1639,6 +1639,10 @@ export type Database = {
           gap_description_it: string
           id: string
           min_keyword_matches: number | null
+          norm_chunk_keys: string[] | null
+          norm_citation: string | null
+          norm_refreshed_at: string | null
+          norm_text: string | null
           paragraph: string | null
           rag_validation_keywords: string[]
           recommended_action_en: string
@@ -1666,6 +1670,10 @@ export type Database = {
           gap_description_it: string
           id?: string
           min_keyword_matches?: number | null
+          norm_chunk_keys?: string[] | null
+          norm_citation?: string | null
+          norm_refreshed_at?: string | null
+          norm_text?: string | null
           paragraph?: string | null
           rag_validation_keywords?: string[]
           recommended_action_en: string
@@ -1693,6 +1701,10 @@ export type Database = {
           gap_description_it?: string
           id?: string
           min_keyword_matches?: number | null
+          norm_chunk_keys?: string[] | null
+          norm_citation?: string | null
+          norm_refreshed_at?: string | null
+          norm_text?: string | null
           paragraph?: string | null
           rag_validation_keywords?: string[]
           recommended_action_en?: string

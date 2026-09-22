@@ -407,3 +407,10 @@ funziona (confronto obbligo per obbligo, frase esatta come prova). Motto e sched
 senza agenti. Restano non vere le schede multi-cliente e team con ruoli e il consulente sullo stesso
 fascicolo (SITE-08). Nel prodotto non esiste una funzione di firma: "firmi il referto" si riferisce al
 PDF esportato.
+
+## Gap analysis: testo ufficiale della norma per ogni obbligo, 22 settembre
+
+La gap analysis non usava il corpus normativo nel giudizio: il lato norma viene dal catalogo. Dal
+22 settembre ogni obbligo ha nel catalogo il testo ufficiale dei suoi paragrafi (254 su 254), usato
+come fonte normativa mostrata nei gap al posto di un frammento scelto a caso. Il testo nel prompt è
+pronto ma spento finché non è misurato (GAP-13).

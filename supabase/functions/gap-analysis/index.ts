@@ -41,6 +41,10 @@ interface RegulatoryRequirement {
   applicability_note_it?: string;
   // Cosa deve risultare dalla documentazione (catalogo in database)
   evidence_expected_it?: string;
+  // Testo ufficiale dei paragrafi citati dal requisito, calcolato una volta dal corpus
+  // strutturato (refresh_requirement_norms) e salvato nel catalogo.
+  norm_text?: string;
+  norm_citation?: string;
 }
 
 const REQUIREMENTS_CATALOG: RegulatoryRequirement[] = [
@@ -1937,6 +1941,10 @@ const CHECKS_VERSION = 'gap-analysis-v27-ambito-normative-settoriali';
 // Si alza solo con le correzioni che cambiano la correttezza degli esiti, non con le altre:
 // la v27 smette di produrre gap sulle normative settoriali il cui ambito non e' stabilito.
 const MIN_REUSABLE_ENGINE_VERSION = 27;
+// Testo della norma nel prompt: spento finché la misura sui fascicoli di prova non mostra che
+// migliora gli esiti. Un amministratore può accenderlo o spegnerlo per singola analisi con
+// engineOptions.normText, per confrontare le due versioni sugli stessi documenti.
+const NORM_IN_PROMPT_DEFAULT = false;
 
 function engineVersionNumber(version: unknown): number | null {
   const m = /-v(\d+)-/.exec(String(version || ''));
@@ -2298,8 +2306,15 @@ async function assessRequirementBatchWithLLM(
   profile: any,
   documentNames: string[],
   declaredFacts = '',
+  normInPrompt = false,
 ): Promise<Map<string, any>> {
   const isIt = language === 'it';
+  const normRule = normInPrompt ? `
+
+Testo della norma:
+- Quando un requisito riporta il "Testo della norma", quello è il testo ufficiale dei paragrafi a cui il requisito si riferisce. Un elemento va in missing_elements solo se è imposto da quel testo o da "Cosa deve risultare dalla documentazione". Non pretendere elementi che vengono da altri articoli o paragrafi non riportati.
+- Gli obblighi che il testo pone su soggetti diversi dall'organizzazione (Stati membri, autorità di controllo, Commissione, organismi notificati) non sono carenze dell'organizzazione.
+- Il testo della norma non è una prova: le citazioni in evidence vengono solo dagli estratti dei documenti dell'organizzazione.` : '';
   const systemPrompt = `Sei un auditor di protezione dei dati e conformità normativa. Valuti se la documentazione di un'organizzazione soddisfa requisiti normativi specifici basandoti ESCLUSIVAMENTE sugli estratti forniti.
 Settore dell'organizzazione: ${profile?.sector || 'non indicato'}. Giurisdizione: ${profile?.jurisdiction || 'IT'}.
 
@@ -2334,7 +2349,7 @@ Regole sul testo:
 - "recommended_actions": da 1 a 3 azioni concrete e specifiche per colmare esattamente ciò che manca fra gli elementi obbligatori (es. "Integrare il registro con i termini di conservazione per ciascun trattamento"). Nessuna stima di ore o costi. Se lo status è "covered", al massimo un'azione di mantenimento o nessuna.
 - "assessment": quando lo status è "covered" ma esistono miglioramenti possibili, dillo in modo esplicito ("il requisito risulta soddisfatto; resta migliorabile su ..."), senza trasformare il miglioramento in una carenza.
 - "confidence": da 0 a 1, quanto sei sicuro del giudizio dati gli estratti.
-Non inventare contenuti assenti dagli estratti. Restituisci un elemento per ogni requisito ricevuto, nello stesso ordine.`;
+Non inventare contenuti assenti dagli estratti. Restituisci un elemento per ogni requisito ricevuto, nello stesso ordine.${normRule}`;
 
   const userParts = batch.map(({ req, evidence }, idx) => {
     const evidenceText = evidence.length > 0
@@ -2345,7 +2360,7 @@ requirement_id: ${req.id}
 Riferimento: ${req.reference}
 Obbligo: ${req.description_it}
 Cosa deve risultare dalla documentazione: ${evidenceExpectedFor(req)}
-${req.conditional ? `Requisito CONDIZIONALE. ${req.applicability_note_it || ''}` : 'Requisito applicabile a tutte le organizzazioni.'}
+${normInPrompt && req.norm_text ? `Testo della norma (${req.norm_citation || req.reference}):\n"""\n${req.norm_text}\n"""\n` : ''}${req.conditional ? `Requisito CONDIZIONALE. ${req.applicability_note_it || ''}` : 'Requisito applicabile a tutte le organizzazioni.'}
 
 Estratti dai documenti dell'organizzazione:
 ${evidenceText}`;
@@ -2500,6 +2515,8 @@ function mapDbRequirement(dbReq: any): RegulatoryRequirement {
     conditional: dbReq.conditional === true,
     applicability_note_it: dbReq.applicability_note_it || undefined,
     evidence_expected_it: dbReq.evidence_expected_it || undefined,
+    norm_text: dbReq.norm_text || undefined,
+    norm_citation: dbReq.norm_citation || undefined,
   };
 }
 
@@ -2550,6 +2567,16 @@ denoServe(protect(async (req) => {
     const isContinuation = body.continue === true;
     // Rifare un'analisi gia' chiusa e' un'azione voluta, non l'effetto di riaprire una pagina.
     const isRerun = body.rerun === true;
+    // Opzioni del motore per le misure comparative: accettate solo da un amministratore. Un giro
+    // sperimentale non legge e non scrive la memoria dei risultati, per non contaminare le analisi reali.
+    const engineOptions = body.engineOptions && typeof body.engineOptions === 'object' ? body.engineOptions : null;
+    let isAdminCaller = false;
+    if (engineOptions) {
+      const { data: adminRole } = await supabase.from('user_roles').select('role').eq('user_id', user.id).eq('role', 'admin').maybeSingle();
+      isAdminCaller = !!adminRole;
+    }
+    const experimentalRun = isAdminCaller && !!engineOptions;
+    const normInPrompt = experimentalRun && typeof engineOptions.normText === 'boolean' ? engineOptions.normText : NORM_IN_PROMPT_DEFAULT;
 
     if (!assessmentId || typeof assessmentId !== 'string') {
       return errorResponse(400, 'Invalid or missing assessmentId');
@@ -2727,7 +2754,7 @@ denoServe(protect(async (req) => {
       // solo se il catalogo degli obblighi applicabili non e' piu' lo stesso, perche' in quel
       // caso il risultato salvato non risponderebbe piu' alle stesse domande. Un rifacimento
       // chiesto esplicitamente ignora il salvato e ricalcola tutto.
-      const { data: cachedResult } = isRerun ? { data: null } : await supabase
+      const { data: cachedResult } = (isRerun || experimentalRun) ? { data: null } : await supabase
         .from('gap_analysis_cache').select('result_payload')
         .eq('user_id', user.id).eq('cache_key', cacheFingerprint).maybeSingle();
       // Il riuso ignora la versione del motore, con un'eccezione: i risultati prodotti prima di
@@ -3041,7 +3068,7 @@ denoServe(protect(async (req) => {
             const results = await runWithConcurrency(batches.map((batch) => async () => {
               for (let attempt = 1; attempt <= 4; attempt++) {
                 try {
-                  const map = await assessRequirementBatchWithLLM(aiKey, batch, normalizedLanguage, profile, documentNames, declaredFacts);
+                  const map = await assessRequirementBatchWithLLM(aiKey, batch, normalizedLanguage, profile, documentNames, declaredFacts, normInPrompt);
                   if (map.size > 0) return map;
                   console.warn(`LLM batch returned no checks (attempt ${attempt})`);
                 } catch (e) {
@@ -3269,7 +3296,7 @@ denoServe(protect(async (req) => {
     // farebbe credere che il motore di oggi li abbia ricalcolati.
     const engineVersion = reusedEngineVersion || CHECKS_VERSION;
 
-    await supabase.from('gap_analysis_cache').upsert({
+    if (!experimentalRun) await supabase.from('gap_analysis_cache').upsert({
       user_id: user.id,
       cache_key: cacheFingerprint,
       input_fingerprint: cacheFingerprint,
@@ -3328,34 +3355,32 @@ denoServe(protect(async (req) => {
       console.warn(`⚠️ ${keywordCount} requisiti su ${checks.length} valutati senza AI, a sole parole chiave`);
     }
 
-    let sourceChunks: Array<{ id: string; content: string; document_id: string }> = [];
+    // Fonte normativa del gap: il testo ufficiale dei paragrafi citati dal requisito, salvato nel
+    // catalogo. Prima si mostrava il primo frammento, fra cento presi a caso, che conteneva il
+    // numero dell'articolo: poteva essere un altro articolo che lo richiamava.
+    const normById = new Map<string, { citation: string | null; text: string | null }>();
     try {
-      sourceChunks = await getRelevantRagChunkObjects(supabase, normalizedRegulations, 100);
-    } catch (e) {
-      console.error('Failed to fetch source chunks for traceability:', e);
-    }
-
-    function findSourceChunk(requirementRef: string): { chunk_id: string | null; excerpt: string | null } {
-      if (!requirementRef || sourceChunks.length === 0) return { chunk_id: null, excerpt: null };
-      const refLower = requirementRef.toLowerCase();
-      const artMatch = refLower.match(/(?:articolo|articoli|art\.?|article)\s+(\d+)/i);
-      if (artMatch) {
-        const artNum = artMatch[1];
-        const patterns = [`articolo ${artNum}`, `art. ${artNum}`, `art ${artNum}`, `article ${artNum}`];
-        for (const chunk of sourceChunks) {
-          const contentLower = (chunk.content || '').toLowerCase();
-          if (patterns.some(p => contentLower.includes(p))) {
-            return { chunk_id: chunk.id, excerpt: chunk.content.substring(0, 300) };
-          }
-        }
+      const ids = Array.from(new Set(gapChecks.map(c => c.requirement_id)));
+      if (ids.length > 0) {
+        const { data: normRows } = await supabase
+          .from('regulatory_requirements').select('requirement_id, norm_citation, norm_text')
+          .in('requirement_id', ids);
+        for (const row of normRows || []) normById.set(row.requirement_id, { citation: row.norm_citation, text: row.norm_text });
       }
-      return { chunk_id: null, excerpt: null };
+    } catch (e) {
+      console.error('Testo normativo dei requisiti non disponibile:', e);
+    }
+    function findSourceChunk(requirementId: string): { chunk_id: string | null; excerpt: string | null } {
+      const n = normById.get(requirementId);
+      if (!n?.text) return { chunk_id: null, excerpt: null };
+      const body = n.text.length > 1500 ? n.text.slice(0, 1500).trimEnd() + ' [...]' : n.text;
+      return { chunk_id: null, excerpt: n.citation ? `${n.citation}\n${body}` : body };
     }
 
     const gapsToInsert = gapChecks.map((c) => {
       const rl = c.risk_level || 'medium';
       const re = (c.remediation_effort || 'medium').toLowerCase();
-      const sourceInfo = findSourceChunk(c.reference);
+      const sourceInfo = findSourceChunk(c.requirement_id);
       const gapDescription = c.missing_elements.length > 0
         ? (isIt ? `Elementi mancanti: ${c.missing_elements.join('; ')}` : `Missing elements: ${c.missing_elements.join('; ')}`)
         : (isIt ? 'Nessuna documentazione pertinente individuata nei documenti caricati.' : 'No relevant documentation found in the uploaded documents.');
@@ -3803,44 +3828,6 @@ async function buildRagValidationCache(supabase: any, regulations: string[]): Pr
   }
 
   return cache;
-}
-
-// ============================================================
-// REGULATORY SOURCE CHUNKS (traceability)
-// ============================================================
-
-async function getRelevantRagChunkObjects(supabase: any, regulations: string[], limit: number): Promise<Array<{ id: string; content: string; document_id: string }>> {
-  const regulationDocPatterns: Record<string, string[]> = {
-    'GDPR': ['GDPR', '2016/679'],
-    // NIS2 family: include Direttiva UE + recepimento italiano (D.Lgs. 138/2024) + Determinazioni ACN
-    'NIS2': ['NIS2', '2022/2555', 'D.Lgs. 138', '138/2024', 'Determinazione ACN', 'Piattaforma NIS'],
-    'DORA': ['DORA', '2022/2554'],
-    'AI Act': ['AI Act', '2024/1689'],
-    'CRA': ['Cyber Resilience Act', 'CRA'],
-    'Data Act': ['Data Act', '2023/2854'],
-    'ISO 27001': ['ISO 27001'],
-    'D.Lgs 81/08': ['81/08', 'sicurezza lavoro'],
-  };
-
-  const allChunks: Array<{ id: string; content: string; document_id: string }> = [];
-  for (const reg of regulations) {
-    const patterns = regulationDocPatterns[reg] || [reg];
-    for (const pattern of patterns) {
-      const { data: docs } = await supabase
-        .from('documents').select('id, title')
-        .ilike('title', `%${pattern}%`).limit(5);
-      if (!docs?.length) continue;
-
-      const { data: chunks } = await supabase
-        .from('chunks').select('id, content, document_id')
-        .in('document_id', docs.map((d: any) => d.id))
-        .limit(Math.ceil(limit / regulations.length));
-      if (chunks) {
-        allChunks.push(...chunks.map((c: any) => ({ id: c.id, content: c.content, document_id: c.document_id })));
-      }
-    }
-  }
-  return allChunks.slice(0, limit);
 }
 
 // ============================================================
