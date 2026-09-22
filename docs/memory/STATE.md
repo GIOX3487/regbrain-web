@@ -488,3 +488,14 @@ conforme è stato segnalato come tentativo di elusione); ripete lo stesso esito 
 (due giri, nove esiti identici per rischio e stato) in 20-25 secondi; cita solo le fonti che
 riceve. Ha anche trovato una lacuna delle regole (un `requests.post` in http non cifrato che il
 filtro di contesto scartava), poi corretta.
+
+## Verifica del codice: cartella intera nel browser, 23 settembre
+
+La pagina legge una cartella, uno zip o file singoli (fino a 5.000 file), esegue le 23 regole nel
+browser, deduce dal codice tipo di software, dati personali, servizi di IA, framework e indizi di
+settore e destinatari (con file e riga come prova), e manda al servizio solo esiti, inventario con
+impronte, contesto dedotto ed estratti mascherati entro 60.000 caratteri. Il codice non lascia il
+computer. Il contesto è a scelta multipla; si preseleziona solo ciò che è sicuro. Sul repository di
+RegBrain: 331 file in meno di un secondo, richiesta di 133 kB. Il limite dei 40 file resta solo per
+il codice incollato. Non serve un programma da installare né uno spazio in cloud per il codice; il
+client da riga di comando per la CI è il passo successivo.

@@ -27,7 +27,7 @@ export interface CodeCheckResult {
   context: Record<string, unknown>;
   files: Array<{ name: string; lines: number; chars: number; sha256: string }>;
   findings: CodeFinding[];
-  summary: { text: string; questions: string[]; sources: CodeSource[]; aiUsed: boolean };
+  summary: { text: string; questions: string[]; sources: CodeSource[]; aiUsed: boolean; scanMode?: "funzione" | "browser"; excerptChars?: number };
   overall_risk: CodeRisk | "none";
   counts: { high: number; medium: number; low: number; possibleFalsePositives: number; aiOnly: number };
   rules_version: string | null;
@@ -89,7 +89,7 @@ export function exportCodeCheckPdf(result: CodeCheckResult) {
 
   para("RegBrain - Verifica di conformità del codice", 16, "bold", [20, 60, 120], 7);
   para(result.title, 12, "bold");
-  para(`Data: ${new Date(result.created_at).toLocaleString("it-IT")}  |  Regole: ${result.rules_version ?? "-"}  |  Revisione AI: ${result.summary.aiUsed ? result.model || "sì" : "non disponibile"}`, 9, "normal", [90, 90, 90]);
+  para(`Data: ${new Date(result.created_at).toLocaleString("it-IT")}  |  Regole: ${result.rules_version ?? "-"}${result.summary.scanMode === "browser" ? " eseguite nel browser sull'intera base di codice" : ""}  |  Revisione AI: ${result.summary.aiUsed ? result.model || "sì" : "non disponibile"}`, 9, "normal", [90, 90, 90]);
   y += 2;
   const rgb = RISK_RGB[result.overall_risk] || RISK_RGB.none;
   para(`Profilo di rischio complessivo: ${RISK_TEXT[result.overall_risk]}`, 13, "bold", rgb, 6);
@@ -98,19 +98,38 @@ export function exportCodeCheckPdf(result: CodeCheckResult) {
   heading("Sintesi");
   para(result.summary.text);
 
+  const CTX_LABELS: Record<string, string> = {
+    appType: "Tipo di applicazione", appTypes: "Tipo di applicazione", personalData: "Dati personali", sector: "Settore", sectors: "Settore",
+    usesAI: "Usa l'IA", audience: "Utenti", audiences: "Utenti", notes: "Note",
+  };
+  const VALUE_LABELS: Record<string, string> = {
+    web: "applicazione web", mobile: "app mobile", backend: "backend o API", desktop: "software desktop", libreria: "libreria", si: "sì", no: "no", non_so: "non so",
+    generico: "nessun settore in particolare", pa: "pubblica amministrazione", sanita: "sanità", finanza: "finanza e pagamenti", nis2: "soggetto NIS2", cra: "prodotto con elementi digitali (CRA)",
+    consumatori: "consumatori", dipendenti: "dipendenti", business: "clienti business", minori: "anche minori",
+  };
   const ctxRows = Object.entries(result.context || {})
-    .filter(([k, v]) => k !== "answers" && v && String(v).trim())
-    .map(([k, v]) => [({ appType: "Tipo di applicazione", personalData: "Dati personali", sector: "Settore", usesAI: "Usa l'IA", audience: "Utenti", notes: "Note" } as Record<string, string>)[k] || k, pdfText(v)]);
+    .filter(([k, v]) => CTX_LABELS[k] && v && (Array.isArray(v) ? v.length > 0 : String(v).trim()))
+    .map(([k, v]) => [CTX_LABELS[k], pdfText(Array.isArray(v) ? v.map((x) => VALUE_LABELS[String(x)] || String(x)).join(", ") : VALUE_LABELS[String(v)] || String(v))]);
+  const inferred = (result.context as { inferred?: { appTypes?: Array<{ value: string }>; personalData?: Array<{ value: string }>; usesAI?: Array<{ value: string }>; frameworks?: string[]; languages?: Record<string, number> } })?.inferred;
+  if (inferred) {
+    const langs = Object.entries(inferred.languages || {}).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([l, n]) => `${l} (${n})`).join(", ");
+    if (langs) ctxRows.push(["Linguaggi (dal codice)", pdfText(langs)]);
+    if (inferred.frameworks?.length) ctxRows.push(["Framework (dal codice)", pdfText(inferred.frameworks.join(", "))]);
+    if (inferred.personalData?.length) ctxRows.push(["Dati personali nei modelli (dal codice)", pdfText(inferred.personalData.map((d) => d.value).join(", "))]);
+    if (inferred.usesAI?.length) ctxRows.push(["Servizi di IA (dal codice)", pdfText(inferred.usesAI.map((d) => d.value).join(", "))]);
+  }
   if (ctxRows.length) {
     heading("Contesto dichiarato");
     autoTable(doc, { startY: y, head: [["Voce", "Valore"]], body: ctxRows, margin: { left: M, right: M }, styles: { fontSize: 9 }, headStyles: { fillColor: [20, 60, 120] } });
     y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
   }
 
-  heading("File analizzati");
+  heading(`File analizzati (${result.files.length})`);
+  const MAX_ROWS = 150;
+  if (result.files.length > MAX_ROWS) para(`Elenco limitato ai primi ${MAX_ROWS} file; l'inventario completo con le impronte resta nella verifica salvata.`, 8.5, "italic", [90, 90, 90]);
   autoTable(doc, {
     startY: y, head: [["File", "Righe", "SHA-256 (prime 16 cifre)"]],
-    body: result.files.map((f) => [pdfText(f.name), String(f.lines), f.sha256.slice(0, 16)]),
+    body: result.files.slice(0, MAX_ROWS).map((f) => [pdfText(f.name), String(f.lines), (f.sha256 || "").slice(0, 16)]),
     margin: { left: M, right: M }, styles: { fontSize: 8 }, headStyles: { fillColor: [20, 60, 120] },
   });
   y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;

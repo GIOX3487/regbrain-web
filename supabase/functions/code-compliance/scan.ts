@@ -15,7 +15,26 @@ export interface Finding {
 }
 export interface Source { id: string; citation: string; regulation: string; chunkKey: string; text: string }
 
-export type Ctx = { appType?: string; personalData?: string; sector?: string; usesAI?: string; audience?: string; notes?: string; answers?: Array<{ q: string; a: string }> };
+/**
+ * Contesto dell'applicazione. Le voci a scelta multipla sono elenchi; i campi singolari
+ * (appType, sector, audience) restano per le verifiche salvate prima del 23 settembre 2026.
+ */
+export type Ctx = {
+  appTypes?: string[]; sectors?: string[]; audiences?: string[];
+  appType?: string; sector?: string; audience?: string;
+  personalData?: string; usesAI?: string; notes?: string;
+  answers?: Array<{ q: string; a: string }>;
+  /** Cosa il codice dice da solo, con le prove: riempito dal browser o dalla funzione. */
+  inferred?: unknown;
+};
+
+/** Le voci a scelta multipla, unendo i campi vecchi a valore singolo. */
+export function ctxList(ctx: Ctx, key: "appTypes" | "sectors" | "audiences"): string[] {
+  const single = { appTypes: ctx.appType, sectors: ctx.sector, audiences: ctx.audience }[key];
+  const list = Array.isArray(ctx[key]) ? ctx[key]!.map(String) : [];
+  if (single && !list.includes(single)) list.push(single);
+  return list.filter((v) => v && v !== "non_so");
+}
 
 export function mask(line: string, extra?: RegExp): string {
   let out = line;
