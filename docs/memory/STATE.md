@@ -429,3 +429,10 @@ EDPB, AgID, ACN, OWASP ASVS 5.0, WCAG 2.2, licenze SPDX) via `ingest-web-source`
 (Codice privacy, Statuto dei lavoratori, L. 132/2025, D.Lgs. 138/2024, 82/2022, L. 4/2004, CAD,
 Codice del consumo, D.Lgs. 218/2017, perimetro cyber, L. 90/2024, D.Lgs. 24/2023, L. 633/1941) non
 sono scaricabili dai server di Supabase: vanno fornite in XML Akoma Ntoso da Normattiva (RAG-10).
+
+## Leggi italiane nel corpus, 22 settembre
+
+Codice privacy, CAD, Codice del consumo, D.Lgs. 82/2022, 218/2017, 24/2023 (versioni vigenti) e
+D.Lgs. 138/2024 (testo originale) vengono dalla copia pubblica italia-corpus di Normattiva; aggiunto
+il D.Lgs. 160/2026 sull'IA. Mancano ancora L. 300/1970, L. 132/2025, L. 4/2004, DL 105/2019,
+L. 90/2024 e L. 633/1941, da fornire in XML Normattiva.
