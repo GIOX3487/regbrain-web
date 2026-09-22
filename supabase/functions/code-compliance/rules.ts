@@ -109,8 +109,17 @@ export const CONSENT_SIGNALS = /cookie.?consent|consent.?mode|gtag\s*\(\s*['"]co
 const AI_TEXT = /api\.openai\.com|new OpenAI\s*\(|from ['"]openai['"]|import openai|anthropic\.com|new Anthropic\s*\(|@anthropic-ai|generativelanguage\.googleapis\.com|@google\/genai|@google\/generative-ai|google\.generativeai|GoogleGenerativeAI|api\.mistral\.ai|@mistralai|api-inference\.huggingface\.co|api\.cohere\.|openai\.azure\.com|bedrock-runtime|chat\.completions\.create/i;
 const AI_SYNTH = /images\.generate|dall-e|dall·e|\bimagen\b|stable-?diffusion|replicate\.com|api\.elevenlabs|text-to-speech|audio\.speech\.create|tts-1|gpt-image|\bsora\b|midjourney|\bflux-(pro|dev|schnell)/i;
 
+/** Toglie il contenuto delle stringhe: "email inviata" non è un dato personale, user.email sì. */
+export function stripLiterals(line: string): string {
+  return line
+    .replace(/"(?:[^"\\]|\\.)*"/g, '""')
+    .replace(/'(?:[^'\\]|\\.)*'/g, "''")
+    // Nei template si tiene solo ciò che sta dentro ${...}: è codice, il resto è testo.
+    .replace(/`(?:[^`\\]|\\.)*`/g, (m) => "`" + [...m.matchAll(/\$\{([^}]*)\}/g)].map((x) => x[1]).join(" ") + "`");
+}
+
 const LOG_CALL = /\b(console\.(log|info|debug|warn|error)|logger\.(info|debug|warn|warning|error|trace)|log\.(Print\w*|Info\w*|Debug\w*|info|debug)|logging\.(info|debug|warning|error)|print\s*\(|System\.out\.print|fmt\.Print|Log\.[dive]\s*\(|error_log\s*\(|var_dump\s*\()/;
-const PII_WORDS = /\b(e-?mail|codice_?fiscale|codiceFiscale|fiscal_?code|tax_?code|iban|telefono|phone(_?number)?|indirizzo|address|birth_?date|data_?nascita|ssn|documento|passport|carta_?identit)/i;
+const PII_WORDS = /\b(e-?mail|codice_?fiscale|codiceFiscale|fiscal_?code|tax_?code|iban|telefono|phone(_?number)?|indirizzo|address|birth_?date|data_?nascita|ssn|passport|carta_?identit|nome_?utente|cognome|surname|full_?name)/i;
 const SECRET_WORDS = /\b(password|passwd|pwd|secret|token|api_?key|authorization|bearer|cvv|cvc|card_?number|cardNumber)\b/i;
 
 const SPECIAL = /\b\w*(diagnos[ie]s?|health_?(record|status|data)|salute|malattia|patolog|terapia|farmac|religion|religione|sexual_?orientation|orientamento_?sessuale|ethnic(ity)?|etnia|biometric|biometric[io]|genetic|genetic[oa]|political_?(opinion|party)|opinioni_?politiche|trade_?union|sindacat)\w*\b/i;
@@ -136,6 +145,7 @@ export const RULES: Rule[] = [
     action: "Per le password usare Argon2id, scrypt o bcrypt con sale; per l'integrità SHA-256 o superiore. Pianificare la migrazione degli hash già salvati.",
     refs: ["GDPR32", "ASVS_HASH", "AGID_PW_HASH", "CRA_ANNEX1"],
     test: (line) => {
+      if (/(etag|e_?tag|cache[_ ]?key|cachekey|checksum|integrit|dedup|fingerprint_?file|content_?hash|file_?hash|nome_?file)/i.test(line)) return null;
       if (!/(createHash\s*\(\s*['"](md5|sha1)['"]|hashlib\.(md5|sha1)\s*\(|MessageDigest\.getInstance\s*\(\s*"(MD5|SHA-?1)"|\bmd5\s*\(|\bsha1\s*\(|DigestUtils\.(md5|sha1)|crypto\.subtle\.digest\s*\(\s*['"]SHA-1['"]|Md5\.|SHA1Managed|MD5\.Create)/i.test(line)) return null;
       return /pass|pwd|pin\b|credential/i.test(line) ? { risk: "high", note: "usato su una password" } : {};
     },
@@ -148,6 +158,12 @@ export const RULES: Rule[] = [
     test: (line) => {
       const m = /http:\/\/[^\s'"`)<>]+/i.exec(line);
       if (!m || HTTP_OK.test(m[0])) return null;
+      // Molti http:// non sono connessioni ma identificatori (spazi dei nomi XML, URI di risorse).
+      if (/(xmlns|namespace|\bns\b|\buri\b|rdf|owl:|@prefix|schema_?id|\/resource\/)/i.test(line)) return null;
+      // Un indirizzo dentro un elenco di link non è una connessione: serve un contesto di chiamata
+      // o di configurazione.
+      const contesto = line.replace(/https?:\/\/\S*/gi, "");
+      if (!/(fetch|axios|\brequest\b|http\.(get|post|request)|urlopen|curl|client|endpoint|\burl\b|\buri\b|host|base_?url|\bapi\b|webhook|proxy|origin|src\s*=|href\s*=|action\s*=|connect|websocket|\bws\b)/i.test(contesto)) return null;
       return /pass|token|login|auth|api/i.test(m[0] + line) ? { risk: "high", note: m[0].slice(0, 80) } : { note: m[0].slice(0, 80) };
     },
   },
@@ -198,8 +214,11 @@ export const RULES: Rule[] = [
     refs: ["GDPR5", "GDPR32", "ASVS_LOGGING"],
     test: (line) => {
       if (!LOG_CALL.test(line)) return null;
-      if (SECRET_WORDS.test(line)) return { risk: "high", note: "credenziali o dati di pagamento nel log" };
-      if (PII_WORDS.test(line)) return { note: "dati personali nel log" };
+      // Conta solo ciò che è fuori dalle stringhe: un messaggio che parla di email non è un dato
+      // personale, mentre user.email lo è.
+      const code = stripLiterals(line);
+      if (SECRET_WORDS.test(code)) return { risk: "high", note: "credenziali o dati di pagamento nel log" };
+      if (PII_WORDS.test(code)) return { note: "dati personali nel log" };
       return null;
     },
   },
@@ -224,9 +243,15 @@ export const RULES: Rule[] = [
     action: "Verificare la base giuridica prevista dall'art. 9, cifrare i campi, limitare gli accessi e valutare una valutazione d'impatto (DPIA).",
     refs: ["GDPR9", "GDPR32", "GDPR25"],
     test: (line) => {
-      if (!/(\w+\s*[:=]|CREATE TABLE|column|Column\(|@Column|field|Field\(|schema|interface|type\s+\w+\s*=|\bclass\b|varchar|text\b)/i.test(line)) return null;
-      const m = SPECIAL.exec(line);
-      return m ? { note: `campo "${m[0].slice(0, 40)}"` } : null;
+      // Solo nomi di campi o colonne: le stesse parole dentro un testo dell'interfaccia o di un
+      // prompt non sono un trattamento.
+      const code = stripLiterals(line);
+      if (!/(\w+\s*[:=]|CREATE TABLE|add column|Column\(|@Column|Field\(|interface|type\s+\w+\s*=|\bclass\b|varchar|\bjsonb?\b)/i.test(code)) return null;
+      const m = SPECIAL.exec(code);
+      if (!m) return null;
+      // Deve essere un identificatore: parola composta o seguita da una dichiarazione.
+      const around = new RegExp(`[\\w.]*${m[0].replace(/[.*+?^$\{\}()|\[\]\\]/g, "\\$&")}[\\w]*\\s*[:=(]`, "i");
+      return around.test(code) ? { note: `campo "${m[0].slice(0, 40)}"` } : null;
     },
   },
   {
@@ -234,7 +259,13 @@ export const RULES: Rule[] = [
     why: "Il localStorage è leggibile da qualsiasi script della pagina: un attacco XSS può rubare la sessione.",
     action: "Tenere i token di sessione in cookie HttpOnly, Secure e SameSite, oppure ridurne durata e privilegi.",
     refs: ["ASVS_CLIENT_DATA", "GDPR32"],
-    test: (line) => /(localStorage|sessionStorage)\.setItem\s*\(\s*['"`][^'"`]*(token|jwt|session|auth|refresh|access)/i.test(line) ? {} : null,
+    test: (line) => {
+      const m = /(localStorage|sessionStorage)\.setItem\s*\(\s*['"`]([^'"`]*)['"`]/i.exec(line);
+      if (!m) return null;
+      const chiave = m[2];
+      if (/(redirect|return|next|callback|state|locale|lang|theme|tema|consent|onboarding|step)/i.test(chiave)) return null;
+      return /(token|jwt|credential|password|secret|api_?key|session_?id|refresh|bearer)/i.test(chiave) ? { note: `chiave "${chiave.slice(0, 40)}"` } : null;
+    },
   },
   {
     id: "SEC-07", title: "Cookie senza attributi di sicurezza", category: "sicurezza", risk: "medium",
@@ -243,14 +274,19 @@ export const RULES: Rule[] = [
     refs: ["ASVS_COOKIE", "GDPR32"],
     test: (line) => {
       if (/document\.cookie\s*=/.test(line)) return /session|token|auth|jwt/i.test(line) ? { note: "cookie di sessione scritto da JavaScript, non può essere HttpOnly" } : null;
-      if (/(res\.cookie\s*\(|set_cookie\s*\(|setcookie\s*\(|Set-Cookie|new Cookie\s*\(|cookies\.set\s*\()/i.test(line) && !/secure/i.test(line) && !/httponly/i.test(line)) return { note: "Secure e HttpOnly non indicati su questa riga" };
-      return null;
+      if (/secure/i.test(line) || /httponly/i.test(line)) return null;
+      // Serve un cookie con un nome scritto nel codice: le righe che passano una variabile sono
+      // quasi sempre codice di libreria, non la configurazione di un cookie.
+      const m = /(?:res|response|ctx|reply)\.cookie\s*\(\s*['"`]([\w.-]+)['"`]|set_?cookie\s*\(\s*['"`]([\w.-]+)['"`]|cookies\.set\s*\(\s*['"`]([\w.-]+)['"`]|['"`]Set-Cookie['"`]\s*[,:]\s*['"`]([\w.-]+)=/i.exec(line);
+      if (!m) return null;
+      const nome = m[1] || m[2] || m[3] || m[4] || "";
+      return { note: `cookie "${nome}" senza Secure e HttpOnly su questa riga` };
     },
   },
   {
-    id: "SEC-08", title: "CORS aperto a qualsiasi origine", category: "sicurezza", risk: "medium",
-    why: "Consentire ogni origine permette a siti terzi di chiamare le API con le credenziali dell'utente o di leggerne le risposte.",
-    action: "Elencare le sole origini ammesse; non combinare mai origine * con l'invio di credenziali.",
+    id: "SEC-08", title: "CORS aperto a qualsiasi origine", category: "sicurezza", risk: "low",
+    why: "Consentire ogni origine permette a siti terzi di chiamare le API. Con autenticazione a token e senza credenziali di sessione il rischio è contenuto, ma va deciso e documentato; con i cookie di sessione diventa una falla.",
+    action: "Elencare le origini ammesse dove è possibile; non combinare mai origine * con l'invio di credenziali di sessione.",
     refs: ["ASVS_HEADERS", "GDPR32"],
     test: (line) => /(Access-Control-Allow-Origin['"]?\s*[:,=]\s*['"]\*['"]|origin\s*:\s*['"]\*['"]|AllowAnyOrigin\s*\(|CORS_ORIGIN_ALLOW_ALL\s*=\s*True|allow_origins\s*=\s*\[\s*['"]\*['"]\s*\])/i.test(line)
       ? (/credentials\s*[:=]\s*true|allow_credentials\s*=\s*True|AllowCredentials/i.test(line) ? { risk: "high", note: "origine * insieme alle credenziali" } : {}) : null,
@@ -260,7 +296,7 @@ export const RULES: Rule[] = [
     why: "In produzione il debug mostra errori dettagliati, percorsi e a volte variabili: informazioni utili a un attaccante.",
     action: "Disattivare il debug negli ambienti di produzione e mostrare all'utente messaggi di errore generici.",
     refs: ["ASVS_LEAK", "CRA_ANNEX1"],
-    test: (line) => /(^\s*DEBUG\s*=\s*True\b|app\.run\([^)]*debug\s*=\s*True|app\.debug\s*=\s*true|display_errors\s*=\s*(On|1)|APP_DEBUG\s*=\s*true|"debug"\s*:\s*true|UseDeveloperExceptionPage\s*\()/i.test(line) ? {} : null,
+    test: (line) => /(^\s*DEBUG\s*=\s*True\b|app\.run\([^)]*debug\s*=\s*True|app\.debug\s*=\s*true|display_errors\s*=\s*(On|1)|APP_DEBUG\s*=\s*true|^\s*"?debug"?\s*:\s*true|UseDeveloperExceptionPage\s*\()/i.test(line) ? {} : null,
   },
   {
     id: "SEC-10", title: "Numeri casuali non sicuri per token o codici", category: "sicurezza", risk: "medium",
@@ -268,6 +304,28 @@ export const RULES: Rule[] = [
     action: "Usare un generatore crittografico (crypto.getRandomValues, crypto.randomBytes, secrets, SecureRandom).",
     refs: ["ASVS_RANDOM", "CRA_ANNEX1"],
     test: (line) => /(Math\.random\s*\(|\brandom\.(random|randint|choice|choices)\s*\(|new Random\s*\(|\bmt_rand\s*\(|\brand\s*\()/.test(line) && /(token|password|passwd|otp|secret|session|nonce|salt|codice|code|pin|reset)/i.test(line) ? {} : null,
+  },
+  {
+    id: "PRIV-07", title: "Dati ospitati o inviati fuori dall'Unione europea", category: "privacy", risk: "medium",
+    why: "Trasferire dati personali fuori dall'UE richiede una base per il trasferimento (decisione di adeguatezza, clausole contrattuali standard) e una valutazione del paese di destinazione.",
+    action: "Spostare la regione su un data center europeo quando possibile; altrimenti documentare la base del trasferimento, le clausole contrattuali e la valutazione del paese, e indicarlo nell'informativa.",
+    refs: ["GDPR44", "GDPR13"],
+    test: (line) => {
+      const m = /(["'`])(us-(east|west|central)-\d|ap-(south|northeast|southeast)-\d\w*|sa-east-\d|af-south-\d|me-south-\d|iad1|sfo1|pdx1|cle1|hnd1|syd1|gru1|us-central\d?|northamerica-\w+|asia-\w+\d)\1|(region|location|zone)\s*[:=]\s*["'`](us|ap|sa|af|me)[-_]/i.exec(line);
+      if (!m) return null;
+      if (/eu-|europe|frankfurt|milan|paris|dublin|fra1|cdg1|arn1|zrh1/i.test(line)) return null;
+      return { note: `regione ${m[0].slice(0, 40)}` };
+    },
+  },
+  {
+    id: "PRIV-08", title: "Raccolta o registrazione dell'indirizzo IP", category: "privacy", risk: "low",
+    why: "L'indirizzo IP è un dato personale: va raccolto solo se serve, dichiarato nell'informativa e conservato per un tempo definito.",
+    action: "Verificare la finalità (sicurezza, antifrode, statistiche), fissare un tempo di conservazione, valutare l'anonimizzazione o il troncamento dell'ultimo ottetto e citarlo nell'informativa.",
+    refs: ["GDPR5", "GDPR13", "ASVS_LOGGING"],
+    test: (line) => {
+      const code = stripLiterals(line);
+      return /(x-forwarded-for|\breq\.ip\b|request\.remote_addr|REMOTE_ADDR|getClientIp|client_?ip|ip_?address|indirizzo_?ip|RemoteIpAddress|getRemoteAddr)/i.test(code) || /x-forwarded-for/i.test(line) ? {} : null;
+    },
   },
   {
     id: "AI-01", title: "Uso di un servizio di intelligenza artificiale", category: "ai", risk: "medium",
@@ -313,11 +371,14 @@ export const RULES: Rule[] = [
   },
 ];
 
-export const RULES_VERSION = "2026-09-22.1";
+export const RULES_VERSION = "2026-09-22.2";
 
 export function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+/** File che contengono per mestiere valori finti: un segreto lì dentro pesa meno. */
+export const TEST_FILE = /(^|\/)(tests?|__tests__|spec|specs|fixtures?|mocks?|examples?|samples?|seed|seeds|demo)\/|[._-](test|spec|mock|fixture|example|sample)\.[a-z]+$|\.(example|sample|template)$/i;
 
 export function isCommentLine(line: string): boolean {
   const t = line.trim();

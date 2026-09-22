@@ -1,5 +1,5 @@
 // Scansione deterministica: applica le regole riga per riga e raggruppa gli esiti per regola.
-import { CONSENT_SIGNALS, isCommentLine, type Risk, RULES, SECRET_VALUE_MASKS } from "./rules.ts";
+import { CONSENT_SIGNALS, isCommentLine, type Risk, RULES, SECRET_VALUE_MASKS, TEST_FILE } from "./rules.ts";
 
 const MAX_OCCURRENCES = 8;
 
@@ -29,8 +29,10 @@ export function scan(files: InputFile[]): { findings: Finding[]; masks: RegExp[]
   const masks: RegExp[] = [];
   const allText = files.map((f) => f.content).join("\n");
   const consentPresent = CONSENT_SIGNALS.test(allText);
+  const LOWER: Record<Risk, Risk> = { high: "medium", medium: "low", low: "low" };
   for (const f of files) {
     if (/(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|composer\.lock|Gemfile\.lock|poetry\.lock|Cargo\.lock)$/i.test(f.name)) continue;
+    const isTest = TEST_FILE.test(f.name);
     const lines = f.content.split(/\r?\n/);
     lines.forEach((raw, idx) => {
       const line = raw.length > 2000 ? raw.slice(0, 2000) : raw;
@@ -45,15 +47,18 @@ export function scan(files: InputFile[]): { findings: Finding[]; masks: RegExp[]
         let finding = byRule.get(rule.id);
         if (!finding) {
           finding = {
-            id: rule.id, ruleId: rule.id, source: "regola", title: rule.title, category: rule.category, risk: rule.risk,
+            id: rule.id, ruleId: rule.id, source: "regola", title: rule.title, category: rule.category, risk: "low",
             why: rule.why, action: rule.action, occurrences: [], totalOccurrences: 0, refs: [...rule.refs], status: "confermato",
           };
           byRule.set(rule.id, finding);
         }
         finding.totalOccurrences++;
-        if (hit.risk && RISK_ORDER[hit.risk] > RISK_ORDER[finding.risk]) finding.risk = hit.risk;
+        // In un file di prova o di esempio il valore è quasi sempre finto: l'esito resta, con un
+        // gradino di rischio in meno e la ragione scritta accanto.
+        const risk: Risk = isTest ? LOWER[hit.risk ?? rule.risk] : (hit.risk ?? rule.risk);
+        if (RISK_ORDER[risk] > RISK_ORDER[finding.risk]) finding.risk = risk;
         if (finding.occurrences.length < MAX_OCCURRENCES) {
-          finding.occurrences.push({ file: f.name, line: idx + 1, snippet: mask(line.trim(), hit.mask).slice(0, 240), note: hit.note });
+          finding.occurrences.push({ file: f.name, line: idx + 1, snippet: mask(line.trim(), hit.mask).slice(0, 240), note: isTest ? `${hit.note ? hit.note + "; " : ""}file di prova o di esempio` : hit.note });
         }
       }
     });

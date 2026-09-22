@@ -1,0 +1,5 @@
+{
+  "name": "prodotto",
+  "license": "AGPL-3.0-only", //! LIC-01
+  "scripts": { "build": "vite build" }
+}
