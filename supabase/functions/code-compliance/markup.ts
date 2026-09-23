@@ -276,3 +276,27 @@ export function pathFromRequestAcrossLines(content: string, file: string, userIn
   }
   return hits;
 }
+
+/**
+ * SEC-11 su più righe: un token solo decodificato (jwt.decode) assegnato a una variabile da cui
+ * entro poche righe si leggono identità o ruolo, senza che nel mezzo compaia una verifica.
+ */
+export function decodedTokenTrusted(content: string, file: string): FileHit[] {
+  if (!/\.(js|jsx|ts|tsx|mjs|cjs|py|php|rb|go|java|cs)$/i.test(file)) return [];
+  const lines = content.split(/\r?\n/);
+  const hits: FileHit[] = [];
+  const assign = /(?:const|let|var|\$)?\s*([A-Za-z_$][\w$]*)\s*(?::\s*\w+)?\s*=\s*(?:await\s+)?(?:jwt|jsonwebtoken|jose|this\.jwt|jwtDecode)\.?(?:decode|decodeJwt)\s*\(/;
+  for (let i = 0; i < lines.length; i++) {
+    const a = assign.exec(lines[i]);
+    if (!a) continue;
+    if (/verify|complete\s*:\s*true/.test(lines[i])) continue; // header letto per scegliere la chiave: uso legittimo
+    const v = a[1];
+    const use = new RegExp(`(^|[^\\w$.])${v.replace(/\$/g, "\\$")}(\\??\\.|\\[)\\s*['"]?(userId|user_id|uid|sub|id|role|roles|ruolo|ruoli|isAdmin|is_admin|admin|permissions|permessi|email|tenant|org|scope)\\b`);
+    for (let j = i; j <= Math.min(i + 6, lines.length - 1); j++) {
+      if (j > i && /verify|verifica|jwtVerify|checkSignature/.test(lines[j])) break;
+      if (use.test(lines[j])) { hits.push({ line: j + 1, note: `"${v}" è un token solo decodificato (riga ${i + 1}): identità o ruolo letti senza verifica della firma` }); break; }
+    }
+  }
+  return hits;
+}
+

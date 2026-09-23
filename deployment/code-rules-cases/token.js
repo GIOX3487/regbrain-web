@@ -14,3 +14,7 @@ const safe = fs.createReadStream(path.join(UPLOAD_DIR, path.basename(req.params.
 res.sendFile(req.query.file); //! SEC-13
 res.sendFile(path.resolve("public", "index.html")); //! -
 const cfg = fs.readFileSync("./config.json", "utf8"); //! -
+const claims = jwt.decode(req.cookies.token); //! -
+res.json({ ruolo: claims.ruolo }); //! SEC-11
+const header = jwt.decode(token, { complete: true }); //! -
+const kid = header.header.kid; //! -

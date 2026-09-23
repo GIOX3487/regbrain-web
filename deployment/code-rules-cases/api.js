@@ -50,3 +50,10 @@ const delay = Math.random() * 300; //! -
 const nonce = crypto.randomBytes(16).toString("hex"); //! -
 
 module.exports = app;
+element.innerHTML += utente.bio; //! SEC-06
+el.insertAdjacentHTML("beforeend", commento); //! SEC-06
+const sicuro = this.sanitizer.bypassSecurityTrustHtml(testo); //! SEC-06
+const percorsoFile = path.join(FTP, params.file); //! SEC-13
+const digest = crypto.createHash("md5").update(content).digest("hex"); //! -
+const logo = "http://cdn.esempio.org/logo.png"; //! -
+const { pazienteId, note, diagnosi_precedente } = req.body; //! PRIV-05

@@ -1,5 +1,5 @@
 // Scansione deterministica: applica le regole riga per riga e raggruppa gli esiti per regola.
-import { CONSENT_SIGNALS, FILE_RULES, isCommentLine, type Risk, RULES, SECRET_VALUE_MASKS, TEST_FILE } from "./rules.ts";
+import { CONSENT_SIGNALS, FILE_RULES, isCommentLine, type Risk, RULES, SECRET_VALUE_MASKS, TEST_FILE, TEXT_FILE } from "./rules.ts";
 
 const MAX_OCCURRENCES = 8;
 
@@ -51,6 +51,7 @@ export function scan(files: InputFile[]): { findings: Finding[]; masks: RegExp[]
   const LOWER: Record<Risk, Risk> = { high: "medium", medium: "low", low: "low" };
   for (const f of files) {
     if (/(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|composer\.lock|Gemfile\.lock|poetry\.lock|Cargo\.lock)$/i.test(f.name)) continue;
+    if (TEXT_FILE.test(f.name)) continue;
     const isTest = TEST_FILE.test(f.name);
     const lines = f.content.split(/\r?\n/);
     lines.forEach((raw, idx) => {
@@ -84,7 +85,7 @@ export function scan(files: InputFile[]): { findings: Finding[]; masks: RegExp[]
   }
   // Regole sul file intero: tag su più righe, etichette altrove nel file, valori usati righe dopo.
   for (const f of files) {
-    if (/(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml)$/i.test(f.name) || f.content.length > 400_000) continue;
+    if (/(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml)$/i.test(f.name) || f.content.length > 400_000 || TEXT_FILE.test(f.name)) continue;
     const isTest = TEST_FILE.test(f.name);
     const lines = f.content.split(/\r?\n/);
     for (const rule of FILE_RULES) {
