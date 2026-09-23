@@ -293,7 +293,7 @@ export default function CodeCheck() {
               <p className="text-muted-foreground">
                 Sicurezza applicativa (credenziali nel codice, algoritmi crittografici deboli, comunicazioni non cifrate e versioni di TLS obsolete, iniezioni SQL, esecuzione dinamica di codice, deserializzazione di dati non fidati, percorsi di file costruiti con dati dell'utente, token JWT non verificati, configurazione dei cookie e delle intestazioni di sicurezza);
                 protezione dei dati personali (dati identificativi nei log, categorie particolari come dati sanitari e biometrici, geolocalizzazione, accesso a fotocamera, microfono e contatti, trasferimenti verso Paesi extra UE compresi caratteri e video caricati da server esteri, tracciamento web e mobile senza consenso, consensi preselezionati);
-                intelligenza artificiale (integrazione di servizi di IA e obblighi di trasparenza, contenuti sintetici, riconoscimento delle emozioni e categorizzazione biometrica, decisioni automatizzate su candidati, dipendenti, clienti, studenti o pazienti); accessibilità delle interfacce; licenze delle componenti open source.
+                intelligenza artificiale (integrazione di servizi di IA e obblighi di trasparenza, contenuti sintetici, riconoscimento delle emozioni e categorizzazione biometrica, decisioni automatizzate su candidati, dipendenti, clienti, studenti o pazienti); accessibilità delle interfacce (immagini senza testo alternativo, campi senza etichetta, pulsanti e link senza nome, indicatore di focus rimosso, pagine senza titolo, contenuti in riproduzione automatica, elementi cliccabili senza ruolo né tastiera, lingua non dichiarata); regole sulle password; licenze delle componenti open source.
               </p>
             </div>
             <div>
@@ -308,7 +308,7 @@ export default function CodeCheck() {
                 <li><span className="text-foreground">Regolamento (UE) 2024/2847 (Cyber Resilience Act)</span>, Allegato I: requisiti essenziali di sicurezza dei prodotti con elementi digitali, dalla gestione delle credenziali alla protezione dei dati in transito.</li>
                 <li><span className="text-foreground">Regolamento (UE) 2024/1689 (AI Act)</span>, art. 5, 6, 26 e 50 e Allegato III, e Legge 132/2025: pratiche vietate, sistemi ad alto rischio, obblighi del deployer e di trasparenza, impiego dell'IA anche in ambito lavorativo.</li>
                 <li><span className="text-foreground">D.Lgs. 138/2024 (recepimento NIS2)</span>, art. 24: misure di gestione dei rischi per la sicurezza informatica dei soggetti obbligati.</li>
-                <li><span className="text-foreground">Direttiva (UE) 2019/882 (European Accessibility Act)</span> e WCAG 2.2: requisiti di accessibilità delle interfacce digitali.</li>
+                <li><span className="text-foreground">Direttiva (UE) 2019/882 (European Accessibility Act)</span> e WCAG 2.2 (criteri 1.1.1, 1.3.1, 1.4.2, 2.1.1, 2.2.2, 2.4.2, 2.4.3, 2.4.4, 2.4.7, 3.1.1, 3.3.2, 4.1.2): requisiti di accessibilità delle interfacce digitali, verificati leggendo i tag anche quando occupano più righe.</li>
                 <li><span className="text-foreground">OWASP ASVS 5.0</span> e Linee guida AgID per lo sviluppo sicuro: standard tecnici di riferimento per le verifiche di sicurezza del codice (segreti, cifratura, TLS, iniezioni, deserializzazione, gestione dei file, token, cookie, log).</li>
                 <li><span className="text-foreground">Fonti di settore</span>, attivate quando il contesto lo richiede: MDR 2017/745 per il software medicale, PSD2 (autenticazione forte) e DORA per i servizi finanziari, CAD e SPID per la pubblica amministrazione, Data Act per i prodotti connessi, direttiva 2024/2853 sulla responsabilità da prodotto, Codice del consumo per le app rivolte ai consumatori.</li>
                 <li><span className="text-foreground">Licenze open source</span>: individuazione di componenti con licenza copyleft (GPL, AGPL) e relativi obblighi di redistribuzione.</li>
@@ -317,7 +317,7 @@ export default function CodeCheck() {
             <div>
               <p className="font-semibold mb-1">Metodo</p>
               <p className="text-muted-foreground">
-                Un primo livello di regole deterministiche individua le evidenze nel codice e ne classifica il rischio; un secondo livello di revisione, basato sul modello
+                Un primo livello di regole deterministiche, riga per riga e sul file intero (tag su più righe, etichette collegate altrove, valori della richiesta usati righe dopo), individua le evidenze nel codice e ne classifica il rischio; un secondo livello di revisione, basato sul modello
                 e sulla base documentale normativa, valuta il contesto applicativo, integra gli esiti e formula le domande necessarie quando le informazioni non sono deducibili dal codice.
               </p>
             </div>

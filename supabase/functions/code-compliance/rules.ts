@@ -78,6 +78,18 @@ export const REFS: Record<string, Ref> = {
   DATA_ACT3: { k: "eu:32023R2854:it:art3:par1" },
   CAD64: { k: "web:CAD:art64:c2-bis" },
   PLD7: { k: "eu:32024L2853:it:art7:par1" },
+  // Lotto 2: accessibilità con lettura dei tag, password, regole su più righe.
+  WCAG_131: { l: "WCAG 2.2, Success Criterion 1.3.1 Info and Relationships" },
+  WCAG_142: { l: "WCAG 2.2, Success Criterion 1.4.2 Audio Control" },
+  WCAG_211: { l: "WCAG 2.2, Success Criterion 2.1.1 Keyboard" },
+  WCAG_222: { l: "WCAG 2.2, Success Criterion 2.2.2 Pause, Stop, Hide" },
+  WCAG_242: { l: "WCAG 2.2, Success Criterion 2.4.2 Page Titled" },
+  WCAG_243: { l: "WCAG 2.2, Success Criterion 2.4.3 Focus Order" },
+  WCAG_244: { l: "WCAG 2.2, Success Criterion 2.4.4 Link Purpose (In Context)" },
+  WCAG_247: { l: "WCAG 2.2, Success Criterion 2.4.7 Focus Visible" },
+  WCAG_332: { l: "WCAG 2.2, Success Criterion 3.3.2 Labels or Instructions" },
+  WCAG_412: { l: "WCAG 2.2, Success Criterion 4.1.2 Name, Role, Value" },
+  ASVS_PASSWORD: { l: "OWASP ASVS 5.0, V6.2 Password Security" },
 };
 
 export interface LineHit { risk?: Risk; note?: string; mask?: RegExp }
@@ -174,9 +186,9 @@ const PERSON_DECISION = /\b\w*(applicant|resume|curricul|\bcv_|employee|dipenden
 const DECISION_VERB = /\b\w*(score|scoring|rank|ranking|classif|predict|screen(ing)?|reject|deny|approve|eligib|shortlist|triage)\w*\s*[:=(]/i;
 const JWT_UNSAFE = /(algorithms?\s*[:=]\s*\[?\s*['"]none['"]|['"]alg['"]\s*:\s*['"]none['"]|verify_signature['"]?\s*[:=]\s*False|verify\s*=\s*False[^\n]*jwt|jwt\.decode\([^)]*verify\s*=\s*False|ignoreExpiration\s*:\s*true|ignore_?exp(iration)?\s*[:=]\s*True|jwt\.decode\s*\([^)]*\)\s*(as\s+\w+)?[^\n]*\b(userId|user_id|role|isAdmin|is_admin|admin)\b|JWT_VERIFY\s*=\s*false|jwt\.verify\s*\([^,]+,\s*(['"]{2}|null|undefined)\s*[,)])/;
 const UNSAFE_DESER = /(\bpickle\.loads?\s*\(|\bcPickle\.loads?\s*\(|jsonpickle\.decode\s*\(|\byaml\.load\s*\((?![^)]*(SafeLoader|safe_load|Loader\s*=\s*yaml\.(CSafeLoader|SafeLoader|BaseLoader)))(?=[^\n]*)|\byaml\.unsafe_load\s*\(|\bunserialize\s*\(|new ObjectInputStream\s*\(|\.readObject\s*\(|Marshal\.load\s*\(|YAML\.load\s*\((?![^)]*safe)|new BinaryFormatter\s*\(|BinaryFormatter\.Deserialize|node-serialize|serialize\.unserialize\s*\()/;
-const USER_INPUT = /(req\.(query|params|body|files?)\b|request\.(args|form|files|GET|POST|data|json|values)\b|\$_(GET|POST|REQUEST|FILES)\b|params\[|c\.Query\(|c\.Param\(|r\.URL\.Query|ctx\.(query|params)\b|event\.(queryStringParameters|pathParameters)|searchParams\.get\(|@RequestParam|@PathVariable|\bargs\.get\()/;
-const FILE_OP = /(readFile(Sync)?\s*\(|createReadStream\s*\(|writeFile(Sync)?\s*\(|sendFile\s*\(|res\.download\s*\(|fs\.(unlink|rm|stat|access|open|readdir)(Sync)?\s*\(|path\.(join|resolve)\s*\(|\bopen\s*\(\s*(os\.path\.join|f['"]|['"][^'"]*['"]\s*\+)|os\.path\.join\s*\(|send_file\s*\(|send_from_directory\s*\(|file_get_contents\s*\(|\b(include|require)(_once)?\s*\(?\s*(\$|[\"'][^\"']*[\"']\s*\.)|fopen\s*\(|new File\s*\(|Paths\.get\s*\(|File\.ReadAll\w*\s*\(|os\.Open\s*\(|ioutil\.ReadFile\s*\(|filepath\.Join\s*\()/;
-const PATH_GUARD = /(basename|sanitize|normalize|realpath|path\.resolve\([^)]*\)\.startsWith|startsWith\(|secure_filename|allowlist|whitelist|\bsafe|resolveWithin|isInside|\.\.\/|\\\.\\\.)/i;
+export const USER_INPUT = /(req\.(query|params|body|files?)\b|request\.(args|form|files|GET|POST|data|json|values)\b|\$_(GET|POST|REQUEST|FILES)\b|params\[|c\.Query\(|c\.Param\(|r\.URL\.Query|ctx\.(query|params)\b|event\.(queryStringParameters|pathParameters)|searchParams\.get\(|@RequestParam|@PathVariable|\bargs\.get\()/;
+export const FILE_OP = /(readFile(Sync)?\s*\(|createReadStream\s*\(|writeFile(Sync)?\s*\(|sendFile\s*\(|res\.download\s*\(|fs\.(unlink|rm|stat|access|open|readdir)(Sync)?\s*\(|path\.(join|resolve)\s*\(|\bopen\s*\(\s*(os\.path\.join|f['"]|['"][^'"]*['"]\s*\+)|os\.path\.join\s*\(|send_file\s*\(|send_from_directory\s*\(|file_get_contents\s*\(|\b(include|require)(_once)?\s*\(?\s*(\$|[\"'][^\"']*[\"']\s*\.)|fopen\s*\(|new File\s*\(|Paths\.get\s*\(|File\.ReadAll\w*\s*\(|os\.Open\s*\(|ioutil\.ReadFile\s*\(|filepath\.Join\s*\()/;
+export const PATH_GUARD = /(basename|sanitize|normalize|realpath|path\.resolve\([^)]*\)\.startsWith|startsWith\(|secure_filename|allowlist|whitelist|\bsafe|resolveWithin|isInside|\.\.\/|\\\.\\\.)/i;
 const TLS_OLD = /(ssl_protocols[^;\n]*\bTLSv1(\.[01])?\b(?!\.\d)|\bSSLv[23]\b|PROTOCOL_(SSLv[23]|TLSv1(_[01])?)\b|(TLSv1|TLSv1_1|SSLv23|SSLv3)_(client_|server_)?method|minVersion\s*[:=]\s*['"]TLSv1(\.[01])?['"]|secureProtocol\s*:\s*['"](TLSv1|TLSv1_1|SSLv3)_method['"]|ssl-?protocols?\s*[=:]\s*['"]?[^\n]*\bTLSv1(\.[01])?\b(?![^\n]*1\.[23])|SslProtocols\.(Ssl[23]|Tls|Tls11)\b|TLS_VERSION\s*[:=]\s*['"]?1\.[01]\b|tls_min_version\s*[:=]\s*['"]?(1\.0|1\.1|TLSv1(\.[01])?)\b|MinVersion\s*:\s*tls\.VersionTLS1[01]\b|MinVersion\s*:\s*tls\.VersionSSL30)/i;
 
 export const RULES: Rule[] = [
@@ -531,6 +543,22 @@ export const RULES: Rule[] = [
     },
   },
   {
+    id: "SEC-15", title: "Regola sulle password troppo debole", category: "sicurezza", risk: "medium",
+    why: "Una lunghezza minima sotto gli 8 caratteri o un limite massimo basso rendono le password indovinabili; gli standard chiedono almeno 8 caratteri (12 senza secondo fattore) e nessun limite stretto verso l'alto.",
+    action: "Richiedere almeno 8 caratteri, meglio 12, consentire almeno 64 caratteri e ogni tipo di carattere, confrontare con gli elenchi di password compromesse e preferire l'autenticazione a più fattori alle regole di composizione.",
+    refs: ["ASVS_PASSWORD", "GDPR32", "AGID_PW_HASH"],
+    test: (line, file) => {
+      if (!/pass(word|wd)?|pwd/i.test(line)) return null;
+      // In un modulo di accesso la lunghezza minima non è la regola sulle password: quella sta nella registrazione.
+      if (/(^|\/)(login|signin|sign-in|accesso)[^/]*$/i.test(file)) return null;
+      const m = /(min(imum)?_?length|minlength|min_?len)\s*[:=(]\s*["']?([1-7])\b(?![.\d])|\.length\s*(<|<=)\s*([1-7])\b(?![.\d])|\.length\s*(>=|>)\s*([0-6])\b(?![.\d])|min\(\s*([2-7])\s*[,)]|(max(imum)?_?length|maxlength|max_?len)\s*[:=(]\s*["']?([1-9]|[1-5]\d|6[0-3])\b(?![.\d])/i.exec(line);
+      if (!m) return null;
+      if (/pin\b|otp|code|codice|cvv|login|signin|sign_in|accesso/i.test(line)) return null;
+      const n = m[3] || m[5] || m[7] || m[8] || m[11];
+      return /max/i.test(m[0]) ? { risk: "low", note: `lunghezza massima ${n}` } : { note: `lunghezza minima ${n}` };
+    },
+  },
+  {
     id: "LIC-01", title: "Codice sotto licenza copyleft (GPL, AGPL, LGPL)", category: "licenze", risk: "medium",
     why: "Le licenze copyleft impongono di distribuire il codice sorgente delle opere derivate alle stesse condizioni; l'AGPL anche quando il software è offerto in rete.",
     action: "Verificare se il componente è distribuito o offerto come servizio, se il modello di licenza del prodotto è compatibile e tenere un inventario delle licenze (SBOM).",
@@ -544,7 +572,67 @@ export const RULES: Rule[] = [
   },
 ];
 
-export const RULES_VERSION = "2026-09-23.1";
+/** Regole che leggono il file intero (tag su più righe, etichette altrove nel file, valori usati righe dopo). */
+export interface FileRule {
+  id: string; title: string; category: Category; risk: Risk; why: string; action: string; refs: string[];
+  test: (content: string, file: string) => import("./markup.ts").FileHit[];
+}
+
+import { autoplayMedia, clickableWithoutRole, focusRemoved, missingTitle, pathFromRequestAcrossLines, unlabeledFields, unnamedControls } from "./markup.ts";
+
+export const FILE_RULES: FileRule[] = [
+  {
+    id: "ACC-03", title: "Campo di modulo senza etichetta", category: "accessibilita", risk: "medium",
+    why: "Senza un'etichetta collegata, chi usa un lettore di schermo non sa cosa inserire nel campo; il segnaposto non basta perché sparisce scrivendo.",
+    action: "Collegare un <label for> al campo (o avvolgerlo in <label>), oppure aggiungere aria-label o aria-labelledby.",
+    refs: ["WCAG_332", "WCAG_131", "WCAG_412", "EAA4"],
+    test: unlabeledFields,
+  },
+  {
+    id: "ACC-04", title: "Pulsante o link senza nome accessibile", category: "accessibilita", risk: "medium",
+    why: "Un pulsante o un link fatto solo di un'icona viene letto come \"pulsante\" senza dire cosa fa; un link senza href non si raggiunge da tastiera.",
+    action: "Aggiungere un testo visibile o aria-label all'elemento (o alt all'icona), e usare <button> al posto di <a> senza destinazione.",
+    refs: ["WCAG_412", "WCAG_244", "WCAG_211", "EAA4"],
+    test: unnamedControls,
+  },
+  {
+    id: "ACC-05", title: "Indicatore di focus rimosso", category: "accessibilita", risk: "medium",
+    why: "Con outline: none chi naviga da tastiera non vede più dove si trova; è uno dei difetti più segnalati nelle verifiche di accessibilità.",
+    action: "Togliere outline: none oppure sostituirlo con un indicatore visibile equivalente (outline personalizzato, box-shadow, focus:ring).",
+    refs: ["WCAG_247", "EAA4"],
+    test: focusRemoved,
+  },
+  {
+    id: "ACC-06", title: "Pagina senza titolo", category: "accessibilita", risk: "low",
+    why: "Il titolo della pagina è la prima cosa che un lettore di schermo annuncia e ciò che compare nelle schede del browser.",
+    action: "Aggiungere un <title> descrittivo nell'head di ogni documento.",
+    refs: ["WCAG_242", "EAA4"],
+    test: missingTitle,
+  },
+  {
+    id: "ACC-07", title: "Audio o video in riproduzione automatica", category: "accessibilita", risk: "medium",
+    why: "Un contenuto che parte da solo disturba chi usa un lettore di schermo e chi ha difficoltà di attenzione: deve poter essere fermato o non avere audio.",
+    action: "Togliere autoplay, oppure aggiungere i controlli (controls) e, se il video è decorativo, tenerlo muto con un modo per fermarlo.",
+    refs: ["WCAG_142", "WCAG_222", "EAA4"],
+    test: autoplayMedia,
+  },
+  {
+    id: "ACC-08", title: "Elemento cliccabile senza ruolo né tastiera, o ordine di tabulazione forzato", category: "accessibilita", risk: "low",
+    why: "Un div o uno span con onClick non è raggiungibile con Tab e non viene annunciato come pulsante; un tabindex positivo rompe l'ordine naturale di navigazione.",
+    action: "Usare <button> o <a href>, oppure aggiungere role, tabindex=\"0\" e la gestione della tastiera; non usare tabindex maggiori di zero.",
+    refs: ["WCAG_412", "WCAG_211", "WCAG_243", "EAA4"],
+    test: clickableWithoutRole,
+  },
+  {
+    id: "SEC-13", title: "Percorso di file costruito con dati dell'utente (path traversal)", category: "sicurezza", risk: "high",
+    why: "Se il nome del file arriva dalla richiesta senza controlli, con ../ si leggono o si scrivono file fuori dalla cartella prevista, comprese configurazioni e credenziali.",
+    action: "Accettare solo nomi di file da un elenco o un identificativo, ricostruire il percorso sul server, normalizzarlo e verificare che resti dentro la cartella ammessa.",
+    refs: ["ASVS_FILE_STORAGE", "ASVS_FILE_DOWNLOAD", "ASVS_SANITIZE", "CRA_ANNEX1"],
+    test: (content, file) => pathFromRequestAcrossLines(content, file, USER_INPUT, FILE_OP, PATH_GUARD),
+  },
+];
+
+export const RULES_VERSION = "2026-09-23.2";
 
 export function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

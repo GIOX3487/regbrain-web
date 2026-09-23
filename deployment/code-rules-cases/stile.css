@@ -1,0 +1,4 @@
+a:focus { outline: none; } /*! ACC-05 */
+button:focus { outline: none; box-shadow: 0 0 0 3px #2F9BE0; } /*! - */
+.card { outline: none; } /*! - */
+input:focus-visible { outline: 0; } /*! ACC-05 */

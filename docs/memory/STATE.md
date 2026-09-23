@@ -523,3 +523,13 @@ attivati dal contesto. Misura su cinque repository pubblici e su RegBrain: nessu
 delle regole nuove dopo tre correzioni. Restano fuori (lotto 2) le regole di accessibilità che
 richiedono un parser e le regole multi-file.
 
+## Verifica del codice: lotto 2, regole sul file intero, 23 settembre
+
+38 regole: 31 per riga e 7 sul file intero con un lettore di tag (`markup.ts`) per accessibilità
+(campi senza etichetta, pulsanti e link senza nome, focus rimosso, pagina senza titolo, autoplay,
+elementi cliccabili senza ruolo o tabindex forzato) e path traversal su più righe; regola sulle
+password; 12 criteri WCAG 2.2 fra i riferimenti. Le regole di accessibilità guardano solo gli
+elementi nativi ed escludono fogli di stile di terze parti e Angular Material con mat-label.
+Misurate sugli stessi cinque repository pubblici e su RegBrain; scansione di RegBrain in circa
+un secondo dopo la riscrittura lineare della regola sul focus.
+
