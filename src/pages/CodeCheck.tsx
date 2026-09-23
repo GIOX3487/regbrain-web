@@ -510,7 +510,7 @@ export default function CodeCheck() {
                     </div>
                     {sources.length > 0 && (
                       <details className="text-xs">
-                        <summary className="cursor-pointer text-muted-foreground">Fonti: {sources.map((s) => s!.citation).join("; ")}</summary>
+                        <summary className="cursor-pointer text-muted-foreground">Fonti: {[...new Set(sources.map((s) => s!.citation))].join("; ")}</summary>
                         <div className="mt-2 space-y-2">
                           {sources.map((s) => (
                             <div key={s!.id} className="rounded border p-2">

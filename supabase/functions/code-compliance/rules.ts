@@ -127,7 +127,7 @@ export const SECRET_VALUE_MASKS: RegExp[] = [
   ...SECRET_PATTERNS.map(([re]) => new RegExp(re.source, "g")),
 ];
 
-const HTTP_OK = /(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|example\.(com|org|net)|www\.w3\.org|schemas\.|xmlns|apache\.org\/licenses|opensource\.org|purl\.org|json-schema\.org|ns\.adobe\.com|schemas\.android\.com|\.local\b|\.test\b|\.internal\b)/i;
+const HTTP_OK = /(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|example\.(com|org|net)|www\.w3\.org|schemas\.|xmlns|apache\.org\/licenses|opensource\.org|purl\.org|json-schema\.org|ns\.adobe\.com|schemas\.android\.com|\.local\b|\.test\b|\.internal\b|\.example\b|\.invalid\b)/i;
 
 const TRACKERS: Array<[RegExp, string]> = [
   [/googletagmanager\.com|google-analytics\.com|\bgtag\s*\(|\bga\s*\(\s*['"]create|ReactGA|react-ga4?|@next\/third-parties\/google|vue-gtag/i, "Google Analytics / Tag Manager"],
@@ -159,7 +159,7 @@ const EXTRA_EU_RESOURCES: Array<[RegExp, string]> = [
 export const CONSENT_SIGNALS = /cookie.?consent|consent.?mode|gtag\s*\(\s*['"]consent|iubenda|cookiebot|onetrust|didomi|klaro|cookieyes|tarteaucitron|usercentrics|complianz|cookie-?law|consentmanager|cmp\.|__tcfapi|hasConsent|consentGiven|consent_given|acceptCookies|cookiesAccepted/i;
 
 const AI_TEXT = /api\.openai\.com|new OpenAI\s*\(|from ['"]openai['"]|import openai|anthropic\.com|new Anthropic\s*\(|@anthropic-ai|generativelanguage\.googleapis\.com|@google\/genai|@google\/generative-ai|google\.generativeai|GoogleGenerativeAI|api\.mistral\.ai|@mistralai|api-inference\.huggingface\.co|api\.cohere\.|openai\.azure\.com|bedrock-runtime|chat\.completions\.create/i;
-const AI_SYNTH = /images\.generate|dall-e|dall·e|\bimagen\b|stable-?diffusion|replicate\.com|api\.elevenlabs|text-to-speech|audio\.speech\.create|tts-1|gpt-image|\bsora\b|midjourney|\bflux-(pro|dev|schnell)/i;
+const AI_SYNTH = /images\.generate|dall-e|dall·e|\bimagen[-_]?\d|models\/imagen|imagegeneration@|stable-?diffusion|replicate\.com|api\.elevenlabs|text-to-speech|audio\.speech\.create|tts-1|gpt-image|\bsora\b|midjourney|\bflux-(pro|dev|schnell)/i;
 
 /** Toglie il contenuto delle stringhe: "email inviata" non è un dato personale, user.email sì. */
 export function stripLiterals(line: string): string {
@@ -186,7 +186,7 @@ const PERSON_DECISION = /\b\w*(applicant|resume|curricul|\bcv_|employee|dipenden
 const DECISION_VERB = /\b\w*(score|scoring|rank|ranking|classif|predict|screen(ing)?|reject|deny|approve|eligib|shortlist|triage)\w*\s*[:=(]/i;
 const JWT_UNSAFE = /(algorithms?\s*[:=]\s*\[?\s*['"]none['"]|['"]alg['"]\s*:\s*['"]none['"]|verify_signature['"]?\s*[:=]\s*False|verify\s*=\s*False[^\n]*jwt|jwt\.decode\([^)]*verify\s*=\s*False|ignoreExpiration\s*:\s*true|ignore_?exp(iration)?\s*[:=]\s*True|jwt\.decode\s*\([^)]*\)\s*(as\s+\w+)?[^\n]*\b(userId|user_id|role|isAdmin|is_admin|admin)\b|JWT_VERIFY\s*=\s*false|jwt\.verify\s*\([^,]+,\s*(['"]{2}|null|undefined)\s*[,)])/;
 const UNSAFE_DESER = /(\bpickle\.loads?\s*\(|\bcPickle\.loads?\s*\(|jsonpickle\.decode\s*\(|\byaml\.load\s*\((?![^)]*(SafeLoader|safe_load|Loader\s*=\s*yaml\.(CSafeLoader|SafeLoader|BaseLoader)))(?=[^\n]*)|\byaml\.unsafe_load\s*\(|\bunserialize\s*\(|new ObjectInputStream\s*\(|\.readObject\s*\(|Marshal\.load\s*\(|YAML\.load\s*\((?![^)]*safe)|new BinaryFormatter\s*\(|BinaryFormatter\.Deserialize|node-serialize|serialize\.unserialize\s*\()/;
-export const USER_INPUT = /(req\.(query|params|body|files?)\b|request\.(args|form|files|GET|POST|data|json|values)\b|\$_(GET|POST|REQUEST|FILES)\b|params\[|c\.Query\(|c\.Param\(|r\.URL\.Query|ctx\.(query|params)\b|event\.(queryStringParameters|pathParameters)|searchParams\.get\(|@RequestParam|@PathVariable|\bargs\.get\()/;
+export const USER_INPUT = /(req\.(query|params|body|files?)\b|\bparams\.(file|filename|path|name|dir|folder|slug|key|template|page)\b|request\.(args|form|files|GET|POST|data|json|values)\b|\$_(GET|POST|REQUEST|FILES)\b|params\[|c\.Query\(|c\.Param\(|r\.URL\.Query|ctx\.(query|params)\b|event\.(queryStringParameters|pathParameters)|searchParams\.get\(|@RequestParam|@PathVariable|\bargs\.get\()/;
 export const FILE_OP = /(readFile(Sync)?\s*\(|createReadStream\s*\(|writeFile(Sync)?\s*\(|sendFile\s*\(|res\.download\s*\(|fs\.(unlink|rm|stat|access|open|readdir)(Sync)?\s*\(|path\.(join|resolve)\s*\(|\bopen\s*\(\s*(os\.path\.join|f['"]|['"][^'"]*['"]\s*\+)|os\.path\.join\s*\(|send_file\s*\(|send_from_directory\s*\(|file_get_contents\s*\(|\b(include|require)(_once)?\s*\(?\s*(\$|[\"'][^\"']*[\"']\s*\.)|fopen\s*\(|new File\s*\(|Paths\.get\s*\(|File\.ReadAll\w*\s*\(|os\.Open\s*\(|ioutil\.ReadFile\s*\(|filepath\.Join\s*\()/;
 export const PATH_GUARD = /(basename|sanitize|normalize|realpath|path\.resolve\([^)]*\)\.startsWith|startsWith\(|secure_filename|allowlist|whitelist|\bsafe|resolveWithin|isInside|\.\.\/|\\\.\\\.)/i;
 const TLS_OLD = /(ssl_protocols[^;\n]*\bTLSv1(\.[01])?\b(?!\.\d)|\bSSLv[23]\b|PROTOCOL_(SSLv[23]|TLSv1(_[01])?)\b|(TLSv1|TLSv1_1|SSLv23|SSLv3)_(client_|server_)?method|minVersion\s*[:=]\s*['"]TLSv1(\.[01])?['"]|secureProtocol\s*:\s*['"](TLSv1|TLSv1_1|SSLv3)_method['"]|ssl-?protocols?\s*[=:]\s*['"]?[^\n]*\bTLSv1(\.[01])?\b(?![^\n]*1\.[23])|SslProtocols\.(Ssl[23]|Tls|Tls11)\b|TLS_VERSION\s*[:=]\s*['"]?1\.[01]\b|tls_min_version\s*[:=]\s*['"]?(1\.0|1\.1|TLSv1(\.[01])?)\b|MinVersion\s*:\s*tls\.VersionTLS1[01]\b|MinVersion\s*:\s*tls\.VersionSSL30)/i;
@@ -210,7 +210,7 @@ export const RULES: Rule[] = [
     action: "Per le password usare Argon2id, scrypt o bcrypt con sale; per l'integrità SHA-256 o superiore. Pianificare la migrazione degli hash già salvati.",
     refs: ["GDPR32", "ASVS_HASH", "AGID_PW_HASH", "CRA_ANNEX1"],
     test: (line) => {
-      if (/(etag|e_?tag|cache[_ ]?key|cachekey|checksum|integrit|dedup|fingerprint_?file|content_?hash|file_?hash|nome_?file)/i.test(line)) return null;
+      if (/(etag|e_?tag|cache[_ ]?key|cachekey|checksum|integrit|dedup|fingerprint_?file|content_?hash|file_?hash|nome_?file|update\(\s*(content|buffer|fileContent|bytes|chunk)\s*\))/i.test(line)) return null;
       if (!/(createHash\s*\(\s*['"](md5|sha1)['"]|hashlib\.(md5|sha1)\s*\(|MessageDigest\.getInstance\s*\(\s*"(MD5|SHA-?1)"|\bmd5\s*\(|\bsha1\s*\(|DigestUtils\.(md5|sha1)|crypto\.subtle\.digest\s*\(\s*['"]SHA-1['"]|Md5\.|SHA1Managed|MD5\.Create)/i.test(line)) return null;
       return /pass|pwd|pin\b|credential/i.test(line) ? { risk: "high", note: "usato su una password" } : {};
     },
@@ -223,6 +223,10 @@ export const RULES: Rule[] = [
     test: (line) => {
       const m = /http:\/\/[^\s'"`)<>]+/i.exec(line);
       if (!m || HTTP_OK.test(m[0])) return null;
+      // Un'immagine o un font in chiaro non trasporta dati dell'utente: è un altro problema (contenuto misto), non questo.
+      if (/\.(png|gif|jpe?g|svg|ico|webp|woff2?|ttf)(\?|$)/i.test(m[0])) return null;
+      // Un collegamento che l'utente può cliccare non è una connessione dell'applicazione.
+      if (/<a\b[^>]*href\s*=\s*["'][^"']*http:\/\//i.test(line) || /\[[^\]]*\]\(http:\/\//.test(line)) return null;
       // Molti http:// non sono connessioni ma identificatori (spazi dei nomi XML, URI di risorse).
       if (/(xmlns|namespace|\bns\b|\buri\b|rdf|owl:|@prefix|schema_?id|\/resource\/)/i.test(line)) return null;
       // Un indirizzo dentro un elenco di link non è una connessione: serve un contesto di chiamata
@@ -258,8 +262,8 @@ export const RULES: Rule[] = [
     action: "Eliminare eval e simili; per i comandi di sistema passare gli argomenti come elenco, senza shell, e validare i valori ammessi.",
     refs: ["ASVS_INJECTION", "ASVS_SANITIZE", "CRA_ANNEX1"],
     test: (line) => {
-      if (/(^|[^\w.])eval\s*\(|new Function\s*\(|child_process\.(exec|execSync)\s*\(|\bos\.system\s*\(|subprocess\.\w+\([^)]*shell\s*=\s*True|Runtime\.getRuntime\(\)\.exec|\bshell_exec\s*\(|\bpassthru\s*\(|dangerouslySetInnerHTML|\.innerHTML\s*=(?!\s*['"`]\s*['"`])/.test(line)) {
-        return /dangerouslySetInnerHTML|innerHTML/.test(line) ? { risk: "medium", note: "HTML inserito senza sanificazione (rischio XSS)" } : {};
+      if (/(^|[^\w.])eval\s*\(|new Function\s*\(|child_process\.(exec|execSync)\s*\(|\bos\.system\s*\(|subprocess\.\w+\([^)]*shell\s*=\s*True|Runtime\.getRuntime\(\)\.exec|\bshell_exec\s*\(|\bpassthru\s*\(|dangerouslySetInnerHTML|\.innerHTML\s*\+?=(?!\s*['"`]\s*['"`])|\[innerHTML\]\s*=|\bv-html\s*=|\{@html\b|bypassSecurityTrust(Html|Script|Url|ResourceUrl|Style)\s*\(|\.insertAdjacentHTML\s*\(|\$\([^)]*\)\.html\s*\(\s*[^'"`)]/.test(line)) {
+        return /innerHTML|v-html|@html|bypassSecurityTrust|insertAdjacentHTML|\.html\s*\(/.test(line) ? { risk: "medium", note: "HTML inserito senza sanificazione (rischio XSS)" } : {};
       }
       return null;
     },
@@ -314,11 +318,11 @@ export const RULES: Rule[] = [
       // Solo nomi di campi o colonne: le stesse parole dentro un testo dell'interfaccia o di un
       // prompt non sono un trattamento.
       const code = stripLiterals(line);
-      if (!/(\w+\s*[:=]|CREATE TABLE|add column|Column\(|@Column|Field\(|interface|type\s+\w+\s*=|\bclass\b|varchar|\bjsonb?\b)/i.test(code)) return null;
+      if (!/(\w+\s*[:=]|CREATE TABLE|add column|Column\(|@Column|Field\(|interface|type\s+\w+\s*=|\bclass\b|varchar|\bjsonb?\b|^\s*"?\w+"?\s+(text|char|character|integer|int|bigint|smallint|boolean|bool|date|timestamp|numeric|decimal|uuid|blob|clob)\b|\{[^}]*\}\s*=\s*(req|request|body|params|query|payload|form)\b)/i.test(code)) return null;
       const m = SPECIAL.exec(code);
       if (!m) return null;
       // Deve essere un identificatore: parola composta o seguita da una dichiarazione.
-      const around = new RegExp(`[\\w.]*${m[0].replace(/[.*+?^$\{\}()|\[\]\\]/g, "\\$&")}[\\w]*\\s*[:=(]`, "i");
+      const around = new RegExp(`[\\w.]*${m[0].replace(/[.*+?^$\{\}()|\[\]\\]/g, "\\$&")}[\\w]*\\s*([:=(]|\\s+(text|char|character|integer|int|bigint|smallint|boolean|bool|date|timestamp|numeric|decimal|uuid|blob|clob|varchar)\\b|\\s*[,}]\\s*(\\w+\\s*[,}]\\s*)*=\\s*(req|request|body|params|query|payload|form)\\b)`, "i");
       return around.test(code) ? { note: `campo "${m[0].slice(0, 40)}"` } : null;
     },
   },
@@ -392,7 +396,11 @@ export const RULES: Rule[] = [
     refs: ["GDPR5", "GDPR13", "ASVS_LOGGING"],
     test: (line) => {
       const code = stripLiterals(line);
-      return /(x-forwarded-for|\breq\.ip\b|request\.remote_addr|REMOTE_ADDR|getClientIp|client_?ip|ip_?address|indirizzo_?ip|RemoteIpAddress|getRemoteAddr)/i.test(code) || /x-forwarded-for/i.test(line) ? {} : null;
+      const m = /(x-forwarded-for|\breq\.ip\b|request\.remote_addr|REMOTE_ADDR|getClientIp|client_?ip|ip_?address|indirizzo_?ip|RemoteIpAddress|getRemoteAddr)/i.exec(code);
+      if (!m && !/x-forwarded-for/i.test(line)) return null;
+      // Testo fra due tag (un'etichetta dell'interfaccia) non è una raccolta.
+      if (m && new RegExp(`>[^<]*${m[0]}[^<]*<`, "i").test(line)) return null;
+      return {};
     },
   },
   {
@@ -578,7 +586,7 @@ export interface FileRule {
   test: (content: string, file: string) => import("./markup.ts").FileHit[];
 }
 
-import { autoplayMedia, clickableWithoutRole, focusRemoved, missingTitle, pathFromRequestAcrossLines, unlabeledFields, unnamedControls } from "./markup.ts";
+import { autoplayMedia, clickableWithoutRole, decodedTokenTrusted, focusRemoved, missingTitle, pathFromRequestAcrossLines, unlabeledFields, unnamedControls } from "./markup.ts";
 
 export const FILE_RULES: FileRule[] = [
   {
@@ -630,13 +638,23 @@ export const FILE_RULES: FileRule[] = [
     refs: ["ASVS_FILE_STORAGE", "ASVS_FILE_DOWNLOAD", "ASVS_SANITIZE", "CRA_ANNEX1"],
     test: (content, file) => pathFromRequestAcrossLines(content, file, USER_INPUT, FILE_OP, PATH_GUARD),
   },
+  {
+    id: "SEC-11", title: "Token JWT accettato senza verificare la firma o la scadenza", category: "sicurezza", risk: "high",
+    why: "Se il token non viene verificato, chiunque può fabbricarne uno e presentarsi come un altro utente o come amministratore.",
+    action: "Verificare sempre firma e scadenza con la chiave o il certificato del server, rifiutare l'algoritmo none e non leggere identità o ruoli da un token solo decodificato.",
+    refs: ["ASVS_TOKEN", "GDPR32", "CRA_ANNEX1"],
+    test: decodedTokenTrusted,
+  },
 ];
 
-export const RULES_VERSION = "2026-09-23.2";
+export const RULES_VERSION = "2026-09-23.3";
 
 export function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+/** File di traduzioni e testi dell'interfaccia: parole, non codice. Si saltano del tutto. */
+export const TEXT_FILE = /(^|\/)(i18n|locales?|lang|langs|languages|translations?|messages)\/|(^|\/)[a-z]{2}([-_][A-Za-z]{2,4})?\.(json|ya?ml)$|\.(po|pot|resx|strings|xlf|xliff)$|(^|\/)strings\.xml$/i;
 
 /** File che contengono per mestiere valori finti: un segreto lì dentro pesa meno. */
 export const TEST_FILE = /(^|\/)(tests?|__tests__|spec|specs|fixtures?|mocks?|examples?|samples?|seed|seeds|demo)\/|[._-](test|spec|mock|fixture|example|sample)\.[a-z]+$|\.(example|sample|template)$/i;

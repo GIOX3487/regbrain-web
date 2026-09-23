@@ -72,3 +72,8 @@ test('gli stessi file danno sempre lo stesso esito', () => {
   const secondo = scan(files).findings;
   assert.equal(JSON.stringify(secondo), JSON.stringify(findings));
 });
+
+test('i file di traduzione non producono esiti', () => {
+  const spuri = [...ottenuti.keys()].filter((k) => k.startsWith('es_ES.json'));
+  assert.deepEqual(spuri, []);
+});

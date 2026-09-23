@@ -169,7 +169,7 @@ export function exportCodeCheckPdf(result: CodeCheckResult) {
     const cited = f.refs.map((r) => sources.get(r)).filter(Boolean) as CodeSource[];
     if (cited.length) {
       y += 1;
-      para(`Fonti: ${cited.map((s) => s.citation).join("; ")}`, 8.5, "italic", [60, 60, 60], 4.2);
+      para(`Fonti: ${[...new Set(cited.map((s) => s.citation))].join("; ")}`, 8.5, "italic", [60, 60, 60], 4.2);
     }
   });
 

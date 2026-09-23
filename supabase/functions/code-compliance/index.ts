@@ -52,7 +52,7 @@ async function resolveRefs(db: any, ids: string[]): Promise<Map<string, Source>>
     const { data, error } = await q;
     if (error || !data?.length) return;
     const text = data.map((r: { chunk_text: string }) => r.chunk_text).join("\n").replace(/\s+\n/g, "\n").slice(0, 2500);
-    out.set(id, { id, citation: String(data[0].citation_label || id).replace(/ \(parte \d+\/\d+\)$/, ""), regulation: data[0].regulation, chunkKey: data[0].chunk_key, text });
+    out.set(id, { id, citation: String(data[0].citation_label || id).replace(/ \(parte \d+(\/\d+)?\)$/, ""), regulation: data[0].regulation, chunkKey: data[0].chunk_key, text });
   }));
   return out;
 }

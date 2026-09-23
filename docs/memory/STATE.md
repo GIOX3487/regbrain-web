@@ -533,3 +533,14 @@ elementi nativi ed escludono fogli di stile di terze parti e Angular Material co
 Misurate sugli stessi cinque repository pubblici e su RegBrain; scansione di RegBrain in circa
 un secondo dopo la riscrittura lineare della regola sul focus.
 
+## Verifica del codice: collaudo del 23 settembre
+
+Livello AI provato in produzione su un progetto sanitario di 8 file con 17 problemi noti: tutti
+gli esiti delle regole confermati con note specifiche, tre esiti aggiuntivi veri (uno, la
+password mai confrontata al login, invisibile alle regole), cinque domande pertinenti, 36 fonti
+citate tutte nel corpus, 29,6 secondi. Referto PDF di 14 pagine generato dal risultato reale.
+Sette difetti corretti: file di traduzione esclusi, immagini e link http non contati, etichette
+IP nel markup, XSS dei framework (innerHTML, v-html, bypassSecurityTrust), `params.file`, JWT
+decodificato su più righe, colonne SQL e destrutturazione per le categorie particolari. Su
+Juice Shop SEC-03 scende da 136 a 34 occorrenze e SEC-06 trova i due XSS documentati.
+
