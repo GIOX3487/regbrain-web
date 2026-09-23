@@ -281,15 +281,52 @@ export default function CodeCheck() {
         </Button>
         <h1 className="text-2xl sm:text-3xl font-bold mb-2 flex items-center gap-2"><Code2 className="h-7 w-7 text-primary" />Verifica del codice</h1>
         <p className="text-sm sm:text-base text-muted-foreground mb-6">
-          Scegli la cartella del progetto: le regole girano nel browser sull'intera base di codice, il codice non lascia il tuo computer.
-          Al servizio arrivano solo gli esiti, l'elenco dei file e le righe che servono per la revisione, con i segreti mascherati.
+          Analisi di conformità normativa dell'intera base di codice di un'applicazione. La verifica viene eseguita direttamente nel browser:
+          il codice sorgente resta sul computer dell'utente e non viene trasmesso. Al servizio pervengono esclusivamente gli esiti, l'inventario dei file
+          e gli estratti necessari alla revisione, dai quali credenziali e chiavi vengono rimosse in automatico prima dell'invio.
         </p>
 
         <Card className="mb-6 border-primary/30 bg-primary/5">
-          <CardContent className="pt-6 text-sm space-y-2">
-            <p><strong>Cosa controlla:</strong> credenziali nel codice, crittografia debole, connessioni non cifrate, SQL injection, cookie e strumenti di tracciamento senza consenso, dati personali nei log, geolocalizzazione, dati sanitari o biometrici, dati fuori dall'UE, uso di servizi di IA, accessibilità, licenze copyleft.</p>
-            <p><strong>Fonti:</strong> GDPR, Codice privacy, ePrivacy e linee guida cookie del Garante, Cyber Resilience Act, AI Act e L. 132/2025, D.Lgs. 138/2024, WCAG 2.2 ed European Accessibility Act, OWASP ASVS, linee guida AgID sullo sviluppo sicuro, testi delle licenze.</p>
-            <p><strong>Cosa resta salvato:</strong> l'esito, i nomi dei file con la loro impronta e le righe citate come prova, con i segreti mascherati. Il codice intero non viene né conservato né inviato: alla revisione del modello arrivano solo gli estratti.</p>
+          <CardContent className="pt-6 text-sm space-y-4">
+            <div>
+              <p className="font-semibold mb-1">Ambiti verificati</p>
+              <p className="text-muted-foreground">
+                Sicurezza applicativa (credenziali nel codice, algoritmi crittografici deboli, comunicazioni non cifrate, iniezioni SQL, configurazione dei cookie e delle intestazioni di sicurezza);
+                protezione dei dati personali (dati identificativi nei log, categorie particolari come dati sanitari e biometrici, geolocalizzazione, trasferimenti verso Paesi extra UE, tracciamento senza consenso);
+                intelligenza artificiale (integrazione di servizi di IA e relativi obblighi di trasparenza); accessibilità delle interfacce; licenze delle componenti open source.
+              </p>
+            </div>
+            <div>
+              <p className="font-semibold mb-1">Base normativa e criteri di analisi</p>
+              <p className="text-muted-foreground mb-2">
+                Ogni regola è collegata a una disposizione specifica presente nella base documentale di RegBrain. Gli esiti citano l'articolo applicabile e la revisione
+                del modello consulta il testo della norma, non una sua sintesi.
+              </p>
+              <ul className="space-y-1 text-muted-foreground list-disc pl-5">
+                <li><span className="text-foreground">Regolamento (UE) 2016/679 (GDPR)</span>, art. 5, 6, 9, 13, 25, 32 e 44, e D.Lgs. 196/2003: liceità e minimizzazione del trattamento, categorie particolari di dati, privacy by design, misure di sicurezza, trasferimenti extra UE.</li>
+                <li><span className="text-foreground">Direttiva 2002/58/CE (ePrivacy)</span>, art. 122 del Codice privacy e Linee guida cookie del Garante: consenso preventivo per cookie e strumenti di tracciamento.</li>
+                <li><span className="text-foreground">Regolamento (UE) 2024/2847 (Cyber Resilience Act)</span>, Allegato I: requisiti essenziali di sicurezza dei prodotti con elementi digitali, dalla gestione delle credenziali alla protezione dei dati in transito.</li>
+                <li><span className="text-foreground">Regolamento (UE) 2024/1689 (AI Act)</span>, art. 50, e Legge 132/2025: obblighi di trasparenza per i sistemi di IA e regole per il loro impiego, anche in ambito lavorativo.</li>
+                <li><span className="text-foreground">D.Lgs. 138/2024 (recepimento NIS2)</span>, art. 24: misure di gestione dei rischi per la sicurezza informatica dei soggetti obbligati.</li>
+                <li><span className="text-foreground">Direttiva (UE) 2019/882 (European Accessibility Act)</span> e WCAG 2.2: requisiti di accessibilità delle interfacce digitali.</li>
+                <li><span className="text-foreground">OWASP ASVS 5.0</span> e Linee guida AgID per lo sviluppo sicuro: standard tecnici di riferimento per le verifiche di sicurezza del codice.</li>
+                <li><span className="text-foreground">Licenze open source</span>: individuazione di componenti con licenza copyleft (GPL, AGPL) e relativi obblighi di redistribuzione.</li>
+              </ul>
+            </div>
+            <div>
+              <p className="font-semibold mb-1">Metodo</p>
+              <p className="text-muted-foreground">
+                Un primo livello di regole deterministiche individua le evidenze nel codice e ne classifica il rischio; un secondo livello di revisione, basato sul modello
+                e sulla base documentale normativa, valuta il contesto applicativo, integra gli esiti e formula le domande necessarie quando le informazioni non sono deducibili dal codice.
+              </p>
+            </div>
+            <div>
+              <p className="font-semibold mb-1">Conservazione dei dati</p>
+              <p className="text-muted-foreground">
+                Vengono conservati l'esito della verifica, l'elenco dei file con la rispettiva impronta crittografica e le righe citate a supporto di ciascun rilievo, prive di credenziali e chiavi.
+                Il codice sorgente completo non viene conservato né trasmesso: alla revisione del modello sono sottoposti unicamente gli estratti pertinenti.
+              </p>
+            </div>
           </CardContent>
         </Card>
 
