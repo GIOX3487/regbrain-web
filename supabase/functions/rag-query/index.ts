@@ -1,4 +1,5 @@
 import { embedTexts } from '../_shared/embeddings.ts';
+import { isAmbiguousAnswer } from "./facts.ts";
 import { protect } from '../_shared/access.ts';
 import { aiFetch as fetch, getAIKey, getAIModel } from '../_shared/ai.ts';
 import { serve as denoServe } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -694,6 +695,28 @@ interface RegulationConfig {
   // (fonti caricate con ingest-eurlex-formex o ingest-web-source).
   codes?: string[];
 }
+
+// Fonti che l'utente può nominare esplicitamente e che devono esistere nel corpus
+// perché la risposta possa attribuire loro un contenuto. Se mancano, la risposta lo
+// dichiara e l'affidabilità scende a "medium".
+const NAMED_SOURCES: Record<string, { label: string; pattern: RegExp }> = {
+  STATUTO_LAVORATORI: {
+    label: "la L. 300/1970 (Statuto dei lavoratori), in particolare l'art. 4 sui controlli a distanza",
+    pattern: /statuto\s+dei\s+lavoratori|statuto\s+lavoratori|300\/1970|\bst\.?\s*lav\b/i,
+  },
+  DLGS_81_08: {
+    label: "il D.Lgs. 81/2008 (sicurezza sul lavoro)",
+    pattern: /81\/2008|81\/08|testo\s+unico\s+(sulla\s+)?sicurezza/i,
+  },
+  LEGGE_633_1941: {
+    label: "la L. 633/1941 (diritto d'autore)",
+    pattern: /633\/1941|legge\s+sul\s+diritto\s+d'autore/i,
+  },
+  DL_105_2019: {
+    label: "il D.L. 105/2019 (perimetro di sicurezza nazionale cibernetica)",
+    pattern: /105\/2019|perimetro\s+di\s+sicurezza\s+nazionale/i,
+  },
+};
 
 const regulationConfigs: RegulationConfig[] = [
   {
@@ -1914,6 +1937,7 @@ Regole:
 - "clarify" SOLO se mancano fatti che cambiano davvero la risposta giuridica o il lavoro da fare (es. ruolo di titolare o responsabile, perimetro e dimensione dell'organizzazione per NIS2 o DORA, tipo di dati o di trattamento, quale documento vuole ottenere, se esiste già una policy o una DPIA, quale settore o Stato). In caso di dubbio scegli "answer".
 - Massimo 3 domande, dalla più decisiva alla meno decisiva. Ogni domanda deve essere concreta, in italiano semplice, con "why" di una riga. Aggiungi "options" (2-4 scelte brevi) solo quando le risposte possibili sono poche e note.
 - Non chiedere MAI cose già note dal profilo, dalle informazioni fornite, dai messaggi precedenti o dai documenti allegati.
+- Una domanda chiede UN solo fatto. Niente esempi tra parentesi che l'utente possa ricopiare come risposta: le alternative vanno in "options". Se il fatto è "già fatto oppure no" (accordo sindacale stipulato, autorizzazione ottenuta, DPIA redatta), formula la domanda in modo che la risposta sia sì o no.
 - Non fare domande su una lettura o definizione della norma: quelle si rispondono direttamente.
 - "goal" descrive l'obiettivo finale della conversazione (es. "Capire se l'azienda rientra nella NIS2 e cosa deve fare"), non la singola domanda.`;
 
@@ -2328,8 +2352,10 @@ denoServe(protect(async (req) => {
     };
 
     const today = new Date().toISOString().slice(0, 10);
+    const structuredHitsByCode: Record<string, number> = {};
 
     for (const regCode of [...new Set(detectedRegulationCodes)]) {
+      structuredHitsByCode[regCode] = 0;
       for (const artNum of expandedArticles) {
         const artInt = parseInt(artNum);
         if (isNaN(artInt)) continue;
@@ -2360,6 +2386,7 @@ denoServe(protect(async (req) => {
             `structured_${regCode}_art${artInt}`,
           );
           structuredChunksFound += structuredMatches.length;
+          structuredHitsByCode[regCode] += structuredMatches.length;
         }
       }
       // Also do vector search on structured_chunks if we have an embedding
@@ -2409,11 +2436,30 @@ denoServe(protect(async (req) => {
               `structured_vector_${regCode}`,
             );
             structuredChunksFound += filteredStructured.length;
+            structuredHitsByCode[regCode] += filteredStructured.length;
           }
         }
       }
     }
     console.log(`Structured chunks found: ${structuredChunksFound}`);
+
+    // Fonti nominate nella domanda ma assenti dal corpus: la risposta lo deve dire
+    // e l'affidabilità non può essere "high" (feedback del 22 settembre: "hai inventato
+    // l'attivazione degli accordi sindacali", con la L. 300/1970 non caricata).
+    const conversationText = [question, ...history.map((m) => m.content)].join("\n");
+    const absentSources: string[] = [];
+    for (const [code, meta] of Object.entries(NAMED_SOURCES)) {
+      if (!meta.pattern.test(conversationText)) continue;
+      if ((structuredHitsByCode[code] || 0) > 0) continue;
+      const { count } = await supabase
+        .from("structured_chunks")
+        .select("id", { count: "exact", head: true })
+        .eq("regulation", code);
+      if (!count) absentSources.push(meta.label);
+    }
+    if (absentSources.length > 0) {
+      console.warn(`Named sources absent from corpus: ${absentSources.join("; ")}`);
+    }
 
     // If structured search yielded enough results, skip some fallback strategies
     const skipLegacyStrategies = structuredChunksFound >= 15;
@@ -3125,8 +3171,9 @@ ${activeGoal ? `- Obiettivo della conversazione: ${activeGoal}` : ""}
 ${
         caseContext.length > 0
           ? `
-INFORMAZIONI FORNITE DALL'UTENTE SULLA SUA SITUAZIONE (usale come fatti accertati, non chiederle di nuovo):
-${caseContext.map((f) => `- ${f.question} → ${f.answer}`).join("\n")}
+INFORMAZIONI FORNITE DALL'UTENTE SULLA SUA SITUAZIONE (non chiederle di nuovo):
+${caseContext.map((f) => `- ${f.question} → ${f.answer}${isAmbiguousAnswer(f.question, f.answer) ? " [RISPOSTA AMBIGUA: ripete le opzioni della domanda, non è un fatto accertato]" : ""}`).join("\n")}
+Un'informazione è un fatto accertato SOLO se l'utente l'ha affermata in modo esplicito. Una risposta marcata AMBIGUA, o che ripete le alternative elencate nella domanda (es. "accordo sindacale/ispettorato"), NON va data per avvenuta: non scrivere mai "avendo già attivato", "avendo già stipulato" o simili. Esponi cosa cambia nei due casi ("se l'accordo è già stato stipulato... se invece non lo è...") e chiudi con una sola domanda di conferma.
 `
           : ""
       }
@@ -3204,6 +3251,10 @@ DOCUMENTI ALLEGATI DALL'UTENTE (REGOLA PRIORITARIA):
 ${
         missingRegulationWarnings.length > 0
           ? missingRegulationWarnings.join("\n") + "\n"
+          : ""
+      }${
+        absentSources.length > 0
+          ? `FONTE NON DISPONIBILE: ${absentSources.join("; ")} non è nella base documentale. NON attribuire a questa fonte contenuti specifici (commi, procedure, condizioni): rispondi solo con le fonti fornite e, dove quella fonte sarebbe decisiva, dillo.\n`
           : ""
       }DOCUMENTAZIONE NORMATIVA (BASE DI CONOSCENZA — CITA SEMPRE [N]):
 
@@ -3788,11 +3839,12 @@ REGOLA CRITICA FINALE — RISPOSTE PARZIALI VS MANCANTI:
         Math.min(100, chunkScore + citationScore + (25 - groundingPenalty)),
       ),
     );
-    const confidenceLevel = confidenceScore >= 65
+    let confidenceLevel = confidenceScore >= 65
       ? "high"
       : confidenceScore >= 35
       ? "medium"
       : "low";
+    if (absentSources.length > 0 && confidenceLevel === "high") confidenceLevel = "medium";
 
     let confidenceExplanation = "";
     if (confidenceLevel === "high") {
@@ -3801,6 +3853,9 @@ REGOLA CRITICA FINALE — RISPOSTE PARZIALI VS MANCANTI:
     } else if (confidenceLevel === "medium") {
       confidenceExplanation =
         `Documentazione parziale: ${relevantChunkCount} fonti trovate, ${verifiedCitationCount} citazioni verificate.`;
+      if (absentSources.length > 0) {
+        confidenceExplanation += ` Fonte nominata nella domanda ma non caricata: ${absentSources.join("; ")}.`;
+      }
       if (removedClaimsCount > 0) {
         confidenceExplanation +=
           ` ${removedClaimsCount} affermazioni non verificabili rimosse.`;
@@ -3815,6 +3870,10 @@ REGOLA CRITICA FINALE — RISPOSTE PARZIALI VS MANCANTI:
 
     // Append low-confidence warning to answer
     let outputAnswer = postGroundedAnswer;
+    if (absentSources.length > 0) {
+      outputAnswer +=
+        `\n\nNota: ${absentSources.join("; ")} non è ancora nella base documentale di RegBrain. La risposta si basa solo sulle fonti citate; per il testo di quella norma va consultata la fonte ufficiale.`;
+    }
     if (confidenceLevel === "low") {
       outputAnswer +=
         "\n\n⚠️ **Attenzione**: la documentazione disponibile su questo tema è limitata. Si consiglia di verificare con le fonti ufficiali.";

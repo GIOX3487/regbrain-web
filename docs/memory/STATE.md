@@ -499,3 +499,15 @@ computer. Il contesto è a scelta multipla; si preseleziona solo ciò che è sic
 RegBrain: 331 file in meno di un secondo, richiesta di 133 kB. Il limite dei 40 file resta solo per
 il codice incollato. Non serve un programma da installare né uno spazio in cloud per il codice; il
 client da riga di comando per la CI è il passo successivo.
+
+## Chat: fatti non affermati e fonti nominate ma assenti, 23 settembre
+
+Feedback negativo di un DPO ("hai inventato l'attivazione degli accordi sindacali"): l'intake
+aveva accorpato due domande con un esempio tra parentesi, l'utente ha ricopiato le alternative
+("Italia (accordo sindacale/ispettorato)") e il prompt le trattava come fatti accertati; la
+risposta citava solo il GDPR con affidabilità "high" mentre la L. 300/1970, nominata nella
+domanda, non è nel corpus. Dal 23 settembre: risposte che ricopiano le alternative marcate
+ambigue e divieto di darle per avvenute; fonti nominate e assenti dal corpus dichiarate in una
+nota a fine risposta, con affidabilità al massimo "medium"; intake a un fatto per domanda senza
+esempi copiabili. La L. 300/1970 resta da caricare (RAG-10).
+
