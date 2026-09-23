@@ -33,7 +33,10 @@ const SOFTWARE_CORPUS = new Set([
   "EDPB_4_2019", "EDPB_2_2023", "EDPB_3_2022", "EDPB_5_2020", "EDPB_1_2022", "EDPB_9_2022",
   "CRA", "AI_ACT", "LEGGE_IA", "DLGS_160_2026", "NIS2", "NIS2_IR", "DLGS_138_2024", "ACN_NIS_BASE", "LEGGE_90_2024",
   "OWASP_ASVS", "AGID_SW_SICURO", "AGID_MISURE_MINIME", "WCAG22", "EAA", "WAD", "DLGS_82_2022", "AGID_ACC_SERVIZI", "AGID_ACC_PA",
-  "OSS_LICENSES", "SW_DIR", "PSD2_SCA", "DSA", "CAD", "DORA",
+  "OSS_LICENSES", "SW_DIR", "PSD2_SCA", "PSD2", "DSA", "CAD", "EIDAS", "DORA", "DORA_RTS_ICT",
+  // Fonti di settore e di prodotto aggiunte il 23 settembre: software medicale e sanitario,
+  // prodotti connessi, responsabilità da prodotto, app per consumatori.
+  "MDR", "EHDS", "GARANTE_DOSSIER", "DATA_ACT", "PLD", "CODICE_CONSUMO", "DCD",
 ]);
 
 // deno-lint-ignore no-explicit-any
@@ -250,8 +253,15 @@ const handler = async (req: Request): Promise<Response> => {
   if (ctx.usesAI === "si" && !refIds.includes("AIACT50_1")) refIds.push("AIACT50_1", "LEGGE_IA_4");
   if (audiences.includes("dipendenti") && refIds.some((r) => r.startsWith("AIACT") || r === "LEGGE_IA_4")) refIds.push("LEGGE_IA_11");
   if (sectors.includes("nis2")) refIds.push("NIS2_IT_24");
-  if (sectors.includes("cra")) refIds.push("CRA_ANNEX1", "CRA_ANNEX1B");
+  if (sectors.includes("cra")) refIds.push("CRA_ANNEX1", "CRA_ANNEX1B", "DATA_ACT3", "PLD7");
   if (ctx.personalData === "si" && !refIds.includes("GDPR25")) refIds.push("GDPR25");
+  // Fonti di settore, attivate dal contesto dichiarato o dedotto dal codice.
+  if (sectors.includes("sanita")) refIds.push("MDR_SW", "GDPR9", "GDPR35");
+  if (sectors.includes("finanza")) refIds.push("PSD2_SCA4", "DORA9");
+  if (sectors.includes("pa")) refIds.push("CAD64", "EAA4");
+  if (audiences.includes("minori")) refIds.push("GDPR8", "CP2QUINQUIES");
+  if (audiences.includes("consumatori")) refIds.push("PLD7", "GDPR7_2");
+  if (ctx.usesAI === "si" && audiences.includes("dipendenti")) refIds.push("AIACT26");
   const refSources = await resolveRefs(db, refIds);
   for (const f of findings) f.refs = f.refs.filter((r) => refSources.has(r));
 

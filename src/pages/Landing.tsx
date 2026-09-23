@@ -243,9 +243,11 @@ const Landing = () => {
               </div>
               <h3 className="text-xl sm:text-2xl font-semibold">Cosa verifica</h3>
               <p className="text-muted-foreground">
-                Credenziali nel codice, crittografia debole, connessioni non cifrate, iniezioni SQL, cookie e
-                tracciamento senza consenso, dati personali nei log, dati sanitari e biometrici, geolocalizzazione,
-                trasferimenti extra UE, servizi di IA, accessibilità, licenze copyleft.
+                Credenziali nel codice, crittografia debole, connessioni non cifrate, iniezioni SQL, deserializzazione
+                e percorsi di file non sicuri, token non verificati, cookie e tracciamento web e mobile senza consenso,
+                consensi preselezionati, dati personali nei log, dati sanitari e biometrici, geolocalizzazione, fotocamera e
+                microfono, trasferimenti extra UE, servizi di IA, riconoscimento delle emozioni e decisioni automatizzate
+                sulle persone, accessibilità, licenze copyleft.
               </p>
             </div>
 
@@ -255,9 +257,10 @@ const Landing = () => {
               </div>
               <h3 className="text-xl sm:text-2xl font-semibold">Su quale base</h3>
               <p className="text-muted-foreground">
-                Ogni regola è collegata a un articolo preciso: GDPR, ePrivacy e linee guida cookie del Garante,
+                Ogni regola è collegata a un articolo preciso: GDPR, ePrivacy, linee guida del Garante e dell'EDPB,
                 Cyber Resilience Act, AI Act e L. 132/2025, D.Lgs. 138/2024 (NIS2), European Accessibility Act e
-                WCAG 2.2, OWASP ASVS e linee guida AgID. Il rilievo cita la norma, non un'opinione.
+                WCAG 2.2, OWASP ASVS e linee guida AgID, più le fonti di settore (MDR, PSD2, DORA, CAD, Data Act)
+                quando il codice le richiama. Il rilievo cita la norma, non un'opinione.
               </p>
             </div>
 

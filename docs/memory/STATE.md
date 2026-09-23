@@ -511,3 +511,15 @@ ambigue e divieto di darle per avvenute; fonti nominate e assenti dal corpus dic
 nota a fine risposta, con affidabilità al massimo "medium"; intake a un fatto per domanda senza
 esempi copiabili. La L. 300/1970 resta da caricare (RAG-10).
 
+## Verifica del codice: lotto 1 delle regole mancanti, 23 settembre
+
+31 regole (8 nuove: token JWT non verificato, deserializzazione non fidata, path traversal, TLS
+obsoleto, consenso preselezionato, risorse da server extra UE, fotocamera/microfono/contatti,
+emozioni e categorizzazione biometrica, decisioni automatizzate su persone) e tracker mobili in
+PRIV-01. 25 riferimenti nuovi verificati nel corpus, tra cui art. 22 GDPR, art. 2-quinquies del
+Codice, AI Act art. 5 e allegato III, EDPB 3/2022. Il livello AI consulta anche MDR, EHDS, PSD2,
+DORA RTS, Data Act, responsabilità da prodotto, Codice del consumo, con riferimenti di settore
+attivati dal contesto. Misura su cinque repository pubblici e su RegBrain: nessun falso positivo
+delle regole nuove dopo tre correzioni. Restano fuori (lotto 2) le regole di accessibilità che
+richiedono un parser e le regole multi-file.
+
