@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useNavigate } from "react-router-dom";
-import { Shield, Search, FileText, ArrowRight, CheckCircle2, Target, Zap, BookOpen, Activity, Eye, Scale, Globe } from "lucide-react";
+import { Shield, Search, FileText, ArrowRight, CheckCircle2, Target, Zap, BookOpen, Activity, Eye, Scale, Globe, Code2, Lock } from "lucide-react";
 import { MobileNav } from "@/components/MobileNav";
 import { FeatureGuide } from "@/components/FeatureGuide";
 import { supabase } from "@/integrations/supabase/client";
@@ -117,8 +117,8 @@ const Landing = () => {
             </h1>
 
             <p className="text-base sm:text-xl md:text-2xl text-muted-foreground max-w-3xl mx-auto px-4">
-              Carichi i documenti dell'organizzazione: RegBrain li confronta obbligo per obbligo con le
-              norme che la riguardano e ti mostra dove è in regola e dove no, con la frase esatta che lo prova.
+              Carichi i documenti dell'organizzazione, o il codice di un'applicazione: RegBrain li confronta obbligo per
+              obbligo con le norme che la riguardano e ti mostra dove è in regola e dove no, con la frase esatta che lo prova.
             </p>
 
             <p className="text-sm sm:text-base text-muted-foreground/80 max-w-2xl mx-auto px-4">
@@ -212,6 +212,82 @@ const Landing = () => {
                 Quando un obbligo risulta coperto, il referto mostra il passaggio esatto che lo prova,
                 ritrovato parola per parola nel file caricato; quando manca, dice che cosa manca. Il referto
                 è datato, non cambia quando lo riapri e si esporta in PDF.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Verifica del codice */}
+      <section className="px-4 sm:px-6 py-16 sm:py-20 bg-muted/20 border-y border-border">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center space-y-4 mb-12">
+            <Badge variant="secondary" className="text-xs sm:text-sm px-3 py-1">Compliance Hub · Verifica del codice</Badge>
+            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold">
+              Gli obblighi non stanno solo nei documenti.{" "}
+              <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+                Stanno anche nel codice.
+              </span>
+            </h2>
+            <p className="text-lg sm:text-xl text-muted-foreground max-w-3xl mx-auto">
+              Una privacy policy corretta non basta se l'applicazione registra dati personali nei log, imposta cookie
+              senza consenso o invia dati fuori dall'Unione. RegBrain analizza l'intera base di codice di un software
+              e collega ogni rilievo alla disposizione che lo riguarda.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-6 sm:gap-8 mb-8">
+            <div className="document-card space-y-4">
+              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary to-primary-glow flex items-center justify-center">
+                <Code2 className="w-6 h-6 text-white" />
+              </div>
+              <h3 className="text-xl sm:text-2xl font-semibold">Cosa verifica</h3>
+              <p className="text-muted-foreground">
+                Credenziali nel codice, crittografia debole, connessioni non cifrate, iniezioni SQL, cookie e
+                tracciamento senza consenso, dati personali nei log, dati sanitari e biometrici, geolocalizzazione,
+                trasferimenti extra UE, servizi di IA, accessibilità, licenze copyleft.
+              </p>
+            </div>
+
+            <div className="document-card space-y-4">
+              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary to-primary-glow flex items-center justify-center">
+                <Scale className="w-6 h-6 text-white" />
+              </div>
+              <h3 className="text-xl sm:text-2xl font-semibold">Su quale base</h3>
+              <p className="text-muted-foreground">
+                Ogni regola è collegata a un articolo preciso: GDPR, ePrivacy e linee guida cookie del Garante,
+                Cyber Resilience Act, AI Act e L. 132/2025, D.Lgs. 138/2024 (NIS2), European Accessibility Act e
+                WCAG 2.2, OWASP ASVS e linee guida AgID. Il rilievo cita la norma, non un'opinione.
+              </p>
+            </div>
+
+            <div className="document-card space-y-4">
+              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary to-primary-glow flex items-center justify-center">
+                <Lock className="w-6 h-6 text-white" />
+              </div>
+              <h3 className="text-xl sm:text-2xl font-semibold">Il codice non esce dall'azienda</h3>
+              <p className="text-muted-foreground">
+                L'analisi gira nel browser sull'intera cartella del progetto, anche migliaia di file. Al servizio
+                arrivano solo gli esiti, l'inventario dei file e gli estratti necessari alla revisione, senza
+                credenziali e chiavi. Il codice sorgente non viene mai trasmesso né conservato.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-6">
+            <div className="document-card bg-muted/40">
+              <p className="text-muted-foreground">
+                <strong className="text-foreground">Come funziona.</strong> Un primo livello di regole deterministiche
+                individua le evidenze e classifica il rischio; un secondo livello, basato sul modello e sui testi
+                normativi, legge il contesto dell'applicazione, integra i rilievi e chiede solo ciò che non si deduce
+                dal codice. Il risultato è un referto esportabile in PDF, file per file e riga per riga.
+              </p>
+            </div>
+            <div className="document-card bg-muted/40">
+              <p className="text-muted-foreground">
+                <strong className="text-foreground">Per chi.</strong> Per la software house che deve dimostrare al
+                cliente la conformità di ciò che consegna, per il DPO che deve valutare un'applicazione senza leggerne
+                il codice, per la PMI che sviluppa in casa e vuole sapere prima del rilascio cosa non va.
               </p>
             </div>
           </div>
@@ -472,6 +548,10 @@ const Landing = () => {
                 </div>
                 <div className="flex gap-3">
                   <CheckCircle2 className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+                  <p className="text-foreground">Il codice delle applicazioni verificato riga per riga contro GDPR, ePrivacy, CRA e AI Act, senza che lasci l'azienda</p>
+                </div>
+                <div className="flex gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-primary shrink-0 mt-0.5" />
                   <p className="text-foreground">Il professionista scala il portafoglio, la PMI presidia con le persone che ha già</p>
                 </div>
               </div>
@@ -665,7 +745,7 @@ const Landing = () => {
             <div className="space-y-2">
               <h3 className="text-lg font-bold text-foreground">Giovanni Sollami — CTO</h3>
               <p className="text-sm text-muted-foreground">
-                Ingegnere gestionale con background in IT e financial services, focalizzato sullo sviluppo di soluzioni e automazioni basate sull'AI per innovare e ottimizzare i processi aziendali. Presidia retrieval, orchestrazione degli agenti e audit trail.
+                Ingegnere gestionale con background in IT e financial services, focalizzato sullo sviluppo di soluzioni e automazioni basate sull'AI per innovare e ottimizzare i processi aziendali. Presidia retrieval, pipeline di analisi e registro delle attività.
               </p>
             </div>
             <div className="space-y-2">
