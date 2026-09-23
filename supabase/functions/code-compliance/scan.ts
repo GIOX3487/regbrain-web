@@ -1,5 +1,5 @@
 // Scansione deterministica: applica le regole riga per riga e raggruppa gli esiti per regola.
-import { CONSENT_SIGNALS, isCommentLine, type Risk, RULES, SECRET_VALUE_MASKS, TEST_FILE } from "./rules.ts";
+import { CONSENT_SIGNALS, FILE_RULES, isCommentLine, type Risk, RULES, SECRET_VALUE_MASKS, TEST_FILE } from "./rules.ts";
 
 const MAX_OCCURRENCES = 8;
 
@@ -81,6 +81,40 @@ export function scan(files: InputFile[]): { findings: Finding[]; masks: RegExp[]
         }
       }
     });
+  }
+  // Regole sul file intero: tag su più righe, etichette altrove nel file, valori usati righe dopo.
+  for (const f of files) {
+    if (/(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml)$/i.test(f.name) || f.content.length > 400_000) continue;
+    const isTest = TEST_FILE.test(f.name);
+    const lines = f.content.split(/\r?\n/);
+    for (const rule of FILE_RULES) {
+      let hits: Array<{ line: number; note?: string; risk?: Risk }>;
+      try { hits = rule.test(f.content, f.name); } catch { hits = []; }
+      for (const hit of hits) {
+        let finding = byRule.get(rule.id);
+        if (!finding) {
+          finding = {
+            id: rule.id, ruleId: rule.id, source: "regola", title: rule.title, category: rule.category, risk: "low",
+            why: rule.why, action: rule.action, occurrences: [], totalOccurrences: 0, refs: [...rule.refs], status: "confermato",
+          };
+          byRule.set(rule.id, finding);
+        }
+        // Lo stesso punto trovato anche dalla regola per riga non si conta due volte.
+        if (finding.occurrences.some((o) => o.file === f.name && o.line === hit.line)) continue;
+        finding.totalOccurrences++;
+        const risk: Risk = isTest ? LOWER[hit.risk ?? rule.risk] : (hit.risk ?? rule.risk);
+        if (RISK_ORDER[risk] > RISK_ORDER[finding.risk]) finding.risk = risk;
+        if (finding.occurrences.length < MAX_OCCURRENCES) {
+          const raw = lines[hit.line - 1] || "";
+          finding.occurrences.push({ file: f.name, line: hit.line, snippet: mask(raw.trim()).slice(0, 240), note: isTest ? `${hit.note ? hit.note + "; " : ""}file di prova o di esempio` : hit.note });
+        }
+      }
+    }
+  }
+  // Tracciamento senza alcun gestore del consenso in tutta la base di codice: l'esito è certo.
+  const trackersNoConsent = byRule.get("PRIV-01");
+  if (trackersNoConsent && !consentPresent) {
+    trackersNoConsent.why += " In tutta la base di codice non c'è traccia di un gestore del consenso: gli script partono senza consenso.";
   }
   // Tracciamento con un gestore del consenso presente: il problema resta da verificare
   // (lo script deve partire solo dopo il consenso), ma non è più certo.

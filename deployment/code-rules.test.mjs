@@ -16,7 +16,7 @@ const attesi = new Map();
 const negativi = new Set();
 for (const f of files) {
   f.content.split('\n').forEach((line, i) => {
-    const m = /(?:\/\/|#|<!--|--|\{\/\*)!\s*([A-Z0-9 ,.-]+?)\s*(?:\*\/\}|-->)?$/.exec(line.trim());
+    const m = /(?:\/\/|#|<!--|--|\{\/\*|\/\*)!\s*([A-Z0-9 ,.-]+?)\s*(?:\*\/\}|\*\/|-->)?$/.exec(line.trim());
     if (!m) return;
     const key = `${f.name}:${i + 1}`;
     const tags = m[1].split(',').map((t) => t.trim()).filter(Boolean);

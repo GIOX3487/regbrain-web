@@ -247,7 +247,7 @@ const Landing = () => {
                 e percorsi di file non sicuri, token non verificati, cookie e tracciamento web e mobile senza consenso,
                 consensi preselezionati, dati personali nei log, dati sanitari e biometrici, geolocalizzazione, fotocamera e
                 microfono, trasferimenti extra UE, servizi di IA, riconoscimento delle emozioni e decisioni automatizzate
-                sulle persone, accessibilità, licenze copyleft.
+                sulle persone, accessibilità (etichette, nomi dei controlli, focus, titoli, autoplay), regole sulle password, licenze copyleft.
               </p>
             </div>
 
