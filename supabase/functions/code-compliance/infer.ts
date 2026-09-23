@@ -160,7 +160,8 @@ export function inferContext(files: InputFile[]): InferredContext {
   // Una libreria è tale solo se non è anche un'applicazione: package.json con "main" è comune ovunque.
   if (app.has("libreria") && (app.has("web") || app.has("backend") || app.has("mobile") || app.has("desktop"))) app.delete("libreria");
   // Settori e destinatari: servono almeno tre indizi in file diversi, o due se uno è un manifest.
-  const solid = (v: Evidence[]) => new Set(v.map((e) => e.file)).size >= 3 || (v.length >= 2 && v.some((e) => /(package\.json|requirements|pom\.xml|build\.gradle|composer\.json|pubspec\.yaml|go\.mod|Gemfile|Cargo\.toml)$/.test(e.file)));
+  // Una dipendenza nel manifest basta da sola: chi installa Stripe fa pagamenti.
+  const solid = (v: Evidence[]) => distinctFiles(v) >= 3 || v.some((e) => MANIFEST_FILE.test(e.file));
   for (const [k, v] of [...sec.entries()]) if (!solid(v)) sec.delete(k);
   for (const [k, v] of [...aud.entries()]) if (!solid(v)) aud.delete(k);
   return {
