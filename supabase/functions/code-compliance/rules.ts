@@ -53,6 +53,31 @@ export const REFS: Record<string, Ref> = {
   AGID_PW_NET: { k: "web:AGID_SW_SICURO:part1:pg21:s55" },
   LIC_GPL3: { l: "Licenza, GPL-3.0-only, GPL-3.0-only" },
   LIC_AGPL3: { l: "Licenza, AGPL-3.0-only, AGPL-3.0-only" },
+  // Aggiunte del 23 settembre: consenso, minori, decisioni automatizzate, pratiche vietate,
+  // sicurezza (token, deserializzazione, file, TLS) e fonti di settore.
+  GDPR7_2: { k: "eu:02016R0679-20160504:it:art7:par2" },
+  GDPR8: { k: "eu:02016R0679-20160504:it:art8:par1" },
+  GDPR22: { k: "eu:02016R0679-20160504:it:art22:par1" },
+  GDPR28: { k: "eu:02016R0679-20160504:it:art28:par1" },
+  GDPR35: { k: "eu:02016R0679-20160504:it:art35:par1" },
+  CP2QUINQUIES: { k: "web:CODICE_PRIVACY:art2-quinquies:c1" },
+  EDPB_DARK_DEFAULT: { k: "web:EDPB_3_2022:part0:pg24:s33" },
+  EDPB_DARK_PRESEL: { k: "web:EDPB_3_2022:part0:pg26:s2" },
+  AIACT5: { k: "eu:02024R1689-20260727:it:art5:par1" },
+  AIACT6_2: { k: "eu:02024R1689-20260727:it:art6:par2" },
+  AIACT_ANNEX3: { k: "eu:02024R1689-20260727:it:annex3:p1" },
+  AIACT26: { k: "eu:02024R1689-20260727:it:art26:par1" },
+  ASVS_TOKEN: { l: "OWASP ASVS 5.0, V9.1 Token source and integrity" },
+  ASVS_DESER: { l: "OWASP ASVS 5.0, V1.5 Safe Deserialization" },
+  ASVS_FILE_STORAGE: { l: "OWASP ASVS 5.0, V5.3 File Storage" },
+  ASVS_FILE_DOWNLOAD: { l: "OWASP ASVS 5.0, V5.4 File Download" },
+  ASVS_TLS_GENERAL: { l: "OWASP ASVS 5.0, V12.1 General TLS Security Guidance" },
+  MDR_SW: { k: "eu:02017R0745-20260719:it:annex2:p15" },
+  DORA9: { k: "eu:32022R2554:it:art9:par1" },
+  PSD2_SCA4: { k: "eu:02018R0389-20230912:it:art4:par1" },
+  DATA_ACT3: { k: "eu:32023R2854:it:art3:par1" },
+  CAD64: { k: "web:CAD:art64:c2-bis" },
+  PLD7: { k: "eu:32024L2853:it:art7:par1" },
 };
 
 export interface LineHit { risk?: Risk; note?: string; mask?: RegExp }
@@ -103,6 +128,21 @@ const TRACKERS: Array<[RegExp, string]> = [
   [/snap\.licdn\.com|_linkedin_partner_id/i, "LinkedIn Insight Tag"],
   [/posthog\.(init|capture)|posthog-js/i, "PostHog"],
   [/amplitude\.(init|getInstance)|@amplitude\/analytics/i, "Amplitude"],
+  // SDK per app mobili: raccolgono identificativi del dispositivo e eventi d'uso.
+  [/firebase\/analytics|@react-native-firebase\/analytics|firebase-analytics|FirebaseAnalytics\b|firebase_analytics|getAnalytics\s*\(|logEvent\s*\(/, "Firebase Analytics"],
+  [/appsflyer|AppsFlyerLib|react-native-appsflyer/i, "AppsFlyer"],
+  [/com\.adjust\.sdk|AdjustConfig\b|react-native-adjust/i, "Adjust"],
+  [/io\.branch\.|BranchSDK|react-native-branch/i, "Branch"],
+  [/FBSDKCoreKit|facebook-android-sdk|com\.facebook\.android:facebook-core|react-native-fbsdk/i, "Facebook SDK"],
+  [/singular-sdk|com\.singular\.sdk/i, "Singular"],
+];
+// Risorse esterne che inviano l'indirizzo IP dell'utente a un fornitore extra UE a ogni caricamento.
+const EXTRA_EU_RESOURCES: Array<[RegExp, string]> = [
+  [/fonts\.googleapis\.com|fonts\.gstatic\.com/i, "Google Fonts caricati dai server di Google"],
+  [/ajax\.googleapis\.com/i, "libreria caricata dalla CDN di Google"],
+  [/youtube\.com\/embed\//i, "video YouTube incorporato (cookie di Google prima del consenso)"],
+  [/www\.google\.com\/recaptcha|recaptcha\/api\.js|hcaptcha\.com\/1\/api\.js/i, "reCAPTCHA o hCaptcha"],
+  [/maps\.googleapis\.com\/maps\/api\/js|google\.com\/maps\/embed/i, "Google Maps incorporato"],
 ];
 export const CONSENT_SIGNALS = /cookie.?consent|consent.?mode|gtag\s*\(\s*['"]consent|iubenda|cookiebot|onetrust|didomi|klaro|cookieyes|tarteaucitron|usercentrics|complianz|cookie-?law|consentmanager|cmp\.|__tcfapi|hasConsent|consentGiven|consent_given|acceptCookies|cookiesAccepted/i;
 
@@ -125,6 +165,19 @@ const SECRET_WORDS = /\b(password|passwd|pwd|secret|token|api_?key|authorization
 const SPECIAL = /\b\w*(diagnos[ie]s?|health_?(record|status|data)|salute|malattia|patolog|terapia|farmac|religion|religione|sexual_?orientation|orientamento_?sessuale|ethnic(ity)?|etnia|biometric|biometric[io]|genetic|genetic[oa]|political_?(opinion|party)|opinioni_?politiche|trade_?union|sindacat)\w*\b/i;
 
 const isMarkup = /\.(html?|jsx|tsx|vue|svelte|astro|php|erb|hbs|ejs|twig|cshtml|razor)$/i;
+const isConfig = /\.(conf|cfg|ini|toml|yml|yaml|json|properties|tf|env|env\.example|py|ts|js|go|rb|java|cs)$|nginx\.conf$|Caddyfile$|Dockerfile$/i;
+
+const CONSENT_WORDS = /(consent|consens|privacy|newsletter|marketing|profilaz|profiling|terms|termini|gdpr|cookie|promo|comunicazioni commerciali|third.?part|terze parti)/i;
+const DEVICE_ACCESS = /(getUserMedia\s*\(|new MediaRecorder\s*\(|navigator\.contacts|ContactsContract|CNContactStore|AVCaptureDevice|android\.permission\.(CAMERA|RECORD_AUDIO|READ_CONTACTS|READ_CALL_LOG|READ_SMS)|NS(Camera|Microphone|Contacts|PhotoLibrary)UsageDescription|expo-camera|expo-contacts|react-native-contacts|react-native-camera|react-native-vision-camera|image_picker|ImagePicker\.launchCamera|Permission\.(camera|microphone|contacts))/;
+const EMOTION_BIOMETRIC = /\b(detectEmotions?|emotion_?(recognition|detection|analysis|classifier)|emotionRecognition|recognizeEmotion|analyzeEmotion|EmotionAnalysis|faceExpression|FaceExpressionNet|withFaceExpressions|face_?expression_?(recognition|detection)|Emotions\b[^\n]*Rekognition|Rekognition[^\n]*Emotions|DetectFaces[^\n]*Attributes[^\n]*ALL|(ethnicity|race|religion|sexual_?orientation)_?(detect|classif|predict|estimat)|(detect|classify|predict|estimate)_?(ethnicity|race)\b|emotion_?ai|affectiva|hume\.ai|api\.hume\.ai)/i;
+const PERSON_DECISION = /\b\w*(applicant|resume|curricul|\bcv_|employee|dipendent|lavorator|worker|hiring|recruit|assunzion|job_?candidat|candidat[eio]s?_?(profile|cv|resume|screen)|credit_?(score|scoring|risk|worth)|creditScor|loan|mutuo|prestito|tenant_?(score|screen|risk)|inquilin|student_?(risk|dropout|admission)|studente|alunn|patient_?(risk|triage|priorit)|paziente|insurance_?claim|sinistr|welfare|benefit_?(eligib|claim)|migrant|asylum)\w*/i;
+const DECISION_VERB = /\b\w*(score|scoring|rank|ranking|classif|predict|screen(ing)?|reject|deny|approve|eligib|shortlist|triage)\w*\s*[:=(]/i;
+const JWT_UNSAFE = /(algorithms?\s*[:=]\s*\[?\s*['"]none['"]|['"]alg['"]\s*:\s*['"]none['"]|verify_signature['"]?\s*[:=]\s*False|verify\s*=\s*False[^\n]*jwt|jwt\.decode\([^)]*verify\s*=\s*False|ignoreExpiration\s*:\s*true|ignore_?exp(iration)?\s*[:=]\s*True|jwt\.decode\s*\([^)]*\)\s*(as\s+\w+)?[^\n]*\b(userId|user_id|role|isAdmin|is_admin|admin)\b|JWT_VERIFY\s*=\s*false|jwt\.verify\s*\([^,]+,\s*(['"]{2}|null|undefined)\s*[,)])/;
+const UNSAFE_DESER = /(\bpickle\.loads?\s*\(|\bcPickle\.loads?\s*\(|jsonpickle\.decode\s*\(|\byaml\.load\s*\((?![^)]*(SafeLoader|safe_load|Loader\s*=\s*yaml\.(CSafeLoader|SafeLoader|BaseLoader)))(?=[^\n]*)|\byaml\.unsafe_load\s*\(|\bunserialize\s*\(|new ObjectInputStream\s*\(|\.readObject\s*\(|Marshal\.load\s*\(|YAML\.load\s*\((?![^)]*safe)|new BinaryFormatter\s*\(|BinaryFormatter\.Deserialize|node-serialize|serialize\.unserialize\s*\()/;
+const USER_INPUT = /(req\.(query|params|body|files?)\b|request\.(args|form|files|GET|POST|data|json|values)\b|\$_(GET|POST|REQUEST|FILES)\b|params\[|c\.Query\(|c\.Param\(|r\.URL\.Query|ctx\.(query|params)\b|event\.(queryStringParameters|pathParameters)|searchParams\.get\(|@RequestParam|@PathVariable|\bargs\.get\()/;
+const FILE_OP = /(readFile(Sync)?\s*\(|createReadStream\s*\(|writeFile(Sync)?\s*\(|sendFile\s*\(|res\.download\s*\(|fs\.(unlink|rm|stat|access|open|readdir)(Sync)?\s*\(|path\.(join|resolve)\s*\(|\bopen\s*\(\s*(os\.path\.join|f['"]|['"][^'"]*['"]\s*\+)|os\.path\.join\s*\(|send_file\s*\(|send_from_directory\s*\(|file_get_contents\s*\(|\b(include|require)(_once)?\s*\(?\s*(\$|[\"'][^\"']*[\"']\s*\.)|fopen\s*\(|new File\s*\(|Paths\.get\s*\(|File\.ReadAll\w*\s*\(|os\.Open\s*\(|ioutil\.ReadFile\s*\(|filepath\.Join\s*\()/;
+const PATH_GUARD = /(basename|sanitize|normalize|realpath|path\.resolve\([^)]*\)\.startsWith|startsWith\(|secure_filename|allowlist|whitelist|\bsafe|resolveWithin|isInside|\.\.\/|\\\.\\\.)/i;
+const TLS_OLD = /(ssl_protocols[^;\n]*\bTLSv1(\.[01])?\b(?!\.\d)|\bSSLv[23]\b|PROTOCOL_(SSLv[23]|TLSv1(_[01])?)\b|(TLSv1|TLSv1_1|SSLv23|SSLv3)_(client_|server_)?method|minVersion\s*[:=]\s*['"]TLSv1(\.[01])?['"]|secureProtocol\s*:\s*['"](TLSv1|TLSv1_1|SSLv3)_method['"]|ssl-?protocols?\s*[=:]\s*['"]?[^\n]*\bTLSv1(\.[01])?\b(?![^\n]*1\.[23])|SslProtocols\.(Ssl[23]|Tls|Tls11)\b|TLS_VERSION\s*[:=]\s*['"]?1\.[01]\b|tls_min_version\s*[:=]\s*['"]?(1\.0|1\.1|TLSv1(\.[01])?)\b|MinVersion\s*:\s*tls\.VersionTLS1[01]\b|MinVersion\s*:\s*tls\.VersionSSL30)/i;
 
 export const RULES: Rule[] = [
   {
@@ -361,6 +414,123 @@ export const RULES: Rule[] = [
     test: (line) => /<html\b(?![^>]*\blang\s*=)[^>]*>/i.test(line) ? {} : null,
   },
   {
+    id: "SEC-11", title: "Token JWT accettato senza verificare la firma o la scadenza", category: "sicurezza", risk: "high",
+    why: "Se il token non viene verificato, chiunque può fabbricarne uno e presentarsi come un altro utente o come amministratore.",
+    action: "Verificare sempre firma e scadenza con la chiave o il certificato del server, rifiutare l'algoritmo none e non leggere identità o ruoli da un token solo decodificato.",
+    refs: ["ASVS_TOKEN", "GDPR32", "CRA_ANNEX1"],
+    test: (line) => {
+      if (/\/\/|#|\*/.test(line.trim().slice(0, 2))) return null;
+      const m = JWT_UNSAFE.exec(line);
+      if (!m) return null;
+      if (/ignoreExpiration|ignore_?exp/i.test(m[0])) return { risk: "medium", note: "scadenza del token ignorata" };
+      if (/decode/.test(m[0]) && !/verify\s*=\s*False|verify_signature/.test(m[0])) return { note: "identità o ruolo letti da un token solo decodificato" };
+      return { note: m[0].slice(0, 60) };
+    },
+  },
+  {
+    id: "SEC-12", title: "Deserializzazione di dati non fidati", category: "sicurezza", risk: "high",
+    why: "pickle, yaml.load, unserialize e simili eseguono codice contenuto nei dati: un file o una richiesta manipolata diventa esecuzione di comandi sul server.",
+    action: "Usare formati che non eseguono codice (JSON, yaml.safe_load, protobuf) o deserializzatori con elenco delle classi ammesse; non deserializzare mai dati che arrivano dall'utente o da terzi.",
+    refs: ["ASVS_DESER", "ASVS_INJECTION", "CRA_ANNEX1"],
+    test: (line, file) => {
+      const m = UNSAFE_DESER.exec(line);
+      if (!m) return null;
+      // js-yaml (JavaScript) è sicuro per impostazione predefinita dalla versione 4: yaml.load conta solo in Python e Ruby.
+      if (/^yaml\.load/.test(m[0]) && !/\.(py|rb)$/i.test(file)) return null;
+      return /pickle|Marshal|ObjectInputStream|readObject|BinaryFormatter|node-serialize|unserialize/i.test(m[0]) ? { note: m[0].slice(0, 40).trim() } : { risk: "medium", note: m[0].slice(0, 40).trim() };
+    },
+  },
+  {
+    id: "SEC-13", title: "Percorso di file costruito con dati dell'utente (path traversal)", category: "sicurezza", risk: "high",
+    why: "Se il nome del file arriva dalla richiesta senza controlli, con ../ si leggono o si scrivono file fuori dalla cartella prevista, comprese configurazioni e credenziali.",
+    action: "Accettare solo nomi di file da un elenco o un identificativo, ricostruire il percorso sul server, normalizzarlo e verificare che resti dentro la cartella ammessa.",
+    refs: ["ASVS_FILE_STORAGE", "ASVS_FILE_DOWNLOAD", "ASVS_SANITIZE", "CRA_ANNEX1"],
+    test: (line) => {
+      if (!FILE_OP.test(line) || !USER_INPUT.test(line)) return null;
+      if (PATH_GUARD.test(line)) return null;
+      return {};
+    },
+  },
+  {
+    id: "SEC-14", title: "Versione di TLS obsoleta consentita", category: "sicurezza", risk: "medium",
+    why: "SSLv3, TLS 1.0 e TLS 1.1 hanno vulnerabilità note e non sono più accettati dagli standard: la cifratura del trasporto non è più garantita.",
+    action: "Consentire solo TLS 1.2 e 1.3 nelle configurazioni dei server, dei client e delle librerie, e verificare i cifrari ammessi.",
+    refs: ["ASVS_TLS_GENERAL", "AGID_PW_NET", "GDPR32", "CRA_ANNEX1"],
+    files: isConfig,
+    test: (line) => {
+      const m = TLS_OLD.exec(line);
+      if (!m) return null;
+      // Una riga che elenca anche 1.2 o 1.3 accanto alle versioni vecchie le sta abilitando insieme: resta un esito.
+      return { note: m[0].slice(0, 50).trim() };
+    },
+  },
+  {
+    id: "PRIV-09", title: "Consenso preselezionato", category: "privacy", risk: "high",
+    why: "Una casella già spuntata non è un consenso: il GDPR richiede un'azione positiva e inequivocabile, e le linee guida sui modelli ingannevoli lo considerano una violazione.",
+    action: "Lasciare la casella deselezionata, separare i consensi per finalità e registrare la scelta dell'utente con data e testo mostrato.",
+    refs: ["GDPR7_2", "EDPB_DARK_PRESEL", "EDPB_DARK_DEFAULT", "GARANTE_COOKIE_DEFAULT"],
+    files: isMarkup,
+    test: (line) => {
+      // Conta solo la preselezione scritta nel codice: checked senza valore, checked="true",
+      // checked={true} o defaultChecked. Un valore dinamico (checked={stato}) è una scelta dell'utente.
+      const m = /<(input|Checkbox|Switch|Toggle|FormControlLabel|Field)\b[^>]*\b(checked|defaultChecked|default-checked)(?!\s*=\s*(?!\{?\s*true\s*\}?|["'](true|checked)["'])\S)[^>]*>/i.exec(line);
+      if (!m) return null;
+      if (/type\s*=\s*['"](radio|hidden)['"]/i.test(m[0])) return null;
+      if (!CONSENT_WORDS.test(line)) return null;
+      if (/(required|necessari|essential|tecnici|technical|strettamente)/i.test(line) && !/(marketing|profilaz|newsletter|third|terze)/i.test(line)) return null;
+      return {};
+    },
+  },
+  {
+    id: "PRIV-10", title: "Risorse caricate da server extra UE a ogni visita", category: "privacy", risk: "medium",
+    why: "Caratteri, script, video o mappe caricati dai server del fornitore trasmettono l'indirizzo IP del visitatore fuori dall'UE prima di qualsiasi consenso; per Google Fonts esistono già condanne e provvedimenti.",
+    action: "Servire caratteri e librerie dal proprio dominio; caricare video, mappe e captcha solo dopo il consenso o usare le versioni senza cookie (youtube-nocookie) e un fornitore europeo dove possibile.",
+    refs: ["GDPR44", "GDPR13", "EPRIVACY53", "GARANTE_COOKIE"],
+    test: (line) => {
+      if (/youtube-nocookie|self-?hosted|@fontsource|localhost/i.test(line)) return null;
+      // Una direttiva Content-Security-Policy che ammette un host non carica nulla.
+      if (/(-src\b|content-security-policy|\bcsp\b)/i.test(line)) return null;
+      for (const [re, what] of EXTRA_EU_RESOURCES) if (re.test(line)) return { note: what };
+      return null;
+    },
+  },
+  {
+    id: "PRIV-11", title: "Accesso a fotocamera, microfono, contatti o foto", category: "privacy", risk: "medium",
+    why: "Immagini, voce e rubrica sono dati personali dell'utente e spesso di terzi: l'accesso richiede una finalità precisa, il consenso sul dispositivo e un'informativa che lo spieghi.",
+    action: "Chiedere il permesso solo al momento della funzione che lo richiede, spiegarne l'uso nell'informativa, non conservare più del necessario e non inviare i dati a terzi senza base giuridica.",
+    refs: ["GDPR6", "GDPR13", "GDPR25", "EPRIVACY53"],
+    test: (line) => {
+      const m = DEVICE_ACCESS.exec(line);
+      if (!m) return null;
+      return /CONTACTS|contacts|CALL_LOG|READ_SMS|Contact/.test(m[0]) ? { risk: "high", note: "rubrica, chiamate o messaggi: dati di terzi" } : { note: m[0].slice(0, 40) };
+    },
+  },
+  {
+    id: "AI-03", title: "Riconoscimento delle emozioni o categorizzazione biometrica", category: "ai", risk: "high",
+    why: "L'AI Act vieta il riconoscimento delle emozioni sul lavoro e a scuola e la categorizzazione biometrica per dedurre origine etnica, opinioni, orientamento sessuale o convinzioni; negli altri contesti è alto rischio.",
+    action: "Verificare se l'uso rientra nelle pratiche vietate dall'art. 5; se ammesso, trattarlo come sistema ad alto rischio con valutazione d'impatto, informativa e sorveglianza umana.",
+    refs: ["AIACT5", "AIACT6_2", "GDPR9", "GDPR35"],
+    test: (line) => {
+      if (/@emotion\b|emotion\/(react|styled|css)|emotion-js|framer|animation/i.test(line)) return null;
+      const m = EMOTION_BIOMETRIC.exec(line);
+      return m ? { note: m[0].slice(0, 50) } : null;
+    },
+  },
+  {
+    id: "AI-04", title: "Decisione automatizzata su persone (candidati, dipendenti, credito, studenti, pazienti)", category: "ai", risk: "high",
+    why: "Punteggi, classifiche o esclusioni automatiche di persone in ambito lavoro, credito, istruzione, sanità o servizi essenziali sono sistemi ad alto rischio per l'AI Act e decisioni soggette all'art. 22 GDPR.",
+    action: "Prevedere l'intervento umano prima della decisione, informare le persone, documentare il sistema (valutazione d'impatto, registro dei sistemi di IA) e verificare gli obblighi del deployer.",
+    refs: ["GDPR22", "AIACT6_2", "AIACT_ANNEX3", "AIACT26", "GDPR35"],
+    test: (line) => {
+      const code = stripLiterals(line);
+      if (!DECISION_VERB.test(code) || !PERSON_DECISION.test(code)) return null;
+      // Serve un segnale di modello o di regola automatica sulla stessa riga: un semplice ordinamento non basta.
+      if (!/(model|predict|classif|ml\b|ai\b|score|scoring|rank|reject|deny|approve|eligib|shortlist|threshold|probab)/i.test(code)) return null;
+      if (/(test_?score|exam_?score|quiz|grade_?book|leaderboard|game|match_?score|z-?index|scoreboard|highscore|credit_?card|credits?\s*[:=]\s*\d)/i.test(code)) return null;
+      return {};
+    },
+  },
+  {
     id: "LIC-01", title: "Codice sotto licenza copyleft (GPL, AGPL, LGPL)", category: "licenze", risk: "medium",
     why: "Le licenze copyleft impongono di distribuire il codice sorgente delle opere derivate alle stesse condizioni; l'AGPL anche quando il software è offerto in rete.",
     action: "Verificare se il componente è distribuito o offerto come servizio, se il modello di licenza del prodotto è compatibile e tenere un inventario delle licenze (SBOM).",
@@ -374,7 +544,7 @@ export const RULES: Rule[] = [
   },
 ];
 
-export const RULES_VERSION = "2026-09-22.2";
+export const RULES_VERSION = "2026-09-23.1";
 
 export function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

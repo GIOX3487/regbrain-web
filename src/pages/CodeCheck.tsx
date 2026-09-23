@@ -291,9 +291,9 @@ export default function CodeCheck() {
             <div>
               <p className="font-semibold mb-1">Ambiti verificati</p>
               <p className="text-muted-foreground">
-                Sicurezza applicativa (credenziali nel codice, algoritmi crittografici deboli, comunicazioni non cifrate, iniezioni SQL, configurazione dei cookie e delle intestazioni di sicurezza);
-                protezione dei dati personali (dati identificativi nei log, categorie particolari come dati sanitari e biometrici, geolocalizzazione, trasferimenti verso Paesi extra UE, tracciamento senza consenso);
-                intelligenza artificiale (integrazione di servizi di IA e relativi obblighi di trasparenza); accessibilità delle interfacce; licenze delle componenti open source.
+                Sicurezza applicativa (credenziali nel codice, algoritmi crittografici deboli, comunicazioni non cifrate e versioni di TLS obsolete, iniezioni SQL, esecuzione dinamica di codice, deserializzazione di dati non fidati, percorsi di file costruiti con dati dell'utente, token JWT non verificati, configurazione dei cookie e delle intestazioni di sicurezza);
+                protezione dei dati personali (dati identificativi nei log, categorie particolari come dati sanitari e biometrici, geolocalizzazione, accesso a fotocamera, microfono e contatti, trasferimenti verso Paesi extra UE compresi caratteri e video caricati da server esteri, tracciamento web e mobile senza consenso, consensi preselezionati);
+                intelligenza artificiale (integrazione di servizi di IA e obblighi di trasparenza, contenuti sintetici, riconoscimento delle emozioni e categorizzazione biometrica, decisioni automatizzate su candidati, dipendenti, clienti, studenti o pazienti); accessibilità delle interfacce; licenze delle componenti open source.
               </p>
             </div>
             <div>
@@ -303,13 +303,14 @@ export default function CodeCheck() {
                 del modello consulta il testo della norma, non una sua sintesi.
               </p>
               <ul className="space-y-1 text-muted-foreground list-disc pl-5">
-                <li><span className="text-foreground">Regolamento (UE) 2016/679 (GDPR)</span>, art. 5, 6, 9, 13, 25, 32 e 44, e D.Lgs. 196/2003: liceità e minimizzazione del trattamento, categorie particolari di dati, privacy by design, misure di sicurezza, trasferimenti extra UE.</li>
-                <li><span className="text-foreground">Direttiva 2002/58/CE (ePrivacy)</span>, art. 122 del Codice privacy e Linee guida cookie del Garante: consenso preventivo per cookie e strumenti di tracciamento.</li>
+                <li><span className="text-foreground">Regolamento (UE) 2016/679 (GDPR)</span>, art. 5, 6, 7, 8, 9, 13, 22, 25, 28, 32, 35 e 44, e D.Lgs. 196/2003 (art. 2-quinquies e 122): liceità e minimizzazione del trattamento, validità del consenso, minori, categorie particolari di dati, decisioni automatizzate, privacy by design, misure di sicurezza, trasferimenti extra UE.</li>
+                <li><span className="text-foreground">Direttiva 2002/58/CE (ePrivacy)</span>, Linee guida cookie del Garante e Linee guida EDPB 3/2022 sui modelli di progettazione ingannevoli: consenso preventivo per cookie, tracciamento web e mobile, risorse di terze parti, caselle preselezionate.</li>
                 <li><span className="text-foreground">Regolamento (UE) 2024/2847 (Cyber Resilience Act)</span>, Allegato I: requisiti essenziali di sicurezza dei prodotti con elementi digitali, dalla gestione delle credenziali alla protezione dei dati in transito.</li>
-                <li><span className="text-foreground">Regolamento (UE) 2024/1689 (AI Act)</span>, art. 50, e Legge 132/2025: obblighi di trasparenza per i sistemi di IA e regole per il loro impiego, anche in ambito lavorativo.</li>
+                <li><span className="text-foreground">Regolamento (UE) 2024/1689 (AI Act)</span>, art. 5, 6, 26 e 50 e Allegato III, e Legge 132/2025: pratiche vietate, sistemi ad alto rischio, obblighi del deployer e di trasparenza, impiego dell'IA anche in ambito lavorativo.</li>
                 <li><span className="text-foreground">D.Lgs. 138/2024 (recepimento NIS2)</span>, art. 24: misure di gestione dei rischi per la sicurezza informatica dei soggetti obbligati.</li>
                 <li><span className="text-foreground">Direttiva (UE) 2019/882 (European Accessibility Act)</span> e WCAG 2.2: requisiti di accessibilità delle interfacce digitali.</li>
-                <li><span className="text-foreground">OWASP ASVS 5.0</span> e Linee guida AgID per lo sviluppo sicuro: standard tecnici di riferimento per le verifiche di sicurezza del codice.</li>
+                <li><span className="text-foreground">OWASP ASVS 5.0</span> e Linee guida AgID per lo sviluppo sicuro: standard tecnici di riferimento per le verifiche di sicurezza del codice (segreti, cifratura, TLS, iniezioni, deserializzazione, gestione dei file, token, cookie, log).</li>
+                <li><span className="text-foreground">Fonti di settore</span>, attivate quando il contesto lo richiede: MDR 2017/745 per il software medicale, PSD2 (autenticazione forte) e DORA per i servizi finanziari, CAD e SPID per la pubblica amministrazione, Data Act per i prodotti connessi, direttiva 2024/2853 sulla responsabilità da prodotto, Codice del consumo per le app rivolte ai consumatori.</li>
                 <li><span className="text-foreground">Licenze open source</span>: individuazione di componenti con licenza copyleft (GPL, AGPL) e relativi obblighi di redistribuzione.</li>
               </ul>
             </div>
