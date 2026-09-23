@@ -24,8 +24,26 @@ jobs:
       - uses: supabase/setup-cli@v1
         with:
           version: latest
+      # La CLI impacchetta le funzioni con l'immagine edge-runtime scaricata da ghcr.io, che
+      # dai runner condivisi risponde spesso "toomanyrequests" ai primi tentativi e poi si sblocca
+      # in meno di un minuto. Le prime funzioni della lista fallivano per questo: ogni deploy viene
+      # quindi ritentato fino a quattro volte, con attesa, solo quando l'errore è quello del registro.
       - name: Deploy production functions
         run: |
+          deploy() {
+            local fn="$1" attempt
+            for attempt in 1 2 3 4; do
+              if supabase functions deploy "$fn" --project-ref "$PROJECT_REF" --no-verify-jwt > "/tmp/$fn.log" 2>&1; then
+                return 0
+              fi
+              if [ "$attempt" -lt 4 ] && grep -q "toomanyrequests" "/tmp/$fn.log"; then
+                echo "Registro immagini saturo, nuovo tentativo tra 30 s ($attempt/4)."; sleep 30
+              else
+                return 1
+              fi
+            done
+            return 1
+          }
           failed=""
           for fn in \
             rag-query ingest-eurlex-formex ingest-web-source index-normative-documents \
@@ -37,7 +55,7 @@ jobs:
             balance-requirements cleanup-requirements restructure-chunks \
             rag-eval continuous-monitoring-scan; do
             echo "::group::$fn"
-            if supabase functions deploy "$fn" --project-ref "$PROJECT_REF" --no-verify-jwt > "/tmp/$fn.log" 2>&1; then
+            if deploy "$fn"; then
               cat "/tmp/$fn.log"; echo "::notice title=$fn::deploy ok"
             else
               cat "/tmp/$fn.log"; failed="$failed $fn"

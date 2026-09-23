@@ -6,7 +6,7 @@ Ultima ricognizione: 17 settembre 2026. Base applicativa verificata: `5bf7a8c3e9
 
 - Gap analysis con cinque esiti: covered, partial, missing, to_verify e not_applicable; evidenze, severità, profilo, raccolta dell'applicabilità e lavorazione a batch riprendibili.
 - Catalogo completo con fallback integrato; i requisiti esclusi sono visibili e raggruppati per motivazione (commit base del 16 settembre).
-- Workflow di verifica sorgenti, distribuzione frontend e distribuzione Edge Functions. Il workflow Supabase attuale NON applica le migrazioni del database.
+- Workflow di verifica sorgenti, distribuzione frontend e distribuzione Edge Functions. Il workflow Supabase attuale NON applica le migrazioni del database. Dal 23 settembre il deploy di ogni funzione viene ritentato fino a quattro volte quando ghcr.io risponde `toomanyrequests` (causa dei run rossi delle PR #48, #50 e #51 a codice corretto).
 
 Questa lista descrive il codice ispezionato; non certifica lo stato corrente del database o dell'ambiente di produzione.
 
