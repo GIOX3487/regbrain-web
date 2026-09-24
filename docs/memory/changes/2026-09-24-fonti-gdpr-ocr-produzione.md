@@ -3,7 +3,7 @@ date: 2026-09-24
 author: Giovanni con Codex
 roadmap_ids: ["RAG-11"]
 state_review: updated
-state_reason: Documenta i dati realmente pubblicati, i test di recupero e la pulizia ancora bloccata.
+state_reason: Documenta i dati realmente pubblicati, i test di recupero e la rimozione autorizzata delle vecchie copie.
 roadmap_review: updated
 roadmap_reason: Aggiunge la revisione delle fonti OCR e il difetto misurato nella ricerca approssimata.
 files: ["docs/memory/STATE.md","roadmap.md","docs/memory/DECISIONS.md","docs/rag-releases/2026-09-24/README.md","docs/rag-releases/2026-09-24/manifest.json","docs/rag-releases/2026-09-24/chunks.jsonl","docs/rag-releases/2026-09-24/verification.json"]
@@ -20,8 +20,9 @@ per una presentazione al cliente. Il 23 settembre ha fornito il nuovo archivio O
 Rilascio dati già effettuato: 22 documenti, 929 nuovi passaggi vettorializzati e verificati nelle due
 tabelle RAG. La PR conserva manifest, testo effettivo, esiti e memoria condivisa; non distribuisce
 codice applicativo. Sono recuperate 548 pagine e 83 tabelle. I PDF singoli sostituiscono i capitoli
-duplicati della raccolta, compresa la DPIA. La firma JPG è esclusa. Le vecchie copie WP259/WP260
-sono ancora presenti: la loro rimozione richiede la risposta alla richiesta di autorizzazione.
+duplicati della raccolta, compresa la DPIA. La firma JPG è esclusa. Le 163 vecchie copie WP259/WP260
+sono state rimosse, dopo backup e autorizzazione esplicita di Giovanni: il controllo finale
+conferma esattamente 929 passaggi in ciascuna tabella, senza anomalie.
 
 ## Verifiche ed esiti
 
@@ -34,16 +35,15 @@ passano. Nessun test AI end-to-end o nuova percentuale di accuratezza legale dic
 
 ## Rischi e limiti
 
-163 vecchi passaggi di WP259/WP260 ancora presenti (1.092 complessivi nei 22 documenti), con backup
-locale completo delle due tabelle. Due tentativi di pulizia rifiutati dal controllo automatico;
-nessuna cancellazione eseguita. Anche la chiusura anticipata del worker staging è stata rifiutata:
+Le 163 copie obsolete WP259/WP260 sono state eliminate solo dopo autorizzazione esplicita
+di Giovanni, conferma dei sostituti e backup locale completo. Nessun altro documento è stato
+eliminato. Conteggio e prove di ricerca ripetuti dopo la pulizia con gli stessi risultati. Anche la chiusura anticipata del worker staging è stata rifiutata:
 resta il limite temporale già configurato alle 09:50 UTC del 24 settembre e l’autenticazione
 ristretta all’operatore di prova. Le versioni storiche restano marcate; non tutte le fonti sono
 l’ultima versione disponibile. L’OCR è controllato strutturalmente e a campione, non integralmente.
 
 ## Prossimo passo
 
-RAG-11: dopo autorizzazione esplicita, rimuovere solo i 163 passaggi obsoleti verificati e ripetere
-conteggi e ricerca. Indagare il recupero approssimato della consultazione preventiva DPIA e
+RAG-11: indagare il recupero approssimato della consultazione preventiva DPIA e
 revisionare testi, tabelle, note e versioni nello staging. Conservare distinta la misura di
 recupero dei documenti dall’accuratezza delle risposte e della gap analysis.

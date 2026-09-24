@@ -2,8 +2,8 @@
   "production": {
     "public_documents": 22,
     "verified_new_chunks": 929,
-    "all_structured_chunks": 1092,
-    "all_mirror_chunks": 1092,
+    "all_structured_chunks": 929,
+    "all_mirror_chunks": 929,
     "missing_or_wrong_hash": 0,
     "bad_content_hash": 0,
     "bad_vectors": 0,
@@ -297,13 +297,16 @@
     "fullManualReview": false
   },
   "cleanup": {
-    "obsoleteProductionChunks": 163,
-    "status": "awaiting explicit user deletion approval",
+    "obsoleteProductionChunks": 0,
+    "removedStructuredChunks": 163,
+    "removedMirrorChunks": 163,
+    "status": "completed after explicit user approval",
     "backup": "rollback-old-ocr-production.jsonl"
   },
   "stagingWorker": {
     "disabled": false,
-    "expiration": "fixed three-hour deadline in authenticated staging bundle; early shutdown rejected"
+    "expiration": "fixed three-hour deadline in authenticated staging bundle; early shutdown rejected",
+    "expiresAt": "2026-09-24T09:50:48.550Z"
   },
   "scope": "RAG data only; no production code, auth, policies, storage, or schema changes"
 }

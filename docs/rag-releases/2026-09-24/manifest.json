@@ -531,6 +531,6 @@
   "ocrArchive": "ocr-playground-download-20260923T161222Z.zip",
   "ocrArchiveSha256": "32ab6bd99aa9e303328b9bf6ac982dda7b9f88e47445f9fa409fb280a7727db7",
   "release_date": "2026-09-24",
-  "verification": "929 new chunks verified; 163 obsolete OCR chunks pending authorized cleanup",
+  "verification": "22 public documents; 929 chunks in both tables; zero hash/vector/mirror anomalies; obsolete copies removed after approval",
   "technical_ocr_warning_displayed": false
 }

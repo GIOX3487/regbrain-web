@@ -561,10 +561,10 @@ consultazione preventiva DPIA manca nella ricerca approssimata, ma la ricerca es
 recupera WP248 pagina 22 al secondo posto (similarità 0,779): approfondire l’indice e il
 recupero, non attribuire la mancanza al testo OCR. Non misurata l’accuratezza end-to-end AI.
 
-Sono ancora presenti 163 vecchi passaggi OCR relativi a WP259/WP260 (1.092 passaggi totali
-per questi 22 documenti). I sostituti sono già completi e la copia di recupero delle due
-tabelle è salvata localmente. La cancellazione è bloccata dal controllo automatico ed è
-stata richiesta autorizzazione esplicita; non dichiarare la pulizia completata.
+Le 163 vecchie copie OCR di WP259/WP260 sono state rimosse dopo autorizzazione esplicita
+di Giovanni e backup completo. Conteggio finale: 22 documenti pubblici, 929 passaggi in
+ciascuna delle due tabelle, zero hash mancanti/errati, zero vettori errati e zero divergenze
+fra le copie. Nessun documento estraneo a questo rilascio è stato rimosso.
 
 Nessun avviso tecnico OCR aggiunto ai nuovi passaggi, su richiesta dell’utente; restano
 le indicazioni delle versioni storiche/superate. Revisione integrale OCR e versioni rinviata
