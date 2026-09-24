@@ -37,6 +37,8 @@ Aggiornata il 17 settembre 2026. Prima di lavorare leggere [AGENTS.md](AGENTS.md
 | LEGACY-01 | Da riconfermare | Fix errore download documento DPIA/LIA | Task dell'8 settembre 2026, esito non verificato | Riprodurre il download e registrare esito; non chiudere sulla base della sola presenza di codice. |
 | LEGACY-02 | Da riconfermare | Sezione team: sostituire Martina Manno con Giovanni Sollami (bio dal pitch), rimuovere Roberto Ponticiello (CFO) | Task dell'8 settembre 2026, esito non verificato | Verificare contenuti attuali e riferimento al pitch prima di modificare o segnare concluso. |
 
+| RAG-11 | Alta | Fonti GDPR fornite dai soci: OCR, pubblicazione e qualità del recupero | Pubblicati 22 documenti e verificati 929 nuovi passaggi; 163 vecchie copie OCR ancora presenti in attesa di autorizzazione alla cancellazione. Ricerca mirata 10/10, generale 9/10 sui casi di prova | Autorizzare e verificare la pulizia delle sole copie WP259/WP260 già sostituite; indagare il mancato recupero approssimato sulla consultazione preventiva DPIA; rivedere OCR, tabelle e versioni in staging. Vedere docs/rag-releases/2026-09-24/. |
+
 ## Regole di manutenzione
 
 - Conservare gli ID; per nuove attività assegnare un nuovo ID e un prossimo passo verificabile.

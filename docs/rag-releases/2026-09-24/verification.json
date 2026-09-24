@@ -1,0 +1,309 @@
+{
+  "production": {
+    "public_documents": 22,
+    "verified_new_chunks": 929,
+    "all_structured_chunks": 1092,
+    "all_mirror_chunks": 1092,
+    "missing_or_wrong_hash": 0,
+    "bad_content_hash": 0,
+    "bad_vectors": 0,
+    "mirror_mismatches": 0,
+    "new_ocr_ui_warnings": 0
+  },
+  "retrieval": [
+    {
+      "n": 0,
+      "question": "Il responsabile IT può essere nominato DPO? Come si valuta il conflitto di interessi?",
+      "regulation": "WP243",
+      "global_returned": 20,
+      "global_hit_at_20": true,
+      "global_top_3": [
+        {
+          "citation": "GDPR — WP243 rev.01 — Responsabili della protezione dei dati (RPD/DPO), pagina PDF 17",
+          "similarity": 0.770825922489166
+        },
+        {
+          "citation": "GDPR — WP243 rev.01 — Responsabili della protezione dei dati (RPD/DPO), pagina PDF 18",
+          "similarity": 0.750863432884216
+        },
+        {
+          "citation": "GDPR — Garante — FAQ RPD in ambito pubblico, raccolta 2019, pagina PDF 309",
+          "similarity": 0.748317718505859
+        }
+      ],
+      "filtered_hit_at_5": true
+    },
+    {
+      "n": 1,
+      "question": "Quali fattori definiscono un trattamento su larga scala ai fini della nomina del DPO?",
+      "regulation": "WP243",
+      "global_returned": 20,
+      "global_hit_at_20": true,
+      "global_top_3": [
+        {
+          "citation": "GDPR — WP243 rev.01 — Responsabili della protezione dei dati (RPD/DPO), pagina PDF 7",
+          "similarity": 0.829318215210333
+        },
+        {
+          "citation": "GDPR — WP243 rev.01 — Responsabili della protezione dei dati (RPD/DPO), pagina PDF 22",
+          "similarity": 0.828657736102209
+        },
+        {
+          "citation": "GDPR — WP243 rev.01 — Responsabili della protezione dei dati (RPD/DPO), pagina PDF 7",
+          "similarity": 0.810916054899459
+        }
+      ],
+      "filtered_hit_at_5": true
+    },
+    {
+      "n": 2,
+      "question": "Quali risorse, tempo e formazione devono essere messi a disposizione del DPO?",
+      "regulation": "WP243",
+      "global_returned": 20,
+      "global_hit_at_20": true,
+      "global_top_3": [
+        {
+          "citation": "GDPR — WP243 rev.01 — Responsabili della protezione dei dati (RPD/DPO), pagina PDF 15",
+          "similarity": 0.816992055356977
+        },
+        {
+          "citation": "GDPR — WP243 rev.01 — Responsabili della protezione dei dati (RPD/DPO), pagina PDF 25",
+          "similarity": 0.768750369548798
+        },
+        {
+          "citation": "GDPR — WP243 rev.01 — Responsabili della protezione dei dati (RPD/DPO), pagina PDF 15",
+          "similarity": 0.766995966434479
+        }
+      ],
+      "filtered_hit_at_5": true
+    },
+    {
+      "n": 3,
+      "question": "Qual è la differenza tra profilazione e decisione basata unicamente sul trattamento automatizzato?",
+      "regulation": "WP251",
+      "global_returned": 20,
+      "global_hit_at_20": true,
+      "global_top_3": [
+        {
+          "citation": "GDPR — WP251 rev.01 — Decisioni automatizzate e profilazione, pagina PDF 9",
+          "similarity": 0.801029860973358
+        },
+        {
+          "citation": "GDPR — WP251 rev.01 — Decisioni automatizzate e profilazione, pagina PDF 8",
+          "similarity": 0.780117405646003
+        },
+        {
+          "citation": "GDPR — WP251 rev.01 — Decisioni automatizzate e profilazione, pagina PDF 6",
+          "similarity": 0.76915031671524
+        }
+      ],
+      "filtered_hit_at_5": true
+    },
+    {
+      "n": 4,
+      "question": "Che cosa significa intervento umano significativo per una decisione automatizzata?",
+      "regulation": "WP251",
+      "global_returned": 20,
+      "global_hit_at_20": true,
+      "global_top_3": [
+        {
+          "citation": "GDPR — WP251 rev.01 — Decisioni automatizzate e profilazione, pagina PDF 23",
+          "similarity": 0.770663096269186
+        },
+        {
+          "citation": "GDPR — WP251 rev.01 — Decisioni automatizzate e profilazione, pagina PDF 30",
+          "similarity": 0.764413251613782
+        },
+        {
+          "citation": "GDPR — WP251 rev.01 — Decisioni automatizzate e profilazione, pagina PDF 24",
+          "similarity": 0.746270850523065
+        }
+      ],
+      "filtered_hit_at_5": true
+    },
+    {
+      "n": 5,
+      "question": "Quali limiti valgono per decisioni automatizzate basate su categorie particolari di dati personali?",
+      "regulation": "WP251",
+      "global_returned": 20,
+      "global_hit_at_20": true,
+      "global_top_3": [
+        {
+          "citation": null,
+          "similarity": 0.791341066360474
+        },
+        {
+          "citation": "GDPR — WP251 rev.01 — Decisioni automatizzate e profilazione, pagina PDF 25",
+          "similarity": 0.753618433855867
+        },
+        {
+          "citation": null,
+          "similarity": 0.742287710768718
+        }
+      ],
+      "filtered_hit_at_5": true
+    },
+    {
+      "n": 6,
+      "question": "Quando è obbligatoria una DPIA e come si applicano i nove criteri di rischio elevato?",
+      "regulation": "WP248",
+      "global_returned": 20,
+      "global_hit_at_20": true,
+      "global_top_3": [
+        {
+          "citation": "GDPR — WP248 rev.01 — Valutazione d’impatto (DPIA), pagina PDF 9",
+          "similarity": 0.81139579977406
+        },
+        {
+          "citation": "GDPR — WP248 rev.01 — Valutazione d’impatto (DPIA), pagina PDF 9",
+          "similarity": 0.805746793746954
+        },
+        {
+          "citation": "GDPR — WP248 rev.01 — Valutazione d’impatto (DPIA), pagina PDF 11",
+          "similarity": 0.785252524301261
+        }
+      ],
+      "filtered_hit_at_5": true
+    },
+    {
+      "n": 7,
+      "question": "Quando il rischio residuo elevato richiede la consultazione preventiva dell’autorità di controllo?",
+      "regulation": "WP248",
+      "global_returned": 20,
+      "global_hit_at_20": false,
+      "global_top_3": [
+        {
+          "citation": null,
+          "similarity": 0.65492210715545
+        },
+        {
+          "citation": null,
+          "similarity": 0.654066244010106
+        },
+        {
+          "citation": null,
+          "similarity": 0.651604412639536
+        }
+      ],
+      "filtered_hit_at_5": true
+    },
+    {
+      "n": 8,
+      "question": "Il diritto alla portabilità si applica ai trattamenti basati sul legittimo interesse o solo su consenso e contratto?",
+      "regulation": "WP242",
+      "global_returned": 20,
+      "global_hit_at_20": true,
+      "global_top_3": [
+        {
+          "citation": "GDPR — WP242 rev.01 — Portabilità, con domande frequenti, pagina PDF 111",
+          "similarity": 0.809463549224351
+        },
+        {
+          "citation": null,
+          "similarity": 0.794888126545438
+        },
+        {
+          "citation": "GDPR — WP242 rev.01 — Portabilità, con domande frequenti, pagina PDF 131",
+          "similarity": 0.780048416855838
+        }
+      ],
+      "filtered_hit_at_5": true
+    },
+    {
+      "n": 9,
+      "question": "Le imprese con meno di 250 dipendenti sono sempre esentate dal registro dei trattamenti?",
+      "regulation": "ART30",
+      "global_returned": 20,
+      "global_hit_at_20": true,
+      "global_top_3": [
+        {
+          "citation": null,
+          "similarity": 0.804231524467468
+        },
+        {
+          "citation": "GDPR — WP29 — Deroghe al registro dei trattamenti, art. 30(5), pagina PDF 193",
+          "similarity": 0.789953827857971
+        },
+        {
+          "citation": "GDPR — WP29 — Deroghe al registro dei trattamenti, art. 30(5), pagina PDF 192",
+          "similarity": 0.787729918956757
+        }
+      ],
+      "filtered_hit_at_5": true
+    }
+  ],
+  "dpiaExactSearchDiagnostic": [
+    {
+      "citation_label": null,
+      "title": "GDPR - Regolamento (UE) 2016/679 (EUR-Lex 02016R0679-20160504, IT)",
+      "similarity": 0.79207520437689
+    },
+    {
+      "citation_label": "GDPR — WP248 rev.01 — Valutazione d’impatto (DPIA), pagina PDF 22",
+      "title": "GDPR — WP248 rev.01 — Valutazione d’impatto (DPIA)",
+      "similarity": 0.779093073552435
+    },
+    {
+      "citation_label": "GDPR — WP248 rev.01 — Valutazione d’impatto (DPIA), pagina PDF 22",
+      "title": "GDPR — WP248 rev.01 — Valutazione d’impatto (DPIA)",
+      "similarity": 0.776708887619311
+    },
+    {
+      "citation_label": null,
+      "title": "GDPR - Regolamento (UE) 2016/679 (EUR-Lex 02016R0679-20160504, IT)",
+      "similarity": 0.760959670600873
+    },
+    {
+      "citation_label": null,
+      "title": "GDPR - Regolamento (UE) 2016/679 (EUR-Lex 02016R0679-20160504, IT)",
+      "similarity": 0.750952310945301
+    },
+    {
+      "citation_label": "GDPR — WP248 rev.01 — Valutazione d’impatto (DPIA), pagina PDF 21",
+      "title": "GDPR — WP248 rev.01 — Valutazione d’impatto (DPIA)",
+      "similarity": 0.743312604127461
+    },
+    {
+      "citation_label": null,
+      "title": "GDPR - Regolamento (UE) 2016/679 (EUR-Lex 02016R0679-20160504, IT)",
+      "similarity": 0.715073270504075
+    },
+    {
+      "citation_label": "GDPR — WP248 rev.01 — Valutazione d’impatto (DPIA), pagina PDF 23",
+      "title": "GDPR — WP248 rev.01 — Valutazione d’impatto (DPIA)",
+      "similarity": 0.714825217261185
+    },
+    {
+      "citation_label": null,
+      "title": "GDPR - Regolamento (UE) 2016/679 (EUR-Lex 02016R0679-20160504, IT)",
+      "similarity": 0.707632583834684
+    },
+    {
+      "citation_label": "[STORICO] GDPR — WP250 rev.01 — Notifica delle violazioni dei dati, pagina PDF 219",
+      "title": "[STORICO] GDPR — WP250 rev.01 — Notifica delle violazioni dei dati",
+      "similarity": 0.706642431416658
+    }
+  ],
+  "staging": {
+    "cases": 10,
+    "filteredHitAt5": 10,
+    "globalHitAt10": 10
+  },
+  "sourceHashesVerified": 6,
+  "chunkHashesVerified": 929,
+  "ocr": {
+    "pages": 548,
+    "tables": 83,
+    "fullManualReview": false
+  },
+  "cleanup": {
+    "obsoleteProductionChunks": 163,
+    "status": "awaiting explicit user deletion approval",
+    "backup": "rollback-old-ocr-production.jsonl"
+  },
+  "stagingWorker": {
+    "disabled": false,
+    "expiration": "fixed three-hour deadline in authenticated staging bundle; early shutdown rejected"
+  },
+  "scope": "RAG data only; no production code, auth, policies, storage, or schema changes"
+}

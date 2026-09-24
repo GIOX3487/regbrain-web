@@ -544,3 +544,31 @@ IP nel markup, XSS dei framework (innerHTML, v-html, bypassSecurityTrust), `para
 decodificato su più righe, colonne SQL e destrutturazione per le categorie particolari. Su
 Juice Shop SEC-03 scende da 136 a 34 occorrenze e SEC-06 trova i due XSS documentati.
 
+
+## Fonti GDPR nel RAG: rilascio del 23–24 settembre 2026
+
+Pubblicati in produzione 22 documenti derivati da sei PDF forniti da Giovanni: 929 nuovi
+passaggi, tutti con embedding Gemini a 768 dimensioni, presenti sia in structured_chunks
+sia in chunks. Inclusa la DPIA WP248 dal PDF autonomo. La raccolta del 2019 usa il nuovo
+OCR fornito dall’utente: 548 pagine presenti e 83 tabelle ricostruite nel testo. Escluse
+le copie dei documenti già forniti singolarmente e la firma JPG.
+
+Verificati hash dei sei originali e dei 929 passaggi, identità testo/intestazione dei vettori,
+normalizzazione, dimensioni e corrispondenza delle due tabelle: nessuna anomalia. Dieci
+ricerche mirate su dieci recuperano la fonte attesa in produzione; la ricerca generale
+match_chunks, soglia 0,55 e primi 20 risultati, passa nove casi su dieci. La domanda sulla
+consultazione preventiva DPIA manca nella ricerca approssimata, ma la ricerca esatta
+recupera WP248 pagina 22 al secondo posto (similarità 0,779): approfondire l’indice e il
+recupero, non attribuire la mancanza al testo OCR. Non misurata l’accuratezza end-to-end AI.
+
+Sono ancora presenti 163 vecchi passaggi OCR relativi a WP259/WP260 (1.092 passaggi totali
+per questi 22 documenti). I sostituti sono già completi e la copia di recupero delle due
+tabelle è salvata localmente. La cancellazione è bloccata dal controllo automatico ed è
+stata richiesta autorizzazione esplicita; non dichiarare la pulizia completata.
+
+Nessun avviso tecnico OCR aggiunto ai nuovi passaggi, su richiesta dell’utente; restano
+le indicazioni delle versioni storiche/superate. Revisione integrale OCR e versioni rinviata
+allo staging. Nessuna migrazione, funzione di produzione o modifica applicativa distribuita.
+Il worker temporaneo nello staging resta autenticato e scade il 24 settembre alle 09:50 UTC;
+il tentativo di chiuderlo anticipatamente è stato rifiutato dal controllo automatico.
+Manifest e risultati: docs/rag-releases/2026-09-24/. Prossimo lavoro: RAG-11.
