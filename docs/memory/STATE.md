@@ -511,6 +511,23 @@ ambigue e divieto di darle per avvenute; fonti nominate e assenti dal corpus dic
 nota a fine risposta, con affidabilità al massimo "medium"; intake a un fatto per domanda senza
 esempi copiabili. La L. 300/1970 resta da caricare (RAG-10).
 
+Secondo giro del DPO (appunti del 29 settembre): le opzioni dell'intake erano a scelta singola, così
+né più categorie di dati né i ruoli di titolare e responsabile per i clienti si potevano scegliere
+insieme. Dal 30 settembre ogni domanda porta `multiple` (dal modello o dedotto da testo e opzioni),
+i pulsanti si sommano e il ruolo nel trattamento è sempre a scelta multipla.
+
+## Chat: valutazione delle violazioni dei dati, 30 settembre
+
+Alla domanda del DPO su cosa faccia il software in caso di data breach rispetto al tipo di danno,
+la chat trovava le fonti giuste ma rispondeva in forma generica. Ora, quando la conversazione
+descrive una violazione (`BREACH_PATTERN`: anche ransomware, dispositivo smarrito, email al
+destinatario sbagliato, credenziali compromesse), l'intake chiede fino a cinque fatti decisivi e la
+risposta segue una struttura fissa: tipo di violazione, danni possibili per tipo con probabilità e
+gravità, livello di rischio con i criteri EDPB 9/2022, notifica al Garante con scadenza delle 72 ore
+calcolata e obbligo del responsabile verso il titolare, comunicazione agli interessati con le
+eccezioni dell'art. 34 par. 3, registro delle violazioni, misure immediate. Non esiste ancora un
+registro delle violazioni nel prodotto. Collaudo in produzione da fare dopo il rilascio.
+
 ## Verifica del codice: lotto 1 delle regole mancanti, 23 settembre
 
 31 regole (8 nuove: token JWT non verificato, deserializzazione non fidata, path traversal, TLS

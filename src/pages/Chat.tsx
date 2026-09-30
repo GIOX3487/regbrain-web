@@ -69,6 +69,22 @@ interface ClarifyQuestion {
   text: string;
   why?: string;
   options?: string[];
+  // Più opzioni possono essere vere insieme (categorie di dati, ruoli che coesistono):
+  // le scelte si sommano e arrivano al modello separate da "; ".
+  multiple?: boolean;
+}
+
+const MULTI_SEPARATOR = '; ';
+
+function selectedOptions(value: string): string[] {
+  return value.split(MULTI_SEPARATOR).map((v) => v.trim()).filter(Boolean);
+}
+
+function toggleOption(value: string, option: string, multiple: boolean | undefined): string {
+  if (!multiple) return value === option ? '' : option;
+  const current = selectedOptions(value);
+  const next = current.includes(option) ? current.filter((v) => v !== option) : [...current, option];
+  return next.join(MULTI_SEPARATOR);
 }
 
 interface NextAction {
@@ -846,25 +862,34 @@ const Chat = () => {
                                   <p className="font-medium">{qi + 1}. {q.text}</p>
                                   {q.why && <p className="text-xs text-muted-foreground">{q.why}</p>}
                                   {q.options && q.options.length > 0 && (
-                                    <div className="flex flex-wrap gap-2">
-                                      {q.options.map((opt) => (
-                                        <Button
-                                          key={opt}
-                                          type="button"
-                                          size="sm"
-                                          variant={value === opt ? 'default' : 'outline'}
-                                          disabled={msg.answered}
-                                          onClick={() => setClarifyDrafts((prev) => ({ ...prev, [key]: opt }))}
-                                        >
-                                          {opt}
-                                        </Button>
-                                      ))}
+                                    <div className="space-y-1.5">
+                                      {q.multiple && (
+                                        <p className="text-xs text-muted-foreground">Puoi scegliere più di una risposta.</p>
+                                      )}
+                                      <div className="flex flex-wrap gap-2" role="group" aria-label={q.multiple ? 'Scelte multiple' : 'Scelta singola'}>
+                                        {q.options.map((opt) => {
+                                          const chosen = q.multiple ? selectedOptions(value).includes(opt) : value === opt;
+                                          return (
+                                            <Button
+                                              key={opt}
+                                              type="button"
+                                              size="sm"
+                                              variant={chosen ? 'default' : 'outline'}
+                                              aria-pressed={chosen}
+                                              disabled={msg.answered}
+                                              onClick={() => setClarifyDrafts((prev) => ({ ...prev, [key]: toggleOption(prev[key] || '', opt, q.multiple) }))}
+                                            >
+                                              {opt}
+                                            </Button>
+                                          );
+                                        })}
+                                      </div>
                                     </div>
                                   )}
                                   <Textarea
                                     value={value}
                                     disabled={msg.answered}
-                                    placeholder="Scrivi qui la risposta"
+                                    placeholder={q.multiple ? 'Scegli sopra una o più risposte, o scrivi qui' : 'Scrivi qui la risposta'}
                                     className="min-h-[44px] text-sm"
                                     onChange={(e) => setClarifyDrafts((prev) => ({ ...prev, [key]: e.target.value }))}
                                   />
