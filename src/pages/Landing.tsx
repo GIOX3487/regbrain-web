@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useNavigate } from "react-router-dom";
-import { Shield, Search, FileText, ArrowRight, CheckCircle2, Target, Zap, BookOpen, Activity, Eye, Scale, Globe, Code2, Lock } from "lucide-react";
+import { Shield, Search, FileText, ArrowRight, CheckCircle2, Target, Zap, BookOpen, Activity, Eye, Scale, Globe, Code2, Lock, AlertTriangle, ListChecks, Clock } from "lucide-react";
 import { MobileNav } from "@/components/MobileNav";
 import { FeatureGuide } from "@/components/FeatureGuide";
 import { supabase } from "@/integrations/supabase/client";
@@ -297,6 +297,65 @@ const Landing = () => {
         </div>
       </section>
 
+      {/* Violazione dei dati */}
+      <section className="px-4 sm:px-6 py-16 sm:py-20">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center space-y-4 mb-12">
+            <Badge variant="secondary" className="text-xs sm:text-sm px-3 py-1">Chat · Violazione dei dati</Badge>
+            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold">
+              Quando i dati escono,{" "}
+              <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+                le 72 ore corrono.
+              </span>
+            </h2>
+            <p className="text-lg sm:text-xl text-muted-foreground max-w-3xl mx-auto">
+              Un portatile smarrito, un ransomware, una email al destinatario sbagliato. Descrivi in chat cosa è
+              successo e RegBrain ti porta, con poche domande, alla decisione che il GDPR chiede: notificare al
+              Garante, comunicare agli interessati, o documentare e basta.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-6 sm:gap-8">
+            <div className="document-card space-y-4">
+              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary to-primary-glow flex items-center justify-center">
+                <ListChecks className="w-6 h-6 text-white" />
+              </div>
+              <h3 className="text-xl sm:text-2xl font-semibold">Chiede solo i fatti decisivi</h3>
+              <p className="text-muted-foreground">
+                Natura della violazione, categorie di dati coinvolte, se erano cifrati, quante persone, quando ne
+                siete venuti a conoscenza, quali conseguenze si vedono già. Con più risposte per domanda, perché
+                nella realtà i casi sono misti.
+              </p>
+            </div>
+
+            <div className="document-card space-y-4">
+              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary to-primary-glow flex items-center justify-center">
+                <AlertTriangle className="w-6 h-6 text-white" />
+              </div>
+              <h3 className="text-xl sm:text-2xl font-semibold">Valuta il danno, tipo per tipo</h3>
+              <p className="text-muted-foreground">
+                Furto d'identità, perdita economica, discriminazione, danno reputazionale, segreto professionale:
+                per ciascun danno pertinente indica probabilità e gravità, e ne ricava il livello di rischio con i
+                criteri delle linee guida EDPB 9/2022.
+              </p>
+            </div>
+
+            <div className="document-card space-y-4">
+              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary to-primary-glow flex items-center justify-center">
+                <Clock className="w-6 h-6 text-white" />
+              </div>
+              <h3 className="text-xl sm:text-2xl font-semibold">Dice cosa fare, e entro quando</h3>
+              <p className="text-muted-foreground">
+                Notifica al Garante sì o no, con la scadenza delle 72 ore calcolata dal momento della scoperta e il
+                contenuto minimo dell'art. 33; comunicazione agli interessati e sue eccezioni (art. 34); cosa
+                annotare nel registro delle violazioni; misure immediate. Se siete responsabili per conto di un
+                cliente, l'obbligo verso il titolare. Nel dubbio, la regola è notificare.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Il problema */}
       <section className="px-4 sm:px-6 py-16 sm:py-20">
         <div className="max-w-6xl mx-auto">
@@ -528,6 +587,7 @@ const Landing = () => {
                 <p className="text-muted-foreground">Ogni DPIA, RoPA e LIA redatta da zero, a mano</p>
                 <p className="text-muted-foreground">Giorni per leggere il fascicolo di un cliente e capire dove manca qualcosa</p>
                 <p className="text-muted-foreground">Nessuna prova strutturata della due diligence in caso di ispezione</p>
+                <p className="text-muted-foreground">Davanti a una violazione dei dati, la decisione su notifica e comunicazione presa di fretta, con le 72 ore che corrono</p>
                 <p className="text-muted-foreground">
                   Il professionista è limitato dalle sue ore, l'azienda dalla consulenza che può permettersi
                 </p>
@@ -552,6 +612,10 @@ const Landing = () => {
                 <div className="flex gap-3">
                   <CheckCircle2 className="w-5 h-5 text-primary shrink-0 mt-0.5" />
                   <p className="text-foreground">Il codice delle applicazioni verificato riga per riga contro GDPR, ePrivacy, CRA e AI Act, senza che lasci l'azienda</p>
+                </div>
+                <div className="flex gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+                  <p className="text-foreground">In caso di violazione dei dati, la valutazione del rischio per tipo di danno e la decisione su notifica e comunicazione, con la scadenza delle 72 ore</p>
                 </div>
                 <div className="flex gap-3">
                   <CheckCircle2 className="w-5 h-5 text-primary shrink-0 mt-0.5" />
