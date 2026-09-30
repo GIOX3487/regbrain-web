@@ -526,7 +526,10 @@ risposta segue una struttura fissa: tipo di violazione, danni possibili per tipo
 gravità, livello di rischio con i criteri EDPB 9/2022, notifica al Garante con scadenza delle 72 ore
 calcolata e obbligo del responsabile verso il titolare, comunicazione agli interessati con le
 eccezioni dell'art. 34 par. 3, registro delle violazioni, misure immediate. Non esiste ancora un
-registro delle violazioni nel prodotto. Collaudo in produzione da fare dopo il rilascio.
+registro delle violazioni nel prodotto. Collaudo in produzione del 30 settembre (portatile smarrito con
+fascicoli in chiaro, 300 interessati): 5 domande nell'ordine previsto con scelte multiple dove
+servono, struttura completa, scadenza delle 72 ore calcolata dalla data dichiarata, obbligo del
+responsabile verso i clienti titolari distinto da quello del titolare, 9 citazioni verificate.
 
 ## Verifica del codice: lotto 1 delle regole mancanti, 23 settembre
 
