@@ -1,5 +1,5 @@
 import { embedTexts } from '../_shared/embeddings.ts';
-import { isAmbiguousAnswer } from "./facts.ts";
+import { BREACH_PATTERN, inferMultiple, isAmbiguousAnswer, isBreachContext } from "./facts.ts";
 import { protect } from '../_shared/access.ts';
 import { aiFetch as fetch, getAIKey, getAIModel } from '../_shared/ai.ts';
 import { serve as denoServe } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -1238,10 +1238,10 @@ const regulationConfigs: RegulationConfig[] = [
     codes: ["EDPB_1_2022", "GDPR"],
   },
   {
-    pattern: /data\s*breach|violazion[ei]\s+(dei\s+)?dati|notifica\s+(della\s+)?violazione/i,
+    pattern: BREACH_PATTERN,
     searchTerms: ["Guidelines 9/2022", "GDPR"],
     keyArticles: ["33", "34"],
-    keyTopics: ["violazione", "notifica", "72 ore"],
+    keyTopics: ["violazione", "notifica", "72 ore", "rischio elevato", "comunicazione all'interessato"],
     codes: ["EDPB_9_2022", "GDPR"],
   },
   {
@@ -1829,6 +1829,8 @@ interface IntakeQuestion {
   text: string;
   why?: string;
   options?: string[];
+  // Più opzioni possono essere vere insieme (categorie di dati, ruoli che coesistono).
+  multiple?: boolean;
 }
 interface IntakeResult {
   mode: "answer" | "clarify";
@@ -1927,19 +1929,32 @@ async function runIntake(params: {
     `${m.role === "assistant" ? "ASSISTENTE" : "UTENTE"}: ${m.content.substring(0, 600)}`
   ).join("\n") || "Nessuno.";
 
+  const breach = isBreachContext([question, goal, ...history.map((m) => m.content)]);
+  const maxQuestions = breach ? 5 : 3;
+
   const systemPrompt = `Sei la fase di intake di un assistente esperto di compliance privacy e cyber (GDPR, NIS2, DORA, AI Act, CRA).
 Devi decidere se rispondere subito oppure fermarti e fare all'utente le domande indispensabili prima di procedere, come farebbe un consulente serio che non vuole rispondere a caso.
 
 Rispondi SOLO con un oggetto JSON con questa forma:
-{"mode":"answer"|"clarify","goal":"obiettivo dell'utente in una frase","questions":[{"text":"domanda","why":"perché cambia la risposta","options":["scelta breve","scelta breve"]}]}
+{"mode":"answer"|"clarify","goal":"obiettivo dell'utente in una frase","questions":[{"text":"domanda","why":"perché cambia la risposta","options":["scelta breve","scelta breve"],"multiple":false}]}
 
 Regole:
 - "clarify" SOLO se mancano fatti che cambiano davvero la risposta giuridica o il lavoro da fare (es. ruolo di titolare o responsabile, perimetro e dimensione dell'organizzazione per NIS2 o DORA, tipo di dati o di trattamento, quale documento vuole ottenere, se esiste già una policy o una DPIA, quale settore o Stato). In caso di dubbio scegli "answer".
-- Massimo 3 domande, dalla più decisiva alla meno decisiva. Ogni domanda deve essere concreta, in italiano semplice, con "why" di una riga. Aggiungi "options" (2-4 scelte brevi) solo quando le risposte possibili sono poche e note.
+- Massimo ${maxQuestions} domande, dalla più decisiva alla meno decisiva. Ogni domanda deve essere concreta, in italiano semplice, con "why" di una riga. Aggiungi "options" (2-6 scelte brevi) solo quando le risposte possibili sono poche e note.
+- "multiple": true quando più risposte possono essere vere insieme: categorie di dati trattati, tipi di interessati, tipi di danno, ruoli che coesistono. In quel caso le "options" coprono tutte le alternative note e l'utente ne sceglierà una o più. Il ruolo nel trattamento è sempre a scelta multipla: un professionista o un fornitore di servizi è titolare per i propri dati e responsabile per quelli dei clienti; le opzioni sono "Titolare del trattamento" e "Responsabile del trattamento per conto dei clienti".
 - Non chiedere MAI cose già note dal profilo, dalle informazioni fornite, dai messaggi precedenti o dai documenti allegati.
 - Una domanda chiede UN solo fatto. Niente esempi tra parentesi che l'utente possa ricopiare come risposta: le alternative vanno in "options". Se il fatto è "già fatto oppure no" (accordo sindacale stipulato, autorizzazione ottenuta, DPIA redatta), formula la domanda in modo che la risposta sia sì o no.
 - Non fare domande su una lettura o definizione della norma: quelle si rispondono direttamente.
-- "goal" descrive l'obiettivo finale della conversazione (es. "Capire se l'azienda rientra nella NIS2 e cosa deve fare"), non la singola domanda.`;
+- "goal" descrive l'obiettivo finale della conversazione (es. "Capire se l'azienda rientra nella NIS2 e cosa deve fare"), non la singola domanda.${breach ? `
+
+VIOLAZIONE DEI DATI PERSONALI: l'utente descrive un data breach. I fatti che decidono se notificare al Garante (art. 33 GDPR) e comunicare agli interessati (art. 34) sono questi, nell'ordine; chiedi quelli non ancora noti, fino a ${maxQuestions}, con le opzioni indicate:
+1. Natura della violazione, multiple: true, options ["Perdita di riservatezza (dati letti o copiati da chi non doveva)", "Perdita di integrità (dati alterati)", "Perdita di disponibilità (dati distrutti, cifrati o inaccessibili)"].
+2. Categorie di dati coinvolte, multiple: true, options ["Identificativi e di contatto", "Finanziari o di pagamento", "Credenziali di accesso", "Categorie particolari (salute, biometrici, orientamento, opinioni)", "Dati giudiziari", "Dati di minori"].
+3. Protezione dei dati al momento della violazione, options ["Cifrati con chiave non compromessa", "Pseudonimizzati", "In chiaro", "Non lo so"].
+4. Numero approssimativo di interessati (numero, senza options).
+5. Data e ora in cui l'organizzazione ne è venuta a conoscenza (senza options).
+6. Conseguenze già osservate o probabili per gli interessati, multiple: true, options ["Furto d'identità o frode", "Perdita economica", "Danno alla reputazione o sociale", "Discriminazione", "Perdita di controllo sui propri dati", "Danno fisico o alla sicurezza", "Nessuna finora"].
+Se il ruolo nel trattamento non è noto, chiedilo per primo al posto della domanda 6.` : ""}`;
 
   const userPrompt = `PROFILO UTENTE:
 ${profileLines}
@@ -1992,14 +2007,19 @@ ${question}`;
     }
     const questions: IntakeQuestion[] = parsed.questions
       .filter((q: any) => q && typeof q.text === "string" && q.text.trim())
-      .slice(0, 3)
-      .map((q: any) => ({
-        text: q.text.trim().substring(0, 300),
-        why: typeof q.why === "string" ? q.why.trim().substring(0, 200) : undefined,
-        options: Array.isArray(q.options)
-          ? q.options.filter((o: any) => typeof o === "string" && o.trim()).slice(0, 4).map((o: string) => o.trim().substring(0, 80))
-          : undefined,
-      }));
+      .slice(0, maxQuestions)
+      .map((q: any) => {
+        const text = q.text.trim().substring(0, 300);
+        const options = Array.isArray(q.options)
+          ? q.options.filter((o: any) => typeof o === "string" && o.trim()).slice(0, 8).map((o: string) => o.trim().substring(0, 80))
+          : undefined;
+        return {
+          text,
+          why: typeof q.why === "string" ? q.why.trim().substring(0, 200) : undefined,
+          options,
+          multiple: q.multiple === true || inferMultiple(text, options),
+        };
+      });
     if (questions.length === 0) return { mode: "answer", goal: nextGoal, questions: [] };
     return { mode: "clarify", goal: nextGoal, questions };
   } catch (error) {
@@ -2013,7 +2033,7 @@ function renderClarification(goal: string | null, questions: IntakeQuestion[]): 
   if (goal) lines.push(`Obiettivo: ${goal}`, "");
   lines.push("Per darti una risposta corretta sulla tua situazione, e non una risposta generica, mi servono questi dettagli:", "");
   questions.forEach((q, i) => {
-    lines.push(`${i + 1}. ${q.text}`);
+    lines.push(`${i + 1}. ${q.text}${q.multiple ? " (più risposte possibili)" : ""}`);
     if (q.why) lines.push(`   _(${q.why})_`);
     lines.push("");
   });
@@ -3156,6 +3176,37 @@ denoServe(protect(async (req) => {
       ? `Quando possibile, contestualizza la risposta al settore "${userProfile.sector}", indicando obblighi specifici, scadenze o esenzioni settoriali, e best practice di settore.`
       : "";
 
+    // Violazione di dati personali: la risposta segue una struttura di valutazione fissa,
+    // per tipo di danno, così da arrivare a notifica e comunicazione motivate.
+    const breachCase = isBreachContext([
+      question,
+      activeGoal,
+      ...caseContext.map((f) => `${f.question} ${f.answer}`),
+      ...history.map((m) => m.content),
+    ]);
+    const breachBlock = breachCase
+      ? `
+VALUTAZIONE DI UNA VIOLAZIONE DEI DATI PERSONALI (struttura obbligatoria della sezione 2):
+L'utente descrive un data breach. Nella sezione "Applicazione al tuo contesto" devi produrre, in quest'ordine e con questi titoli in grassetto su riga isolata, una valutazione fondata sui fatti forniti (art. 33 e 34 GDPR, considerando 75, 85, 86, 87, 88; linee guida EDPB 9/2022 sulla notifica delle violazioni). Se un fatto manca, dichiara l'ipotesi prudenziale che usi: nel dubbio la violazione si notifica.
+
+**Tipo di violazione**: riservatezza, integrità, disponibilità o combinazione, con una riga di motivazione.
+
+**Danni possibili per gli interessati**: un elenco puntato con un punto per ciascun tipo di danno pertinente fra questi: perdita di controllo sui propri dati; limitazione dei diritti; discriminazione; furto o usurpazione d'identità; perdita finanziaria; decifratura non autorizzata della pseudonimizzazione; danno alla reputazione; perdita di riservatezza di dati coperti da segreto professionale; danno fisico o alla sicurezza; altro danno economico o sociale significativo. Per ogni punto: probabilità (bassa, media, alta) e gravità (limitata, significativa, massima), motivate con i dati coinvolti, la loro protezione e le caratteristiche degli interessati. I danni che l'utente ha già osservato vanno indicati come "già verificato". Ometti i tipi di danno non pertinenti, senza elencarli.
+
+**Livello di rischio per i diritti e le libertà**: uno solo fra "nessun rischio probabile", "rischio", "rischio elevato", motivato con i criteri EDPB: tipo di violazione, natura, sensibilità e volume dei dati, facilità di identificazione delle persone, gravità delle conseguenze, caratteristiche particolari degli interessati (minori, persone vulnerabili) e del titolare, numero di interessati.
+
+**Notifica al Garante (art. 33)**: "sì", "no" o "sì, in via prudenziale". Se il ruolo dell'utente è responsabile del trattamento, l'obbligo è avvisare il titolare senza ingiustificato ritardo (art. 33 par. 2) e la valutazione va fatta per conto del titolare: dillo. Se la data e ora di conoscenza è nota, calcola e scrivi la scadenza delle 72 ore; se non è nota, spiega da quando decorre. Elenca il contenuto minimo della notifica (art. 33 par. 3) e la possibilità di notifica per fasi (par. 4) quando i fatti sono ancora incompleti.
+
+**Comunicazione agli interessati (art. 34)**: "sì" o "no" con la motivazione; ricorda le tre eccezioni del par. 3 (misure tecniche come la cifratura, misure successive che escludono il rischio elevato, sforzo sproporzionato con comunicazione pubblica) e verifica se ricorrono nel caso. Se sì, indica cosa deve contenere e in che linguaggio.
+
+**Registro delle violazioni (art. 33 par. 5)**: sempre dovuto, anche quando non si notifica; indica cosa annotare (fatti, conseguenze, misure, motivazione della decisione).
+
+**Misure immediate**: contenimento, recupero, revoca credenziali, informazione a fornitori o responsabili coinvolti, conservazione delle prove, in ordine di urgenza.
+
+Non ripetere la definizione di violazione dei dati nella sezione 1 oltre due righe: il valore sta nella valutazione.
+`
+      : "";
+
     const systemPrompt =
       `[REGOLE TASSATIVE DI INGAGGIO E FORMATTAZIONE - OVERRIDE]
 
@@ -3176,7 +3227,7 @@ ${caseContext.map((f) => `- ${f.question} → ${f.answer}${isAmbiguousAnswer(f.q
 Un'informazione è un fatto accertato SOLO se l'utente l'ha affermata in modo esplicito. Una risposta marcata AMBIGUA, o che ripete le alternative elencate nella domanda (es. "accordo sindacale/ispettorato"), NON va data per avvenuta: non scrivere mai "avendo già attivato", "avendo già stipulato" o simili. Esponi cosa cambia nei due casi ("se l'accordo è già stato stipulato... se invece non lo è...") e chiudi con una sola domanda di conferma.
 `
           : ""
-      }
+      }${breachBlock}
 STILE DI RISPOSTA E DIVIETI:
 
 1. DIVIETO DI PREAMBOLI: Inizia a rispondere immediatamente alla domanda. Niente saluti formali, niente giri di parole e MAI iniziare con frasi come "In qualità di professionista...", "Di seguito l'analisi..." o "Ecco i dettagli".
