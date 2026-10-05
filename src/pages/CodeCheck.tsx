@@ -193,7 +193,7 @@ export default function CodeCheck() {
     try {
       const ctx = { ...context, answers: withAnswers };
       const body = "scan" in input
-        ? { title: title.trim() || undefined, context: ctx, scan: { rulesVersion: input.scan.rulesVersion, findings: input.scan.findings, inferred: input.scan.inferred, excerpts: input.scan.excerpts, inventory: input.scan.inventory } }
+        ? { title: title.trim() || undefined, context: ctx, scan: { rulesVersion: input.scan.rulesVersion, findings: input.scan.findings, evidence: input.scan.evidence, inferred: input.scan.inferred, excerpts: input.scan.excerpts, inventory: input.scan.inventory } }
         : { title: title.trim() || undefined, context: ctx, files: input.files };
       const data = await invoke(body);
       setResult(data);
@@ -281,9 +281,11 @@ export default function CodeCheck() {
         </Button>
         <h1 className="text-2xl sm:text-3xl font-bold mb-2 flex items-center gap-2"><Code2 className="h-7 w-7 text-primary" />Verifica del codice</h1>
         <p className="text-sm sm:text-base text-muted-foreground mb-6">
-          Analisi di conformità normativa dell'intera base di codice di un'applicazione. La verifica viene eseguita direttamente nel browser:
-          il codice sorgente resta sul computer dell'utente e non viene trasmesso. Al servizio pervengono esclusivamente gli esiti, l'inventario dei file
-          e gli estratti necessari alla revisione, dai quali credenziali e chiavi vengono rimosse in automatico prima dell'invio.
+          Revisione automatica dell'intera base di codice di un'applicazione, con riferimenti alle disposizioni applicabili e suggerimenti di correzione.
+          Per ogni linea guida il referto elenca i requisiti verificati, con quale esito, e quelli che il codice da solo non permette di valutare: è una prima revisione
+          strutturata, non una certificazione di conformità. L'analisi viene eseguita nel browser: il codice sorgente resta sul computer dell'utente. Al servizio
+          pervengono esclusivamente gli esiti, l'inventario dei file e gli estratti necessari alla revisione, dai quali credenziali, chiavi, token e password vengono
+          rimossi in automatico prima dell'invio.
         </p>
 
         <Card className="mb-6 border-primary/30 bg-primary/5">
@@ -317,8 +319,18 @@ export default function CodeCheck() {
             <div>
               <p className="font-semibold mb-1">Metodo</p>
               <p className="text-muted-foreground">
-                Un primo livello di regole deterministiche, riga per riga e sul file intero (tag su più righe, etichette collegate altrove, valori della richiesta usati righe dopo), individua le evidenze nel codice e ne classifica il rischio; un secondo livello di revisione, basato sul modello
-                e sulla base documentale normativa, valuta il contesto applicativo, integra gli esiti e formula le domande necessarie quando le informazioni non sono deducibili dal codice.
+                Tre livelli. Regole deterministiche, riga per riga e sul file intero, individuano le evidenze e ne classificano il rischio. Analisi strutturali seguono il comportamento fra le righe e fra i file:
+                se gli strumenti di tracciamento partono solo dopo un controllo del consenso (un commento o un TODO non contano come gestore del consenso) e se ogni rotta HTTP ha un controllo di autorizzazione
+                riconoscibile, sulla rotta, nei decoratori, nel corpo della funzione o in un middleware globale. Infine una revisione del modello, in più lotti paralleli per allargare la parte di codice letta,
+                commenta gli esiti, osserva i requisiti non valutabili dalle regole e formula le domande che restano. Il referto dichiara quali file il modello ha letto e quali no.
+              </p>
+            </div>
+            <div>
+              <p className="font-semibold mb-1">Cosa dice e cosa non dice il referto</p>
+              <p className="text-muted-foreground">
+                Per ogni requisito applicabile il referto riporta uno di cinque esiti: problemi trovati; superato con prova positiva; nessun esito dalle regole (assenza dei difetti noti, non prova di conformità);
+                non valutabile dal codice, con l'indicazione di cosa verificare a video o sui documenti; non applicabile al contesto. Le regole riconoscono pattern noti e le analisi strutturali i framework più diffusi:
+                ciò che non riconoscono finisce fra i "da verificare", mai fra i "superati".
               </p>
             </div>
             <div>
@@ -477,6 +489,65 @@ export default function CodeCheck() {
               </CardContent>
             </Card>
 
+            {result.summary.requirements && result.summary.requirements.length > 0 && (() => {
+              const reqs = result.summary.requirements!;
+              const counts = result.summary.requirementCounts!;
+              const groups = [...new Set(reqs.map((r) => r.guideline))];
+              const OUT_STYLE: Record<string, string> = {
+                esiti: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200",
+                superato: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-200",
+                nessun_esito: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200",
+                non_valutabile: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200",
+                non_applicabile: "bg-muted text-muted-foreground",
+              };
+              const OUT_TEXT: Record<string, string> = {
+                esiti: "Problemi trovati", superato: "Superato", nessun_esito: "Nessun esito dalle regole", non_valutabile: "Non valutabile dal codice", non_applicabile: "Non applicabile",
+              };
+              const cov = result.summary.coverage;
+              return (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Copertura dei requisiti</CardTitle>
+                    <CardDescription>
+                      {counts.esiti} con problemi · {counts.superato} superati · {counts.nessun_esito} senza esiti dalle regole · {counts.non_valutabile} non valutabili dal codice · {counts.non_applicabile} non applicabili al contesto.
+                      {cov && <> Regole e analisi strutturali eseguite su {cov.rulesFiles} file; il modello ha letto {cov.aiFiles} file ({cov.aiChars.toLocaleString("it-IT")} caratteri{cov.aiBatches > 1 ? `, ${cov.aiBatches} lotti` : ""}){cov.filesNotReviewedByAi > 0 ? `, non ha letto ${cov.filesNotReviewedByAi} file` : ""}.</>}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-5">
+                    {groups.map((g) => (
+                      <div key={g} className="space-y-2">
+                        <p className="font-semibold text-sm">{g}</p>
+                        <div className="divide-y rounded-md border">
+                          {reqs.filter((r) => r.guideline === g).map((r) => (
+                            <div key={r.id} className="p-3 text-sm space-y-1">
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <span className="font-medium">{r.title} <span className="text-xs text-muted-foreground font-normal">{r.id}</span></span>
+                                <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${OUT_STYLE[r.outcome]}`}>{OUT_TEXT[r.outcome]}</span>
+                              </div>
+                              <p className="text-xs text-muted-foreground">{r.what}</p>
+                              <p className="text-xs">{r.note}</p>
+                              {r.evidence.length > 0 && (
+                                <ul className="text-xs text-muted-foreground list-disc pl-4">
+                                  {r.evidence.slice(0, 4).map((e, i) => <li key={i}><span className="font-mono">{e.file}:{e.line}</span>{e.note ? ` · ${e.note}` : ""}</li>)}
+                                </ul>
+                              )}
+                              {r.aiObservation && <p className="text-xs"><span className="font-medium">Osservazione del modello (da verificare):</span> {r.aiObservation.text}{r.aiObservation.file ? <> (<span className="font-mono">{r.aiObservation.file}:{r.aiObservation.line}</span>)</> : null}</p>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    {cov && cov.filesNotReviewedByAiSample.length > 0 && (
+                      <details className="text-xs text-muted-foreground">
+                        <summary className="cursor-pointer">File letti solo dalle regole, non dal modello ({cov.filesNotReviewedByAi})</summary>
+                        <p className="mt-1 font-mono break-all">{cov.filesNotReviewedByAiSample.join(", ")}{cov.filesNotReviewedByAi > cov.filesNotReviewedByAiSample.length ? ", ..." : ""}</p>
+                      </details>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })()}
+
             {result.findings.map((f) => {
               const style = RISK_STYLE[riskKey(f.risk)];
               const sources = f.refs.map((r) => result.summary.sources.find((s) => s.id === r)).filter(Boolean);
@@ -530,13 +601,13 @@ export default function CodeCheck() {
             })}
 
             {result.findings.length === 0 && (
-              <Card><CardContent className="pt-6 text-sm">Nessun problema rilevato. Le regole coprono i casi più comuni: non è una certificazione di conformità.</CardContent></Card>
+              <Card><CardContent className="pt-6 text-sm">Nessun problema rilevato dalle regole e dalle analisi strutturali. Non è una certificazione di conformità: la copertura dei requisiti qui sopra dice cosa resta da verificare a mano.</CardContent></Card>
             )}
 
             {result.summary.questions.length > 0 && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">Domande per completare la verifica</CardTitle>
+                  <CardTitle className="text-lg">Domande per completare la revisione</CardTitle>
                   <CardDescription>Rispondi e rilancia: la revisione terrà conto delle risposte{lastInput ? "" : ". Per rilanciare una verifica dallo storico ricarica prima il codice"}.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">

@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="it">
+<head>
+<title>Pagina con consenso</title>
+<script src="https://cdn.jsdelivr.net/npm/vanilla-cookieconsent@3/dist/cookieconsent.umd.js"></script>
+<script type="text/plain" data-cookiecategory="analytics" src="https://www.googletagmanager.com/gtag/js?id=G-XYZ"></script> <!--! - -->
+<script>
+  gtag('consent', 'default', { analytics_storage: 'denied', ad_storage: 'denied' });
+  gtag('js', new Date());
+  gtag('config', 'G-XYZ'); <!--! - -->
+</script>
+<script>
+  CookieConsent.run({ onConsent: function () {
+    if (CookieConsent.acceptedCategory('analytics')) {
+      fbq('init', '12345'); <!--! - -->
+    }
+  }});
+</script>
+</head>
+<body><p>Ciao</p></body>
+</html>

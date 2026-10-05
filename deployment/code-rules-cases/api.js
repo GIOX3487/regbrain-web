@@ -10,13 +10,13 @@ const passwordPlaceholder = "changeme1234"; //! -
 const passwordLabel = "Inserisci la password"; //! -
 const tokenHeaderName = "x-auth-token"; //! -
 
-app.get("/users", (req, res) => {
+app.get("/users", (req, res) => { //! SEC-16
   db.query("SELECT * FROM users WHERE id = " + req.query.id); //! SEC-05
 });
-app.get("/safe", (req, res) => {
+app.get("/safe", (req, res) => { //! SEC-16
   db.query("SELECT * FROM users WHERE id = $1", [req.query.id]); //! -
 });
-app.get("/tpl", (req, res) => {
+app.get("/tpl", (req, res) => { //! SEC-16
   db.query(`SELECT name FROM clienti WHERE mail = '${req.query.m}'`); //! SEC-05
 });
 

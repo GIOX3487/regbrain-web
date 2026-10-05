@@ -3,19 +3,22 @@
 // e, se ci sta, il resto per ordine di importanza, dentro un tetto di caratteri. I segreti sono
 // mascherati prima di uscire dal browser. Condiviso tra browser e funzione edge.
 
-import { SECRET_VALUE_MASKS } from "./rules.ts";
+import { redactSecrets } from "./secrets.ts";
 import type { Finding, InputFile } from "./scan.ts";
 
 export interface Excerpt { file: string; from: number; to: number; text: string }
 
+/** Caratteri per ogni chiamata al modello: oltre, la lettura peggiora. */
 export const EXCERPT_BUDGET = 60_000;
+/** Chiamate al modello in parallelo: la vista del modello si allarga senza allungare i tempi. */
+export const MAX_BATCHES = 3;
+export const TOTAL_EXCERPT_BUDGET = EXCERPT_BUDGET * MAX_BATCHES;
 const CONTEXT_LINES = 6;
 const MANIFEST = /(^|\/)(package\.json|requirements[\w.-]*\.txt|pyproject\.toml|Pipfile|pom\.xml|build\.gradle(\.kts)?|go\.mod|composer\.json|pubspec\.yaml|Gemfile|Cargo\.toml|[^/]*\.csproj|Dockerfile|docker-compose\.ya?ml|AndroidManifest\.xml|Info\.plist|\.env\.example|vercel\.json|netlify\.toml|nginx\.conf|Caddyfile)$/;
 const INTERESTING = /(auth|login|session|cookie|consent|privacy|gdpr|tracking|analytics|payment|checkout|user|account|profile|upload|export|log|middleware|security|config|settings)/i;
 
-function maskAll(text: string, masks: RegExp[]): string {
-  let out = text;
-  for (const re of SECRET_VALUE_MASKS) out = out.replace(re, "[SEGRETO RIMOSSO]");
+function maskAll(text: string, masks: RegExp[], file: string): string {
+  let out = redactSecrets(text, file);
   for (const re of masks) out = out.replace(new RegExp(re.source, "g"), "[SEGRETO RIMOSSO]");
   return out;
 }
@@ -41,7 +44,7 @@ function mergeRanges(ranges: Array<[number, number]>): Array<[number, number]> {
   return out;
 }
 
-export function buildExcerpts(files: InputFile[], findings: Finding[], masks: RegExp[], budget = EXCERPT_BUDGET): Excerpt[] {
+export function buildExcerpts(files: InputFile[], findings: Finding[], masks: RegExp[], budget = TOTAL_EXCERPT_BUDGET): Excerpt[] {
   const byName = new Map(files.map((f) => [f.name, f]));
   const lineCache = new Map<string, string[]>();
   const linesOf = (name: string) => {
@@ -55,7 +58,7 @@ export function buildExcerpts(files: InputFile[], findings: Finding[], masks: Re
     const lines = linesOf(file);
     const a = Math.max(1, from), b = Math.min(lines.length, to);
     if (b < a) return false;
-    const text = maskAll(numbered(lines, a, b), masks);
+    const text = maskAll(numbered(lines, a, b), masks, file);
     if (used + text.length > budget) return false;
     used += text.length;
     excerpts.push({ file, from: a, to: b, text });
@@ -89,6 +92,26 @@ export function buildExcerpts(files: InputFile[], findings: Finding[], masks: Re
     if (!push(f.name, 1, Math.min(n, 200))) { if (used > budget * 0.95) break; }
   }
   return excerpts;
+}
+
+/**
+ * Divide gli estratti in lotti da una chiamata ciascuno. Il primo lotto tiene le righe intorno
+ * agli esiti (servono a giudicarli); gli altri portano al modello il resto della base di codice.
+ */
+export function splitExcerpts(excerpts: Excerpt[], budget = EXCERPT_BUDGET, maxBatches = MAX_BATCHES): Excerpt[][] {
+  const batches: Excerpt[][] = [];
+  let current: Excerpt[] = [];
+  let used = 0;
+  for (const e of excerpts) {
+    if (used + e.text.length > budget && current.length) {
+      batches.push(current);
+      if (batches.length >= maxBatches) return batches;
+      current = []; used = 0;
+    }
+    current.push(e); used += e.text.length;
+  }
+  if (current.length) batches.push(current);
+  return batches;
 }
 
 /** Testo per il prompt: un blocco per file, con le righe numerate. */

@@ -1,0 +1,7 @@
+database:
+  host: db.internal
+  password: Pr0duzione2026x #! SEC-01
+  user: app
+smtp:
+  password: ${SMTP_PASSWORD} #! -
+  api_key: changeme #! -

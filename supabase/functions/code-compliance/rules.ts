@@ -6,6 +6,9 @@
 // Ogni regola indica le fonti normative che la giustificano (chiavi in structured_chunks),
 // così il testo citato nel report è quello caricato nel RAG, non una parafrasi.
 
+import { configSecret } from "./secrets.ts";
+import { trackerGate } from "./consent.ts";
+
 export type Risk = "high" | "medium" | "low";
 export type Category = "sicurezza" | "privacy" | "cookie" | "accessibilita" | "ai" | "licenze";
 
@@ -108,6 +111,11 @@ export interface Rule {
   /** Anche nei commenti (licenze). */
   scanComments?: boolean;
   test: (line: string, file: string) => LineHit | null;
+  /**
+   * Analisi strutturale dopo il test: se restituisce un motivo, l'occorrenza è "verificata"
+   * (per esempio un tracker che parte solo dopo il consenso) e non diventa un esito.
+   */
+  gate?: (lines: string[], idx: number, file: string) => string | null;
 }
 
 const PLACEHOLDER = /(example|esempio|changeme|change_me|your[_-]?|<[^>]+>|\$\{|\{\{|process\.env|os\.environ|getenv|env\(|xxxx|\*\*\*|dummy|placeholder|redacted|test123|password123|secret123|sample)/i;
@@ -130,7 +138,8 @@ export const SECRET_VALUE_MASKS: RegExp[] = [
 const HTTP_OK = /(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|example\.(com|org|net)|www\.w3\.org|schemas\.|xmlns|apache\.org\/licenses|opensource\.org|purl\.org|json-schema\.org|ns\.adobe\.com|schemas\.android\.com|\.local\b|\.test\b|\.internal\b|\.example\b|\.invalid\b)/i;
 
 const TRACKERS: Array<[RegExp, string]> = [
-  [/googletagmanager\.com|google-analytics\.com|\bgtag\s*\(|\bga\s*\(\s*['"]create|ReactGA|react-ga4?|@next\/third-parties\/google|vue-gtag/i, "Google Analytics / Tag Manager"],
+  // gtag('consent', ...) è l'API del consenso, non un tracciamento.
+  [/googletagmanager\.com|google-analytics\.com|\bgtag\s*\((?!\s*['"]consent['"])|\bga\s*\(\s*['"]create|ReactGA|react-ga4?|@next\/third-parties\/google|vue-gtag/i, "Google Analytics / Tag Manager"],
   [/connect\.facebook\.net|\bfbq\s*\(|react-facebook-pixel/i, "Meta Pixel"],
   [/static\.hotjar\.com|\bhj\s*\(\s*['"]|@hotjar/i, "Hotjar"],
   [/clarity\.ms|\bclarity\s*\(\s*['"]/i, "Microsoft Clarity"],
@@ -156,7 +165,7 @@ const EXTRA_EU_RESOURCES: Array<[RegExp, string]> = [
   [/www\.google\.com\/recaptcha|recaptcha\/api\.js|hcaptcha\.com\/1\/api\.js/i, "reCAPTCHA o hCaptcha"],
   [/maps\.googleapis\.com\/maps\/api\/js|google\.com\/maps\/embed/i, "Google Maps incorporato"],
 ];
-export const CONSENT_SIGNALS = /cookie.?consent|consent.?mode|gtag\s*\(\s*['"]consent|iubenda|cookiebot|onetrust|didomi|klaro|cookieyes|tarteaucitron|usercentrics|complianz|cookie-?law|consentmanager|cmp\.|__tcfapi|hasConsent|consentGiven|consent_given|acceptCookies|cookiesAccepted/i;
+// La presenza di un gestore del consenso si accerta in consent.ts, solo su righe di codice.
 
 const AI_TEXT = /api\.openai\.com|new OpenAI\s*\(|from ['"]openai['"]|import openai|anthropic\.com|new Anthropic\s*\(|@anthropic-ai|generativelanguage\.googleapis\.com|@google\/genai|@google\/generative-ai|google\.generativeai|GoogleGenerativeAI|api\.mistral\.ai|@mistralai|api-inference\.huggingface\.co|api\.cohere\.|openai\.azure\.com|bedrock-runtime|chat\.completions\.create/i;
 const AI_SYNTH = /images\.generate|dall-e|dall·e|\bimagen[-_]?\d|models\/imagen|imagegeneration@|stable-?diffusion|replicate\.com|api\.elevenlabs|text-to-speech|audio\.speech\.create|tts-1|gpt-image|\bsora\b|midjourney|\bflux-(pro|dev|schnell)/i;
@@ -197,10 +206,13 @@ export const RULES: Rule[] = [
     why: "Chi legge il codice (repository, pacchetto distribuito, log di build) ottiene l'accesso ai sistemi o ai dati protetti da quella chiave.",
     action: "Togliere il valore dal codice, spostarlo in un gestore di segreti o in una variabile d'ambiente, ruotare subito la chiave esposta e controllare la cronologia del repository.",
     refs: ["GDPR32", "ASVS_SECRETS", "AGID_KEYS", "CRA_ANNEX1"],
-    test: (line) => {
+    test: (line, file) => {
       for (const [re, what] of SECRET_PATTERNS) if (re.test(line)) return { note: what, mask: re };
       const g = GENERIC_SECRET.exec(line);
       if (g && !PLACEHOLDER.test(g[2]) && /\d/.test(g[2]) && /[A-Za-z]/.test(g[2]) && !/^[A-Z0-9_]+$/.test(g[2])) return { note: `valore assegnato a "${g[1]}"`, mask: new RegExp(escapeRe(g[2])) };
+      // Nei file di configurazione i valori non hanno virgolette: password: hunter2 conta lo stesso.
+      const c = configSecret(line, file);
+      if (c && /\d/.test(c.value) && /[A-Za-z]/.test(c.value)) return { note: `valore assegnato a "${c.name}" in un file di configurazione`, mask: new RegExp(escapeRe(c.value)) };
       return null;
     },
   },
@@ -277,6 +289,7 @@ export const RULES: Rule[] = [
       for (const [re, what] of TRACKERS) if (re.test(line)) return { note: what };
       return null;
     },
+    gate: trackerGate,
   },
   {
     id: "PRIV-02", title: "Dati personali o segreti scritti nei log", category: "privacy", risk: "medium",
@@ -647,7 +660,7 @@ export const FILE_RULES: FileRule[] = [
   },
 ];
 
-export const RULES_VERSION = "2026-09-23.3";
+export const RULES_VERSION = "2026-10-05.1";
 
 export function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
