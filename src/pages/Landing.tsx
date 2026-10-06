@@ -231,8 +231,9 @@ const Landing = () => {
             </h2>
             <p className="text-lg sm:text-xl text-muted-foreground max-w-3xl mx-auto">
               Una privacy policy corretta non basta se l'applicazione registra dati personali nei log, imposta cookie
-              senza consenso o invia dati fuori dall'Unione. RegBrain analizza l'intera base di codice di un software
-              e collega ogni rilievo alla disposizione che lo riguarda.
+              senza consenso o invia dati fuori dall'Unione. RegBrain rivede l'intera base di codice di un software,
+              collega ogni rilievo alla disposizione che lo riguarda e dice, requisito per requisito, cosa ha verificato
+              e cosa resta da valutare a mano.
             </p>
           </div>
 
@@ -280,10 +281,12 @@ const Landing = () => {
           <div className="grid md:grid-cols-2 gap-6">
             <div className="document-card bg-muted/40">
               <p className="text-muted-foreground">
-                <strong className="text-foreground">Come funziona.</strong> Un primo livello di regole deterministiche
-                individua le evidenze e classifica il rischio; un secondo livello, basato sul modello e sui testi
-                normativi, legge il contesto dell'applicazione, integra i rilievi e chiede solo ciò che non si deduce
-                dal codice. Il risultato è un referto esportabile in PDF, file per file e riga per riga.
+                <strong className="text-foreground">Come funziona.</strong> Regole deterministiche individuano le evidenze
+                e classificano il rischio; analisi strutturali seguono il comportamento fra i file, per esempio se i tracker
+                partono solo dopo il consenso e se ogni rotta ha un controllo di autorizzazione; il modello, sui testi
+                normativi, commenta i rilievi e chiede solo ciò che non si deduce dal codice. Il referto, esportabile in PDF,
+                elenca per ogni linea guida i requisiti verificati, superati o non valutabili: è una revisione automatica
+                con riferimenti normativi, non una certificazione di conformità.
               </p>
             </div>
             <div className="document-card bg-muted/40">

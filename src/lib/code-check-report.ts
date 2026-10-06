@@ -20,6 +20,19 @@ export interface CodeFinding {
   aiNote?: string;
 }
 export interface CodeSource { id: string; citation: string; regulation: string; chunkKey: string; text: string }
+export type ReqOutcome = "esiti" | "superato" | "nessun_esito" | "non_valutabile" | "non_applicabile";
+export interface CodeRequirement {
+  id: string; guideline: string; title: string; what: string; refs: string[]; method: "regole" | "strutturale" | "manuale";
+  outcome: ReqOutcome; findings: string[]; evidence: Array<{ file: string; line: number; snippet: string; note?: string }>; note: string;
+  aiObservation?: { text: string; file?: string; line?: number };
+}
+export interface CodeCoverage {
+  rulesFiles: number; aiFiles: number; aiChars: number; aiBatches: number; aiBatchesFailed: number;
+  filesNotReviewedByAi: number; filesNotReviewedByAiSample: string[];
+}
+export const OUTCOME_TEXT: Record<ReqOutcome, string> = {
+  esiti: "Problemi trovati", superato: "Superato", nessun_esito: "Nessun esito dalle regole", non_valutabile: "Non valutabile dal codice", non_applicabile: "Non applicabile",
+};
 export interface CodeCheckResult {
   id: string | null;
   created_at: string;
@@ -27,7 +40,10 @@ export interface CodeCheckResult {
   context: Record<string, unknown>;
   files: Array<{ name: string; lines: number; chars: number; sha256: string }>;
   findings: CodeFinding[];
-  summary: { text: string; questions: string[]; sources: CodeSource[]; aiUsed: boolean; scanMode?: "funzione" | "browser"; excerptChars?: number };
+  summary: {
+    text: string; questions: string[]; sources: CodeSource[]; aiUsed: boolean; scanMode?: "funzione" | "browser"; excerptChars?: number;
+    requirements?: CodeRequirement[]; requirementCounts?: Record<ReqOutcome, number>; coverage?: CodeCoverage;
+  };
   overall_risk: CodeRisk | "none";
   counts: { high: number; medium: number; low: number; possibleFalsePositives: number; aiOnly: number };
   rules_version: string | null;
@@ -87,7 +103,7 @@ export function exportCodeCheckPdf(result: CodeCheckResult) {
     y += 1;
   };
 
-  para("RegBrain - Verifica di conformità del codice", 16, "bold", [20, 60, 120], 7);
+  para("RegBrain - Revisione automatica del codice con riferimenti normativi", 16, "bold", [20, 60, 120], 7);
   para(result.title, 12, "bold");
   para(`Data: ${new Date(result.created_at).toLocaleString("it-IT")}  |  Regole: ${result.rules_version ?? "-"}${result.summary.scanMode === "browser" ? " eseguite nel browser sull'intera base di codice" : ""}  |  Revisione AI: ${result.summary.aiUsed ? result.model || "sì" : "non disponibile"}`, 9, "normal", [90, 90, 90]);
   y += 2;
@@ -97,6 +113,7 @@ export function exportCodeCheckPdf(result: CodeCheckResult) {
 
   heading("Sintesi");
   para(result.summary.text);
+  para("Questa è una revisione automatica: regole deterministiche, analisi strutturali fra i file e revisione del modello su estratti. Non è una certificazione di conformità. La tabella dei requisiti indica cosa è stato verificato, con quale esito, e cosa resta da valutare a video o sui documenti.", 9, "italic", [90, 90, 90]);
 
   const CTX_LABELS: Record<string, string> = {
     appType: "Tipo di applicazione", appTypes: "Tipo di applicazione", personalData: "Dati personali", sector: "Settore", sectors: "Settore",
@@ -134,9 +151,36 @@ export function exportCodeCheckPdf(result: CodeCheckResult) {
   });
   y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
 
+  if (result.summary.requirements?.length) {
+    const reqs = result.summary.requirements;
+    const c = result.summary.requirementCounts;
+    const cov = result.summary.coverage;
+    heading("Copertura dei requisiti");
+    if (c) para(`${c.esiti} requisiti con problemi, ${c.superato} superati con prova positiva, ${c.nessun_esito} senza esiti dalle regole, ${c.non_valutabile} non valutabili dal codice, ${c.non_applicabile} non applicabili al contesto.`);
+    if (cov) para(`Regole e analisi strutturali eseguite su ${cov.rulesFiles} file. Il modello ha letto ${cov.aiFiles} file (${cov.aiChars.toLocaleString("it-IT")} caratteri${cov.aiBatches > 1 ? `, ${cov.aiBatches} lotti` : ""})${cov.filesNotReviewedByAi > 0 ? `; ${cov.filesNotReviewedByAi} file sono stati letti solo dalle regole` : ""}.`, 9, "normal", [70, 70, 70]);
+    const OUT_RGB: Record<string, [number, number, number]> = { esiti: [185, 28, 28], superato: [21, 128, 61], nessun_esito: [71, 85, 105], non_valutabile: [180, 83, 9], non_applicabile: [140, 140, 140] };
+    for (const g of [...new Set(reqs.map((r) => r.guideline))]) {
+      space(16);
+      para(g, 10.5, "bold", [20, 60, 120], 5.5);
+      autoTable(doc, {
+        startY: y, head: [["Requisito", "Esito", "Metodo", "Note ed evidenze"]],
+        body: reqs.filter((r) => r.guideline === g).map((r) => [
+          pdfText(`${r.title} (${r.id})\n${r.what}`),
+          OUTCOME_TEXT[r.outcome],
+          r.method === "regole" ? "Regole" : r.method === "strutturale" ? "Analisi strutturale" : "Verifica manuale",
+          pdfText([r.note, ...r.evidence.slice(0, 3).map((e) => `${e.file}:${e.line}${e.note ? " (" + e.note + ")" : ""}`), r.aiObservation ? `Osservazione del modello (da verificare): ${r.aiObservation.text}${r.aiObservation.file ? ` (${r.aiObservation.file}:${r.aiObservation.line})` : ""}` : ""].filter(Boolean).join("\n")),
+        ]),
+        margin: { left: M, right: M }, styles: { fontSize: 7.5, cellPadding: 1.6, valign: "top" }, headStyles: { fillColor: [20, 60, 120] },
+        columnStyles: { 0: { cellWidth: 58 }, 1: { cellWidth: 26, fontStyle: "bold" }, 2: { cellWidth: 24 }, 3: { cellWidth: width - 108 } },
+        didParseCell: (d) => { if (d.section === "body" && d.column.index === 1) { const r = reqs.filter((x) => x.guideline === g)[d.row.index]; if (r) d.cell.styles.textColor = OUT_RGB[r.outcome]; } },
+      });
+      y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
+    }
+  }
+
   heading("Riepilogo dei problemi");
   if (result.findings.length === 0) {
-    para("Nessun problema rilevato dalle regole automatiche. Questo non certifica la conformità del software.");
+    para("Nessun problema rilevato dalle regole e dalle analisi strutturali. Questo non certifica la conformità del software.");
   } else {
     autoTable(doc, {
       startY: y, head: [["#", "Problema", "Area", "Rischio", "Esito"]],
@@ -174,7 +218,7 @@ export function exportCodeCheckPdf(result: CodeCheckResult) {
   });
 
   if (result.summary.questions.length) {
-    heading("Domande per completare la verifica");
+    heading("Domande per completare la revisione");
     result.summary.questions.forEach((q, i) => para(`${i + 1}. ${q}`));
   }
 
@@ -187,8 +231,8 @@ export function exportCodeCheckPdf(result: CodeCheckResult) {
     }
   }
 
-  heading("Limiti della verifica");
-  para("Le regole automatiche riconoscono schemi noti riga per riga: non vedono la configurazione dei server, i flussi dei dati fuori dal codice, i contratti con i fornitori né le scelte organizzative. Gli esiti segnati \"Da verificare\" sono proposte della revisione AI e vanno controllati da una persona. Questo report aiuta a trovare e correggere problemi; non è una certificazione di conformità e va firmato da chi ne è responsabile.", 9, "normal", [70, 70, 70]);
+  heading("Limiti della revisione");
+  para("Le regole riconoscono schemi noti; le analisi strutturali seguono consenso e autorizzazioni fra le righe e fra i file per i framework più diffusi; il modello legge estratti, non l'intera base di codice, e il referto dichiara quali file ha letto. Nessuno dei tre vede la configurazione dei server, i flussi dei dati fuori dal codice, i contratti con i fornitori né le scelte organizzative. Gli esiti segnati \"Da verificare\" e le osservazioni del modello vanno controllati da una persona. Questo report aiuta a trovare e correggere problemi e documenta cosa è stato verificato; non è una certificazione di conformità e va firmato da chi ne è responsabile.", 9, "normal", [70, 70, 70]);
 
   const pages = doc.getNumberOfPages();
   for (let p = 1; p <= pages; p++) {
@@ -196,7 +240,7 @@ export function exportCodeCheckPdf(result: CodeCheckResult) {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
     doc.setTextColor(120, 120, 120);
-    doc.text(`RegBrain - Verifica del codice - pagina ${p} di ${pages}`, M, H - 8);
+    doc.text(`RegBrain - Revisione del codice - pagina ${p} di ${pages}`, M, H - 8);
   }
   const safe = result.title.replace(/[^\w.-]+/g, "_").slice(0, 60) || "codice";
   doc.save(`verifica-codice-${safe}-${new Date(result.created_at).toISOString().slice(0, 10)}.pdf`);

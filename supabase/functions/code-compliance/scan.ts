@@ -1,5 +1,9 @@
 // Scansione deterministica: applica le regole riga per riga e raggruppa gli esiti per regola.
-import { CONSENT_SIGNALS, FILE_RULES, isCommentLine, type Risk, RULES, SECRET_VALUE_MASKS, TEST_FILE, TEXT_FILE } from "./rules.ts";
+import { FILE_RULES, isCommentLine, type Risk, RULES, TEST_FILE, TEXT_FILE } from "./rules.ts";
+import { redactLine } from "./secrets.ts";
+import { consentManagerEvidence, type Evidence } from "./consent.ts";
+import { analyzeRoutes, unprotectedRoutes } from "./routes.ts";
+import type { ScanEvidence } from "./requirements.ts";
 
 const MAX_OCCURRENCES = 8;
 
@@ -36,18 +40,26 @@ export function ctxList(ctx: Ctx, key: "appTypes" | "sectors" | "audiences"): st
   return list.filter((v) => v && v !== "non_so");
 }
 
-export function mask(line: string, extra?: RegExp): string {
-  let out = line;
-  for (const re of SECRET_VALUE_MASKS) out = out.replace(re, (m) => m.slice(0, 4) + "…[mascherato]");
-  if (extra) out = out.replace(new RegExp(extra.source, extra.flags.includes("g") ? extra.flags : extra.flags + "g"), (m) => m.slice(0, 3) + "…[mascherato]");
+/** Maschera i segreti in una riga citata nel referto: del valore non resta nulla. */
+export function mask(line: string, extra?: RegExp, file = ""): string {
+  let out = redactLine(line, file);
+  if (extra) out = out.replace(new RegExp(extra.source, extra.flags.includes("g") ? extra.flags : extra.flags + "g"), "[SEGRETO RIMOSSO]");
   return out;
 }
 
-export function scan(files: InputFile[]): { findings: Finding[]; masks: RegExp[] } {
+export const EMPTY_EVIDENCE: ScanEvidence = {
+  trackers: { total: 0, gated: [], ungated: 0 },
+  consentManager: [],
+  routes: { total: 0, protected: 0, publicByNature: 0, unprotected: [], frameworks: [], globalGuards: [] },
+};
+
+export function scan(files: InputFile[]): { findings: Finding[]; masks: RegExp[]; evidence: ScanEvidence } {
   const byRule = new Map<string, Finding>();
   const masks: RegExp[] = [];
-  const allText = files.map((f) => f.content).join("\n");
-  const consentPresent = CONSENT_SIGNALS.test(allText);
+  const consentManager = consentManagerEvidence(files);
+  const consentPresent = consentManager.length > 0;
+  const gated: Evidence[] = [];
+  let trackersTotal = 0;
   const LOWER: Record<Risk, Risk> = { high: "medium", medium: "low", low: "low" };
   for (const f of files) {
     if (/(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|composer\.lock|Gemfile\.lock|poetry\.lock|Cargo\.lock)$/i.test(f.name)) continue;
@@ -63,6 +75,16 @@ export function scan(files: InputFile[]): { findings: Finding[]; masks: RegExp[]
         if (comment && !rule.scanComments) continue;
         const hit = rule.test(line, f.name);
         if (!hit) continue;
+        if (rule.id === "PRIV-01") trackersTotal++;
+        // Analisi strutturale: un'occorrenza protetta (per esempio un tracker che parte solo
+        // dopo il consenso) è una verifica superata, non un esito.
+        if (rule.gate) {
+          const reason = rule.gate(lines, idx, f.name);
+          if (reason) {
+            if (gated.length < 40) gated.push({ file: f.name, line: idx + 1, snippet: mask(line.trim(), undefined, f.name).slice(0, 160), note: `${hit.note ? hit.note + ": " : ""}${reason}` });
+            continue;
+          }
+        }
         if (hit.mask) masks.push(hit.mask);
         let finding = byRule.get(rule.id);
         if (!finding) {
@@ -78,7 +100,7 @@ export function scan(files: InputFile[]): { findings: Finding[]; masks: RegExp[]
         const risk: Risk = isTest ? LOWER[hit.risk ?? rule.risk] : (hit.risk ?? rule.risk);
         if (RISK_ORDER[risk] > RISK_ORDER[finding.risk]) finding.risk = risk;
         if (finding.occurrences.length < MAX_OCCURRENCES) {
-          finding.occurrences.push({ file: f.name, line: idx + 1, snippet: mask(line.trim(), hit.mask).slice(0, 240), note: isTest ? `${hit.note ? hit.note + "; " : ""}file di prova o di esempio` : hit.note });
+          finding.occurrences.push({ file: f.name, line: idx + 1, snippet: mask(line.trim(), hit.mask, f.name).slice(0, 240), note: isTest ? `${hit.note ? hit.note + "; " : ""}file di prova o di esempio` : hit.note });
         }
       }
     });
@@ -107,25 +129,61 @@ export function scan(files: InputFile[]): { findings: Finding[]; masks: RegExp[]
         if (RISK_ORDER[risk] > RISK_ORDER[finding.risk]) finding.risk = risk;
         if (finding.occurrences.length < MAX_OCCURRENCES) {
           const raw = lines[hit.line - 1] || "";
-          finding.occurrences.push({ file: f.name, line: hit.line, snippet: mask(raw.trim()).slice(0, 240), note: isTest ? `${hit.note ? hit.note + "; " : ""}file di prova o di esempio` : hit.note });
+          finding.occurrences.push({ file: f.name, line: hit.line, snippet: mask(raw.trim(), undefined, f.name).slice(0, 240), note: isTest ? `${hit.note ? hit.note + "; " : ""}file di prova o di esempio` : hit.note });
         }
       }
     }
   }
-  // Tracciamento senza alcun gestore del consenso in tutta la base di codice: l'esito è certo.
-  const trackersNoConsent = byRule.get("PRIV-01");
-  if (trackersNoConsent && !consentPresent) {
-    trackersNoConsent.why += " In tutta la base di codice non c'è traccia di un gestore del consenso: gli script partono senza consenso.";
-  }
-  // Tracciamento con un gestore del consenso presente: il problema resta da verificare
-  // (lo script deve partire solo dopo il consenso), ma non è più certo.
+  // Tracciamento: le occorrenze protette da un controllo del consenso sono già uscite dagli
+  // esiti (gate). Quelle rimaste partono senza un controllo riconoscibile.
   const trackers = byRule.get("PRIV-01");
+  if (trackers && !consentPresent) {
+    trackers.why += " In nessuna riga di codice c'è un gestore del consenso (commenti e TODO non contano): gli script partono senza consenso.";
+  }
   if (trackers && consentPresent) {
     trackers.risk = "medium";
     trackers.status = "da_verificare";
-    trackers.why += " Nel codice c'è un gestore del consenso: va verificato che gli script partano solo dopo l'accettazione.";
+    trackers.why += ` Nel codice c'è un gestore del consenso (${consentManager[0].file}:${consentManager[0].line}), ma in questi punti lo script parte senza un controllo del consenso riconoscibile nelle righe precedenti${gated.length ? `; in altri ${gated.length} punti il controllo c'è` : ""}.`;
   }
+
+  // Rotte HTTP e controlli di autorizzazione, seguendo middleware e decoratori fra i file.
+  const routeAnalysis = analyzeRoutes(files);
+  const unprotected = unprotectedRoutes(routeAnalysis);
+  const evidence: ScanEvidence = {
+    trackers: { total: trackersTotal, gated, ungated: trackers ? trackers.totalOccurrences : 0 },
+    consentManager,
+    routes: {
+      total: routeAnalysis.routes.length,
+      protected: routeAnalysis.routes.filter((r) => r.auth).length,
+      publicByNature: routeAnalysis.routes.filter((r) => !r.auth && r.publicByNature).length,
+      unprotected, frameworks: routeAnalysis.frameworks, globalGuards: routeAnalysis.globalGuards,
+    },
+  };
+  const sec16 = routeFinding(evidence);
+  if (sec16) byRule.set(sec16.id, sec16);
   const findings = [...byRule.values()].sort((a, b) => RISK_ORDER[b.risk] - RISK_ORDER[a.risk] || a.id.localeCompare(b.id));
-  return { findings, masks };
+  return { findings, masks, evidence };
+}
+
+/**
+ * L'esito SEC-16 nasce dall'analisi delle rotte, non da una regola per riga: si ricostruisce
+ * dalle prove, nel browser come nella funzione, così il server non si fida del testo del client.
+ */
+export function routeFinding(evidence: ScanEvidence): Finding | null {
+  const r = evidence.routes;
+  const unprotected = r.unprotected;
+  if (!unprotected.length) return null;
+  const mutating = unprotected.filter((x) => x.mutating);
+  const anyAuth = r.protected > 0 || r.globalGuards.length > 0;
+  const shown = [...mutating, ...unprotected.filter((x) => !x.mutating)].slice(0, MAX_OCCURRENCES);
+  return {
+    id: "SEC-16", ruleId: "SEC-16", source: "regola",
+    title: "Endpoint senza controllo di autorizzazione riconoscibile", category: "sicurezza",
+    risk: mutating.length ? "high" : "medium",
+    why: `${unprotected.length} rotte su ${r.total} (${r.frameworks.join(", ") || "framework non riconosciuto"}) non mostrano un controllo di autenticazione o autorizzazione: non sulla rotta, non nei decoratori, non nel corpo della funzione, non in un middleware globale prima della rotta. ${mutating.length} di queste scrivono o modificano dati.${anyAuth ? " Altre rotte della stessa base di codice hanno un controllo: è probabile una dimenticanza o un controllo fatto altrove." : " In tutta la base di codice non è stato riconosciuto alcun controllo di accesso."}`,
+    action: "Per ogni rotta elencata confermare chi può chiamarla; se non deve essere pubblica, applicare il middleware o il decoratore di autenticazione e verificare i permessi sull'oggetto richiesto.",
+    occurrences: shown.map((x) => ({ file: x.file, line: x.line, snippet: `${x.method} ${x.path}`, note: x.mutating ? "scrive o modifica dati" : "lettura" })),
+    totalOccurrences: unprotected.length, refs: ["CRA_ANNEX1", "GDPR32", "GDPR25"], status: "da_verificare",
+  };
 }
 

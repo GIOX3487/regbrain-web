@@ -592,3 +592,24 @@ allo staging. Nessuna migrazione, funzione di produzione o modifica applicativa 
 Il worker temporaneo nello staging resta autenticato e scade il 24 settembre alle 09:50 UTC;
 il tentativo di chiuderlo anticipatamente è stato rifiutato dal controllo automatico.
 Manifest e risultati: docs/rag-releases/2026-09-24/. Prossimo lavoro: RAG-11.
+
+## Verifica del codice: copertura dei requisiti e analisi fra file, 5 ottobre
+
+Una revisione esterna del codice ha giudicato la verifica "buona prima versione, poco profonda":
+riconosce pattern, non il comportamento fra i file; un commento che annunciava un gestore del consenso
+ancora da scrivere bastava a farlo risultare presente; il modello vede 60.000 caratteri; il flusso era
+"trovo un problema, cito le fonti" e non "verifico la linea guida"; la mascheratura dei segreti
+lasciava i primi caratteri. Dal 5 ottobre la verifica ha tre livelli: regole per riga e sul file;
+analisi strutturali (`consent.ts`: gestore del consenso solo in righe di codice, tracker
+protetti da un controllo del consenso esclusi dagli esiti; `routes.ts`: censimento delle rotte di
+dieci framework e ricerca del controllo di autorizzazione sulla rotta, nei decoratori, nel corpo,
+nei middleware globali con prefisso, nel gestore in un altro file, nei guard di classe o di
+applicazione: nuovo esito SEC-16, sempre da verificare); copertura dei requisiti
+(`requirements.ts`: 45 requisiti in otto linee guida, cinque esiti: problemi trovati, superato con
+prova, nessun esito dalle regole, non valutabile dal codice con cosa verificare, non applicabile).
+La mascheratura (`secrets.ts`) è unica per righe citate, estratti e prove e non lascia nulla del
+valore. Il modello legge fino a 180.000 caratteri in tre lotti paralleli e il referto dichiara
+quali file ha letto. La funzione è presentata come revisione automatica con riferimenti normativi,
+non come certificazione. Misure: Juice Shop 109 rotte (33 con controllo, 69 da verificare, app
+vulnerabile), PyGoat 136 (94 con controllo), RealWorld Express 8 (0 scoperte); 948 file in 1,4 s;
+62 test backend. Collaudo in produzione da fare.

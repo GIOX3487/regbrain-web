@@ -6,6 +6,7 @@ import { scan, type Finding, type InputFile } from "../../../supabase/functions/
 import { inferContext, type InferredContext } from "../../../supabase/functions/code-compliance/infer.ts";
 import { buildExcerpts, type Excerpt } from "../../../supabase/functions/code-compliance/excerpts.ts";
 import { RULES_VERSION } from "../../../supabase/functions/code-compliance/rules.ts";
+import type { ScanEvidence } from "../../../supabase/functions/code-compliance/requirements.ts";
 
 export const CODE_EXTENSIONS = [
   ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".py", ".java", ".kt", ".kts", ".swift", ".go", ".rb", ".php", ".cs",
@@ -124,6 +125,8 @@ export async function collectDropped(items: DataTransferItemList): Promise<File[
 export interface LocalScan {
   rulesVersion: string;
   findings: Finding[];
+  /** Prove delle analisi strutturali (consenso, rotte): il server ricostruisce da qui gli esiti SEC-16. */
+  evidence: ScanEvidence;
   inferred: InferredContext;
   excerpts: Excerpt[];
   inventory: Array<{ name: string; lines: number; chars: number; sha256: string }>;
@@ -138,7 +141,7 @@ async function sha256(text: string): Promise<string> {
 /** Regole, contesto dedotto, estratti e inventario, tutto nel browser. */
 export async function runLocalScan(files: InputFile[], onProgress?: (step: string) => void): Promise<LocalScan> {
   onProgress?.("regole");
-  const { findings, masks } = scan(files);
+  const { findings, masks, evidence } = scan(files);
   onProgress?.("contesto");
   const inferred = inferContext(files);
   onProgress?.("estratti");
@@ -146,5 +149,5 @@ export async function runLocalScan(files: InputFile[], onProgress?: (step: strin
   onProgress?.("impronte");
   const inventory: LocalScan["inventory"] = [];
   for (const f of files) inventory.push({ name: f.name, lines: f.content.split(/\r?\n/).length, chars: f.content.length, sha256: await sha256(f.content) });
-  return { rulesVersion: RULES_VERSION, findings, inferred, excerpts, inventory, stats: { files: files.length, chars: files.reduce((n, f) => n + f.content.length, 0) } };
+  return { rulesVersion: RULES_VERSION, findings, evidence, inferred, excerpts, inventory, stats: { files: files.length, chars: files.reduce((n, f) => n + f.content.length, 0) } };
 }

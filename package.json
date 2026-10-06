@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "check:edge": "node deployment/check-edge-syntax.mjs",
-    "test:backend": "node --experimental-strip-types --test deployment/ai.test.mjs deployment/embeddings.test.mjs deployment/access.test.mjs deployment/regulation-scope.test.mjs deployment/code-rules.test.mjs deployment/code-infer.test.mjs deployment/rag-facts.test.mjs",
+    "test:backend": "node --experimental-strip-types --test deployment/ai.test.mjs deployment/embeddings.test.mjs deployment/access.test.mjs deployment/regulation-scope.test.mjs deployment/code-rules.test.mjs deployment/code-infer.test.mjs deployment/code-secrets.test.mjs deployment/code-structure.test.mjs deployment/code-requirements.test.mjs deployment/rag-facts.test.mjs",
     "dev": "vite",
     "build": "vite build",
     "build:dev": "vite build --mode development",
