@@ -143,23 +143,27 @@ export default function CodeCheck() {
 
   const onFolderPicked = async (list: FileList | File[]) => {
     setReading("Lettura dei file");
+    setLocalScan(null);
     try {
       const col = await collectFiles(list, (n) => setReading(`Lettura dei file: ${n}`));
       await analyzeLocally(col);
     } catch (e) {
-      setReading(null);
       toast({ title: "Lettura non riuscita", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+    } finally {
+      setReading(null);
     }
   };
 
   const onZipPicked = async (file: File) => {
     setReading("Apertura dell'archivio");
+    setLocalScan(null);
     try {
       const col = await collectZip(file, (n) => setReading(`Apertura dell'archivio: ${n} voci`));
       await analyzeLocally(col);
     } catch (e) {
-      setReading(null);
       toast({ title: "Archivio non leggibile", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+    } finally {
+      setReading(null);
     }
   };
 
@@ -171,8 +175,16 @@ export default function CodeCheck() {
     if (zip && e.dataTransfer.files.length === 1) return onZipPicked(zip);
     if (items && items.length && items[0].webkitGetAsEntry) {
       setReading("Lettura della cartella");
-      const files = await collectDropped(items);
-      return onFolderPicked(files);
+      setLocalScan(null);
+      try {
+        const files = await collectDropped(items);
+        await onFolderPicked(files);
+      } catch (error) {
+        toast({ title: "Lettura non riuscita", description: error instanceof Error ? error.message : String(error), variant: "destructive" });
+      } finally {
+        setReading(null);
+      }
+      return;
     }
     return onFolderPicked(e.dataTransfer.files);
   };
@@ -369,9 +381,9 @@ export default function CodeCheck() {
                     <Button type="button" variant="outline" size="sm" onClick={() => zipInput.current?.click()} disabled={!!reading}><Upload className="mr-2 h-4 w-4" />Carica uno zip</Button>
                     <Button type="button" variant="ghost" size="sm" onClick={() => filesInput.current?.click()} disabled={!!reading}><FileCode className="mr-2 h-4 w-4" />File singoli</Button>
                   </div>
-                  <input ref={folderInput} type="file" multiple className="hidden" {...({ webkitdirectory: "", directory: "" } as Record<string, string>)} onChange={(e) => { if (e.target.files?.length) onFolderPicked(e.target.files); e.target.value = ""; }} />
+                  <input ref={folderInput} type="file" multiple className="hidden" {...({ webkitdirectory: "", directory: "" } as Record<string, string>)} onChange={(e) => { if (e.target.files?.length) onFolderPicked(Array.from(e.target.files)); e.target.value = ""; }} />
                   <input ref={zipInput} type="file" accept=".zip" className="hidden" onChange={(e) => { if (e.target.files?.[0]) onZipPicked(e.target.files[0]); e.target.value = ""; }} />
-                  <input ref={filesInput} type="file" multiple className="hidden" accept={CODE_EXTENSIONS.join(",")} onChange={(e) => { if (e.target.files?.length) onFolderPicked(e.target.files); e.target.value = ""; }} />
+                  <input ref={filesInput} type="file" multiple className="hidden" accept={CODE_EXTENSIONS.join(",")} onChange={(e) => { if (e.target.files?.length) onFolderPicked(Array.from(e.target.files)); e.target.value = ""; }} />
                 </div>
                 {reading && <p className="text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" />{reading}</p>}
                 {collected && !reading && (

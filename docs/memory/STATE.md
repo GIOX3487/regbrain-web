@@ -1,5 +1,16 @@
 # Stato condiviso di RegBrain
 
+## Verifica codice: caricamento cartelle (8 ottobre 2026)
+
+Proposta in questa PR: snapshot del FileList prima delle letture asincrone, per evitare che il
+reset del selettore lasci un solo file; gestione del termine della lettura anche su cartelle
+vuote o errori del trascinamento. Regressione riprodotta nel browser live (1 su 121 file).
+Correzione verificata localmente: 84 test, TypeScript, build e sintassi Edge superati.
+Il pulsante sul sito live ha prodotto referto AI e storico con sessione demo; il precedente
+errore di avvio del loader _code_bundle non si riproduce e i permessi risultavano già corretti.
+Non confondere questo collaudo del servizio con il rilascio del frontend: verificare il conteggio
+dopo il deploy. Dettagli in changes/2026-10-08-code-upload-filelist.md (CODE-01).
+
 Ultima ricognizione: 17 settembre 2026. Base applicativa verificata: `5bf7a8c3e970765423dda429cb124f185a393a39`. Questo documento distingue codice su main, proposte aperte e ambiente live non verificato.
 
 ## Già presente nel codice su main
