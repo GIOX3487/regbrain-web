@@ -45,9 +45,12 @@ const inIgnoredDir = (path: string) => path.split("/").slice(0, -1).some((seg) =
 
 /** Legge una lista di File (input con webkitdirectory, o file singoli) e tiene solo il codice. */
 export async function collectFiles(list: Iterable<File>, onProgress?: (done: number) => void): Promise<CollectResult> {
+  // FileList/DataTransfer sono liste vive: il reset dell'input o la fine dell'evento
+  // possono svuotarle durante il primo await. Conserva subito tutti i riferimenti.
+  const files = Array.from(list);
   const out: CollectResult = { files: [], skipped: { ignoredDirs: 0, binary: 0, tooLarge: 0, notCode: 0 }, chars: 0 };
   let done = 0;
-  for (const file of list) {
+  for (const file of files) {
     done++;
     if (onProgress && done % 50 === 0) onProgress(done);
     const rel = ((file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name).replace(/^\/+/, "");
