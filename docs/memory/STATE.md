@@ -16,8 +16,13 @@ dei rischi, DPIA e registro dalla verifica del codice, con le dichiarazioni marc
 Notebook `.ipynb` letti come codice; file saltati elencati con il motivo. RULES_VERSION
 2026-10-19.1: finché il deploy Supabase dai sorgenti non riesce, la pagina pubblicata darà
 «Verifica non riuscita» per versione diversa; il workflow ora ritenta anche su 401, 403, 429 e 5xx
-passeggeri dell'API. In produzione resta il caricatore provvisorio v9 da `_code_bundle`, da
-eliminare dopo il deploy verificato. Locale: 72 test, TypeScript, build, deno check e sintassi Edge
+passeggeri dell'API. Il run successivo all'integrazione (19 ottobre) ha però mostrato che il
+segreto SUPABASE_ACCESS_TOKEN non è più valido («Invalid access token» su ogni funzione): il deploy
+dai sorgenti è fermo finché un socio non rigenera il token; code-compliance e
+generate-audit-document sono pubblicate con il caricatore provvisorio da `_code_bundle`, riempita
+dal database scaricando i bundle cifrati in `public/bundles/` (registro
+2026-10-19-deploy-provvisorio-funzioni-token-invalido.md). Tabella e file vanno eliminati dopo
+il primo deploy riuscito dai sorgenti. Locale: 72 test, TypeScript, build, deno check e sintassi Edge
 superati. Collaudo in produzione da fare. Dettagli in
 changes/2026-10-19-verifica-codice-domande-mirate-e-documenti.md (CODE-01, OPS-01).
 
@@ -38,7 +43,7 @@ Ultima ricognizione: 17 settembre 2026. Base applicativa verificata: `5bf7a8c3e9
 
 - Gap analysis con cinque esiti: covered, partial, missing, to_verify e not_applicable; evidenze, severità, profilo, raccolta dell'applicabilità e lavorazione a batch riprendibili.
 - Catalogo completo con fallback integrato; i requisiti esclusi sono visibili e raggruppati per motivazione (commit base del 16 settembre).
-- Workflow di verifica sorgenti, distribuzione frontend e distribuzione Edge Functions. Il workflow Supabase attuale NON applica le migrazioni del database. Dal 23 settembre il deploy di ogni funzione viene ritentato fino a quattro volte quando ghcr.io risponde `toomanyrequests` (causa dei run rossi delle PR #48, #50 e #51 a codice corretto); dal 19 ottobre anche quando l'API di Supabase risponde con 401, 403, 429 o 5xx passeggeri (causa del run rosso del 6 ottobre su dieci funzioni).
+- Workflow di verifica sorgenti, distribuzione frontend e distribuzione Edge Functions. Il workflow Supabase attuale NON applica le migrazioni del database. Dal 23 settembre il deploy di ogni funzione viene ritentato fino a quattro volte quando ghcr.io risponde `toomanyrequests` (causa dei run rossi delle PR #48, #50 e #51 a codice corretto); dal 19 ottobre anche quando l'API di Supabase risponde con 401, 403, 429 o 5xx passeggeri. Attenzione: dal 19 ottobre il segreto SUPABASE_ACCESS_TOKEN risulta non valido e il workflow non pubblica nulla finché non viene rigenerato.
 
 Questa lista descrive il codice ispezionato; non certifica lo stato corrente del database o dell'ambiente di produzione.
 
