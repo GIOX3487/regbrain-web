@@ -15,6 +15,8 @@ export const CODE_EXTENSIONS = [
   ".tf", ".txt", ".md", ".erb", ".ejs", ".hbs", ".twig", ".cshtml", ".plist", ".env.example", ".graphql", ".prisma", ".proto",
 ];
 export const CODE_NAMES = ["Dockerfile", "Makefile", "Procfile", "Gemfile", ".htaccess", "nginx.conf", "Caddyfile", "LICENSE", "LICENCE", "COPYING"];
+/** Notebook Jupyter: si analizzano le celle di codice, nel linguaggio del kernel. */
+export const NOTEBOOK = /\.ipynb$/i;
 const IGNORED_DIRS = new Set([
   "node_modules", ".git", ".svn", ".hg", "dist", "build", "out", ".next", ".nuxt", ".output", ".svelte-kit", "vendor", "target", "bin", "obj",
   "coverage", "__pycache__", ".venv", "venv", "env", ".env", "Pods", "DerivedData", ".gradle", ".idea", ".vscode", ".terraform", ".cache",
@@ -30,12 +32,47 @@ export interface CollectResult {
   root?: string;
   files: InputFile[];
   skipped: { ignoredDirs: number; binary: number; tooLarge: number; notCode: number };
+  /** Primi nomi saltati per ogni motivo: così chi carica capisce cosa non è stato letto. */
+  skippedSamples: { ignoredDirs: string[]; binary: string[]; tooLarge: string[]; notCode: string[] };
   chars: number;
+}
+
+const SAMPLE_MAX = 8;
+function emptyResult(): CollectResult {
+  return { files: [], skipped: { ignoredDirs: 0, binary: 0, tooLarge: 0, notCode: 0 }, skippedSamples: { ignoredDirs: [], binary: [], tooLarge: [], notCode: [] }, chars: 0 };
+}
+function skip(out: CollectResult, kind: keyof CollectResult["skipped"], name: string) {
+  out.skipped[kind]++;
+  if (out.skippedSamples[kind].length < SAMPLE_MAX) out.skippedSamples[kind].push(name);
+}
+
+/**
+ * Celle di codice di un notebook, una dopo l'altra, con un commento che indica il numero
+ * della cella: le righe citate negli esiti si ritrovano così nel notebook. Testo e output
+ * non entrano. Restituisce null se il file non è un notebook leggibile.
+ */
+export function notebookToCode(name: string, text: string): InputFile | null {
+  try {
+    const nb = JSON.parse(text) as { cells?: Array<{ cell_type?: string; source?: string | string[] }>; metadata?: { kernelspec?: { language?: string }; language_info?: { name?: string } } };
+    if (!Array.isArray(nb.cells)) return null;
+    const lang = String(nb.metadata?.language_info?.name || nb.metadata?.kernelspec?.language || "python").toLowerCase();
+    const ext = /javascript|typescript|deno/.test(lang) ? ".js" : /^r$/.test(lang) ? ".r" : /julia/.test(lang) ? ".jl" : ".py";
+    const comment = ext === ".js" ? "//" : "#";
+    const parts: string[] = [];
+    nb.cells.forEach((c, i) => {
+      if (c.cell_type !== "code") return;
+      const src = Array.isArray(c.source) ? c.source.join("") : String(c.source || "");
+      if (!src.trim()) return;
+      parts.push(`${comment} [cella ${i + 1}]`, src.replace(/\n?$/, ""));
+    });
+    if (parts.length === 0) return null;
+    return { name: `${name}${ext}`, content: parts.join("\n") };
+  } catch { return null; }
 }
 
 export const isCodeFile = (name: string) => {
   const base = name.split("/").pop() || name;
-  if (CODE_NAMES.includes(base)) return true;
+  if (CODE_NAMES.includes(base) || NOTEBOOK.test(base)) return true;
   if (IGNORED_FILES.test(base)) return false;
   const lower = base.toLowerCase();
   return CODE_EXTENSIONS.some((ext) => lower.endsWith(ext));
@@ -48,7 +85,7 @@ export async function collectFiles(list: Iterable<File>, onProgress?: (done: num
   // FileList/DataTransfer sono liste vive: il reset dell'input o la fine dell'evento
   // possono svuotarle durante il primo await. Conserva subito tutti i riferimenti.
   const files = Array.from(list);
-  const out: CollectResult = { files: [], skipped: { ignoredDirs: 0, binary: 0, tooLarge: 0, notCode: 0 }, chars: 0 };
+  const out = emptyResult();
   let done = 0;
   for (const file of files) {
     done++;
@@ -57,15 +94,18 @@ export async function collectFiles(list: Iterable<File>, onProgress?: (done: num
     const parts = rel.split("/");
     if (parts.length > 1 && !out.root) out.root = parts[0];
     const path = parts.length > 1 ? parts.slice(1).join("/") : rel; // togli la cartella radice
-    if (inIgnoredDir(path)) { out.skipped.ignoredDirs++; continue; }
-    if (!isCodeFile(path)) { out.skipped.notCode++; continue; }
-    if (file.size > MAX_FILE_CHARS * 2) { out.skipped.tooLarge++; continue; }
-    const text = await file.text();
-    if (text.includes("\u0000")) { out.skipped.binary++; continue; }
-    if (text.length > MAX_FILE_CHARS) { out.skipped.tooLarge++; continue; }
+    if (inIgnoredDir(path)) { skip(out, "ignoredDirs", path); continue; }
+    if (!isCodeFile(path)) { skip(out, "notCode", path); continue; }
+    if (file.size > MAX_FILE_CHARS * 2) { skip(out, "tooLarge", path); continue; }
+    let text: string;
+    try { text = await file.text(); } catch { skip(out, "binary", path); continue; }
+    if (text.includes("\u0000")) { skip(out, "binary", path); continue; }
+    if (text.length > MAX_FILE_CHARS) { skip(out, "tooLarge", path); continue; }
     if (!text.trim()) continue;
-    out.files.push({ name: path, content: text });
-    out.chars += text.length;
+    const entry = NOTEBOOK.test(path) ? notebookToCode(path, text) : { name: path, content: text };
+    if (!entry) { skip(out, "notCode", path); continue; }
+    out.files.push(entry);
+    out.chars += entry.content.length;
     if (out.files.length >= MAX_FILES) break;
   }
   return out;
@@ -74,7 +114,7 @@ export async function collectFiles(list: Iterable<File>, onProgress?: (done: num
 /** Estrae un archivio zip (per esempio l'esportazione di GitHub) e tiene solo il codice. */
 export async function collectZip(file: File, onProgress?: (done: number) => void): Promise<CollectResult> {
   const zip = await JSZip.loadAsync(file);
-  const out: CollectResult = { files: [], skipped: { ignoredDirs: 0, binary: 0, tooLarge: 0, notCode: 0 }, chars: 0 };
+  const out = emptyResult();
   const entries = Object.values(zip.files).filter((e) => !e.dir);
   // GitHub mette tutto sotto una cartella "repo-main/": si toglie il primo segmento se è comune a tutti.
   const first = entries[0]?.name.split("/")[0];
@@ -85,14 +125,16 @@ export async function collectZip(file: File, onProgress?: (done: number) => void
     done++;
     if (onProgress && done % 50 === 0) onProgress(done);
     const path = common ? e.name.slice(first!.length + 1) : e.name;
-    if (inIgnoredDir(path)) { out.skipped.ignoredDirs++; continue; }
-    if (!isCodeFile(path)) { out.skipped.notCode++; continue; }
+    if (inIgnoredDir(path)) { skip(out, "ignoredDirs", path); continue; }
+    if (!isCodeFile(path)) { skip(out, "notCode", path); continue; }
     const text = await e.async("string");
-    if (text.includes("\u0000")) { out.skipped.binary++; continue; }
-    if (text.length > MAX_FILE_CHARS) { out.skipped.tooLarge++; continue; }
+    if (text.includes("\u0000")) { skip(out, "binary", path); continue; }
+    if (text.length > MAX_FILE_CHARS) { skip(out, "tooLarge", path); continue; }
     if (!text.trim()) continue;
-    out.files.push({ name: path, content: text });
-    out.chars += text.length;
+    const entry = NOTEBOOK.test(path) ? notebookToCode(path, text) : { name: path, content: text };
+    if (!entry) { skip(out, "notCode", path); continue; }
+    out.files.push(entry);
+    out.chars += entry.content.length;
     if (out.files.length >= MAX_FILES) break;
   }
   return out;

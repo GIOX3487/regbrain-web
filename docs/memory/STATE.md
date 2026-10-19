@@ -1,5 +1,26 @@
 # Stato condiviso di RegBrain
 
+## Verifica codice: domande mirate, affidabilità e documenti (19 ottobre 2026)
+
+Proposta in questa PR, dopo la segnalazione del socio (documenti non generabili, valutazione
+imprecisa, poche domande utili). Domande mirate nate dalle prove (`questions.ts`, condiviso fra
+browser e servizio): 22 domande con condizione che cita file e riga, risposte a scelta con «Non so»,
+effetti scritti sugli esiti (rischio e stato con motivazione, mai cancellazione) e sui requisiti
+(esito «dichiarato dall'utente»; la dichiarazione prevale sul codice solo per gateway, rete interna,
+valori di prova e gestore del consenso esterno, con la prova del codice conservata nella nota).
+Fino a 10 domande prima della verifica e 6 dopo, più quelle del modello, che non ripete le già poste.
+Affidabilità per esito (alta, media, bassa) da regola e occorrenza, un livello in meno nei file di
+test; ordinamento per rischio e affidabilità; sei esiti dei requisiti; PDF aggiornato.
+`generate-audit-document` accetta `source: "code_check"` e produce rapporto delle lacune, analisi
+dei rischi, DPIA e registro dalla verifica del codice, con le dichiarazioni marcate come tali.
+Notebook `.ipynb` letti come codice; file saltati elencati con il motivo. RULES_VERSION
+2026-10-19.1: finché il deploy Supabase dai sorgenti non riesce, la pagina pubblicata darà
+«Verifica non riuscita» per versione diversa; il workflow ora ritenta anche su 401, 403, 429 e 5xx
+passeggeri dell'API. In produzione resta il caricatore provvisorio v9 da `_code_bundle`, da
+eliminare dopo il deploy verificato. Locale: 72 test, TypeScript, build, deno check e sintassi Edge
+superati. Collaudo in produzione da fare. Dettagli in
+changes/2026-10-19-verifica-codice-domande-mirate-e-documenti.md (CODE-01, OPS-01).
+
 ## Verifica codice: caricamento cartelle (8 ottobre 2026)
 
 Proposta in questa PR: snapshot del FileList prima delle letture asincrone, per evitare che il
@@ -17,7 +38,7 @@ Ultima ricognizione: 17 settembre 2026. Base applicativa verificata: `5bf7a8c3e9
 
 - Gap analysis con cinque esiti: covered, partial, missing, to_verify e not_applicable; evidenze, severità, profilo, raccolta dell'applicabilità e lavorazione a batch riprendibili.
 - Catalogo completo con fallback integrato; i requisiti esclusi sono visibili e raggruppati per motivazione (commit base del 16 settembre).
-- Workflow di verifica sorgenti, distribuzione frontend e distribuzione Edge Functions. Il workflow Supabase attuale NON applica le migrazioni del database. Dal 23 settembre il deploy di ogni funzione viene ritentato fino a quattro volte quando ghcr.io risponde `toomanyrequests` (causa dei run rossi delle PR #48, #50 e #51 a codice corretto).
+- Workflow di verifica sorgenti, distribuzione frontend e distribuzione Edge Functions. Il workflow Supabase attuale NON applica le migrazioni del database. Dal 23 settembre il deploy di ogni funzione viene ritentato fino a quattro volte quando ghcr.io risponde `toomanyrequests` (causa dei run rossi delle PR #48, #50 e #51 a codice corretto); dal 19 ottobre anche quando l'API di Supabase risponde con 401, 403, 429 o 5xx passeggeri (causa del run rosso del 6 ottobre su dieci funzioni).
 
 Questa lista descrive il codice ispezionato; non certifica lo stato corrente del database o dell'ambiente di produzione.
 

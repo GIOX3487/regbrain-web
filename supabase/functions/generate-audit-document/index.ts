@@ -63,10 +63,13 @@ denoServe(protect(async (req) => {
 
     // ── PHASE 1: Create pending record and return immediately ──
     const fromChat = body.source === 'chat' && !assessmentId;
+    // Documento generato da una revisione del codice (code_checks): gli esiti con file e riga
+    // diventano gap, la copertura dei requisiti diventa l'elenco dei requisiti verificati.
+    const fromCodeCheck = body.source === 'code_check' && typeof body.codeCheckId === 'string' && !assessmentId;
     if (!['dpia', 'ropa', 'lia', 'gap_report', 'risk_analysis'].includes(String(documentType))) {
       throw new Error('Tipo di documento non supportato');
     }
-    console.log('Creating pending document:', documentType, fromChat ? 'from chat context' : `for assessment: ${assessmentId}`);
+    console.log('Creating pending document:', documentType, fromChat ? 'from chat context' : fromCodeCheck ? `from code check ${body.codeCheckId}` : `for assessment: ${assessmentId}`);
 
     const { data: profile } = await supabase
       .from('profiles')
@@ -83,6 +86,20 @@ denoServe(protect(async (req) => {
       if (!userDocumentsSummary && typeof body.chatContext?.attachedDocsSummary === 'string') {
         userDocumentsSummary = body.chatContext.attachedDocsSummary.substring(0, 40000);
       }
+    } else if (fromCodeCheck) {
+      // Il client usa il token dell'utente: la riga arriva solo se è sua (RLS su code_checks).
+      const { data: check } = await supabase
+        .from('code_checks')
+        .select('*')
+        .eq('id', body.codeCheckId)
+        .maybeSingle();
+      if (!check) {
+        throw new Error('Verifica del codice non trovata');
+      }
+      const built = buildAssessmentFromCodeCheck(check, profile);
+      assessment = built.assessment;
+      chatHistory = [];
+      if (!userDocumentsSummary) userDocumentsSummary = built.summary;
     } else {
       const { data: found } = await supabase
         .from('compliance_assessments')
@@ -95,19 +112,21 @@ denoServe(protect(async (req) => {
       assessment = found;
     }
 
+    const sourceLabel = fromChat ? 'chat' : fromCodeCheck ? 'code_check' : 'assessment';
     const { data: pendingDoc, error: pendingError } = await supabase
       .from('generated_documents')
       .insert({
         user_id: user.id,
-        assessment_id: fromChat ? null : assessmentId,
+        assessment_id: fromChat || fromCodeCheck ? null : assessmentId,
         document_type: documentType,
         title: getDefaultTitle(documentType, assessment, normalizedLanguage),
         content: { _status: 'generating', _started_at: new Date().toISOString() },
         metadata: {
           generated_at: new Date().toISOString(),
-          based_on_assessment: fromChat ? null : assessmentId,
-          source: fromChat ? 'chat' : 'assessment',
-          goal: fromChat ? assessment.title : undefined,
+          based_on_assessment: fromChat || fromCodeCheck ? null : assessmentId,
+          based_on_code_check: fromCodeCheck ? body.codeCheckId : undefined,
+          source: sourceLabel,
+          goal: fromChat || fromCodeCheck ? assessment.title : undefined,
           regulations: assessment.scope_regulations,
           mode: normalizedMode,
           status: 'generating',
@@ -133,8 +152,8 @@ denoServe(protect(async (req) => {
       body: JSON.stringify({
         _backgroundDocId: pendingDoc.id,
         documentType,
-        assessmentId: fromChat ? undefined : assessmentId,
-        source: fromChat ? 'chat' : undefined,
+        assessmentId: fromChat || fromCodeCheck ? undefined : assessmentId,
+        source: fromChat ? 'chat' : fromCodeCheck ? 'code_check' : undefined,
         conversationHistory: chatHistory,
         language: normalizedLanguage,
         mode: normalizedMode,
@@ -730,8 +749,9 @@ async function doGenerateDocument(supabase: any, params: {
         metadata: {
           generated_at: new Date().toISOString(),
           based_on_assessment: assessmentId || null,
-          source: assessment?._source === 'chat' ? 'chat' : 'assessment',
-          goal: assessment?._source === 'chat' ? assessment.title : undefined,
+          based_on_code_check: assessment?._source === 'code_check' ? assessment._code_check_id : undefined,
+          source: assessment?._source === 'chat' ? 'chat' : assessment?._source === 'code_check' ? 'code_check' : 'assessment',
+          goal: assessment?._source === 'chat' || assessment?._source === 'code_check' ? assessment.title : undefined,
           regulations: assessment.scope_regulations,
           mode: normalizedMode,
           status: 'completed',
@@ -895,6 +915,120 @@ function buildAssessmentFromChat(chatContext: any, profile: any): { assessment: 
       overall_risk_score: null,
     },
     history,
+  };
+}
+
+/**
+ * Da una verifica del codice (riga di code_checks) a un assessment per il generatore.
+ * Gli esiti del codice diventano gap con file e riga come evidenza; i requisiti della
+ * copertura diventano i requisiti verificati; le risposte alle domande mirate restano
+ * dichiarazioni dell'utente, segnate come tali. Il riassunto testuale va nel prompt come
+ * "documenti dell'utente", così il modello cita i punti precisi.
+ */
+function buildAssessmentFromCodeCheck(check: any, profile: any): { assessment: any; summary: string } {
+  const ctx = check?.context && typeof check.context === 'object' ? check.context : {};
+  const summaryObj = check?.summary && typeof check.summary === 'object' ? check.summary : {};
+  const findings: any[] = Array.isArray(check?.findings) ? check.findings : [];
+  const requirements: any[] = Array.isArray(summaryObj.requirements) ? summaryObj.requirements : [];
+  const files: any[] = Array.isArray(check?.files) ? check.files : [];
+  const answers: any[] = Array.isArray(ctx.answers) ? ctx.answers : [];
+  const list = (v: unknown) => (Array.isArray(v) ? v.map(String) : typeof v === 'string' && v ? [v] : []);
+  const LABEL: Record<string, string> = {
+    web: 'applicazione web', mobile: 'app mobile', backend: 'backend o API', desktop: 'software desktop', libreria: 'libreria',
+    pa: 'pubblica amministrazione', sanita: 'sanità', finanza: 'finanza e pagamenti', nis2: 'soggetto NIS2', cra: 'prodotto con elementi digitali (CRA)',
+    consumatori: 'consumatori', dipendenti: 'dipendenti', business: 'clienti business', minori: 'anche minori',
+  };
+  const lab = (v: string) => LABEL[v] || v;
+  const riskMap: Record<string, string> = { high: 'high', medium: 'medium', low: 'low' };
+  const priorityMap: Record<string, number> = { high: 1, medium: 2, low: 3 };
+  const effortMap: Record<string, string> = { high: 'medium', medium: 'low', low: 'low' };
+  const counted = findings.filter((f) => f && f.status !== 'possibile_falso_positivo');
+  const identified_gaps = counted.map((f) => ({
+    requirement_reference: `${f.ruleId || f.id} ${f.title}${Array.isArray(f.refs) && f.refs.length ? ` (fonti: ${f.refs.join(', ')})` : ''}`,
+    requirement_description: String(f.why || '').substring(0, 600),
+    gap_description: `${f.title}. ${String(f.why || '').substring(0, 400)}${f.adjustment ? ` Rettifica in base alle risposte dell'utente: ${String(f.adjustment).substring(0, 400)}` : ''}${f.status === 'da_verificare' ? ' Esito da verificare da una persona.' : ''}`,
+    current_state: `Rilevato nel codice in ${f.totalOccurrences || (f.occurrences || []).length} punti: ${(f.occurrences || []).slice(0, 4).map((o: any) => `${o.file}:${o.line}`).join(', ')}${f.aiNote ? `. Nota del modello: ${String(f.aiNote).substring(0, 300)}` : ''}`,
+    coverage_status: 'absent',
+    risk_level: riskMap[f.risk] || 'medium',
+    priority: priorityMap[f.risk] || 3,
+    remediation_effort: effortMap[f.risk] || 'low',
+    recommended_actions: [String(f.action || '').substring(0, 600)],
+    evidence: (f.occurrences || []).slice(0, 3).map((o: any) => ({ document: `${o.file}:${o.line}`, quote: String(o.snippet || '').substring(0, 160) })),
+  }));
+  const checks = requirements.map((r) => {
+    const status = r.outcome === 'esiti' ? 'gap' : r.outcome === 'non_valutabile' ? 'to_verify' : r.outcome === 'non_applicabile' ? 'not_applicable' : 'covered';
+    const basis = r.outcome === 'dichiarato' ? ' [dichiarato dall\'utente, non verificato nel codice]' : r.outcome === 'nessun_esito' ? ' [nessun esito dalle regole: assenza dei difetti noti, non prova di conformità]' : r.outcome === 'superato' ? ' [prova positiva nel codice]' : '';
+    return {
+      reference: `${r.id} ${r.title}`,
+      status,
+      assessment: `${String(r.note || '').substring(0, 400)}${basis}`,
+      evidence: (r.evidence || []).slice(0, 2).map((e: any) => ({ document: `${e.file}:${e.line}`, quote: String(e.snippet || e.note || '').substring(0, 160) })),
+    };
+  }).filter((c) => c.status !== 'gap');
+  // Un requisito con problemi dichiarati dall'utente (non da una regola) entra fra i gap.
+  for (const r of requirements) {
+    if (r.outcome !== 'esiti' || r.basis !== 'dichiarazione') continue;
+    identified_gaps.push({
+      requirement_reference: `${r.id} ${r.title}`,
+      requirement_description: String(r.what || '').substring(0, 600),
+      gap_description: `${String(r.note || '').substring(0, 500)} (per dichiarazione dell'utente, non rilevato nel codice)`,
+      current_state: 'Dichiarato dall\'utente in risposta a una domanda mirata.',
+      coverage_status: 'absent', risk_level: 'medium', priority: 2, remediation_effort: 'medium',
+      recommended_actions: [String(r.what || '').substring(0, 400)], evidence: [],
+    });
+  }
+  const applicable = requirements.filter((r) => r.outcome !== 'non_applicabile');
+  const positive = applicable.filter((r) => ['superato', 'nessun_esito', 'dichiarato'].includes(r.outcome)).length;
+  const compliance = applicable.length ? Math.round((positive / applicable.length) * 100) : null;
+  const languages = Object.entries((ctx.inferred && ctx.inferred.languages) || {}).sort((a: any, b: any) => b[1] - a[1]).slice(0, 5).map(([l, n]) => `${l} (${n})`).join(', ');
+  const frameworks: string[] = Array.isArray(ctx.inferred?.frameworks) ? ctx.inferred.frameworks : [];
+  const pii: string[] = Array.isArray(ctx.inferred?.personalData) ? ctx.inferred.personalData.map((d: any) => d.value) : [];
+  const ai: string[] = Array.isArray(ctx.inferred?.usesAI) ? ctx.inferred.usesAI.map((d: any) => d.value) : [];
+  const descriptionLines = [
+    `Revisione automatica del codice sorgente "${check.title}" del ${new Date(check.created_at).toLocaleDateString('it-IT')} (${files.length} file, regole ${check.rules_version || 'n.d.'}).`,
+    list(ctx.appTypes).length ? `Tipo di software: ${list(ctx.appTypes).map(lab).join(', ')}.` : '',
+    list(ctx.audiences).length ? `Utenti: ${list(ctx.audiences).map(lab).join(', ')}.` : '',
+    list(ctx.sectors).length ? `Settore o regime: ${list(ctx.sectors).map(lab).join(', ')}.` : '',
+    ctx.personalData ? `Dati personali trattati: ${ctx.personalData === 'si' ? 'sì' : ctx.personalData === 'no' ? 'no' : 'non noto'}.` : '',
+    pii.length ? `Dati personali riconosciuti nei modelli del codice: ${pii.join(', ')}.` : '',
+    ai.length ? `Servizi di intelligenza artificiale usati: ${ai.join(', ')}.` : '',
+    languages ? `Linguaggi: ${languages}${frameworks.length ? `; framework: ${frameworks.join(', ')}` : ''}.` : '',
+    ctx.notes ? `Note dell'utente: ${String(ctx.notes).substring(0, 600)}` : '',
+    answers.length ? `Dichiarazioni dell'utente (risposte alle domande mirate, non verificate nel codice):\n${answers.map((a: any) => `- ${String(a.q).substring(0, 200)} Risposta: ${String(a.a).substring(0, 300)}`).join('\n')}` : '',
+  ].filter(Boolean);
+  const summaryText = [
+    `### Esito della revisione del codice`,
+    String(summaryObj.text || '').substring(0, 2000),
+    `Profilo di rischio: ${String(check.overall_risk || 'n.d.')}. Problemi: ${check.counts?.high ?? 0} a rischio alto, ${check.counts?.medium ?? 0} medio, ${check.counts?.low ?? 0} basso.`,
+    `### Problemi rilevati nel codice (file:riga)`,
+    ...counted.slice(0, 40).map((f) => `- ${f.ruleId || f.id} ${f.title} [rischio ${f.risk}${f.confidence ? `, affidabilità ${f.confidence}` : ''}${f.status === 'da_verificare' ? ', da verificare' : ''}]: ${(f.occurrences || []).slice(0, 3).map((o: any) => `${o.file}:${o.line}`).join(', ')}. Azione: ${String(f.action || '').substring(0, 220)}`),
+    `### Copertura dei requisiti`,
+    ...requirements.map((r) => `- ${r.id} ${r.title}: ${r.outcome}${r.basis === 'dichiarazione' ? ' (dichiarato dall\'utente)' : ''}. ${String(r.note || '').substring(0, 200)}`),
+  ].join('\n').substring(0, 40000);
+  const sizeMap: Record<string, string> = {
+    micro: 'micro impresa (meno di 10 addetti)', small: 'piccola impresa (10-49 addetti)',
+    medium: 'media impresa (50-249 addetti)', large: 'grande impresa (250 addetti o più)',
+  };
+  return {
+    assessment: {
+      _source: 'code_check',
+      _code_check_id: check.id,
+      id: null,
+      title: `Verifica del codice: ${check.title}`,
+      description: descriptionLines.join('\n'),
+      scope_sector: list(ctx.sectors).map(lab).join(', ') || profile?.sector || 'Non specificato',
+      scope_jurisdiction: profile?.jurisdiction || 'IT',
+      scope_regulations: ['GDPR', 'EPRIVACY', 'CRA', 'AI_ACT', 'NIS2', 'EAA'],
+      company_size_label: sizeMap[profile?.company_size] || null,
+      data_role_label: null,
+      status: 'code_check',
+      completed_at: check.created_at,
+      identified_gaps,
+      requirement_checks: { checks, documents_analyzed: files.slice(0, 60).map((f: any) => f.name), unreadable_documents: [] },
+      overall_compliance_percentage: compliance,
+      overall_risk_score: check.overall_risk === 'high' ? 80 : check.overall_risk === 'medium' ? 50 : check.overall_risk === 'low' ? 25 : 10,
+    },
+    summary: summaryText,
   };
 }
 
@@ -2844,7 +2978,16 @@ REGOLE PER QUESTA ORIGINE:
 - Le informazioni fornite dall'utente (nella Descrizione sopra e nella conversazione sotto) sono FATTI ACCERTATI: usale per descrivere trattamento, finalità, categorie di dati e di interessati, strumenti, misure già in essere, criticità.
 - Le criticità o i dubbi emersi in conversazione vanno trattati come minacce e rischi nella valutazione, con misure "Da applicare".
 - Dove un'informazione manca davvero, usa il placeholder [DA COMPLETARE - descrizione del dato richiesto]: non inventare mai dati, non attribuire misure che l'utente non ha dichiarato.
-` : `## RISULTATI ASSESSMENT
+` : `${assessment._source === 'code_check' ? `## ORIGINE DELLE INFORMAZIONI
+Questo documento nasce da una revisione automatica del codice sorgente fatta con RegBrain, NON da un assessment documentale. Regole deterministiche e analisi strutturali hanno letto il codice; i gap sotto sono problemi trovati nel codice, con file e riga come evidenza.
+REGOLE PER QUESTA ORIGINE:
+- I gap con evidenza "file:riga" sono FATTI RILEVATI NEL CODICE: descrivili come tali, citando il file. Quelli segnati "da verificare" o "per dichiarazione dell'utente" vanno presentati con quella riserva.
+- I requisiti "documentati" con la nota "nessun esito dalle regole" indicano l'assenza dei difetti noti, NON una prova di conformità: non scrivere che il requisito è soddisfatto, scrivi che non sono emersi problemi dall'analisi automatica.
+- I requisiti "dichiarati dall'utente" si fondano su una dichiarazione, non su una verifica: riportali come dichiarazioni e indica cosa va allegato a supporto.
+- Dove manca un dato (titolare, finalità, basi giuridiche, misure organizzative), usa il placeholder [DA COMPLETARE - descrizione del dato richiesto]: non inventare mai.
+- La percentuale di conformità è la quota di requisiti applicabili senza problemi emersi dall'analisi automatica: presentala con questa definizione.
+
+` : ''}## RISULTATI ${assessment._source === 'code_check' ? 'DELLA REVISIONE DEL CODICE' : 'ASSESSMENT'}
 - Conformità documentale complessiva: ${assessment.overall_compliance_percentage || 0}%
 - Profilo di rischio complessivo: ${(assessment.identified_gaps || []).some((g: any) => ['critical', 'high'].includes(String(g.risk_level).toLowerCase())) ? 'ALTO' : (assessment.identified_gaps || []).some((g: any) => String(g.risk_level).toLowerCase() === 'medium') ? 'MEDIO' : (assessment.identified_gaps || []).length > 0 ? 'BASSO' : 'NESSUN RISCHIO RILEVATO'} (rosso = alto, arancione = medio, giallo = basso, verde = documentato)
 - Stato: ${assessment.status}

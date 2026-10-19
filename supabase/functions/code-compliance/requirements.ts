@@ -10,14 +10,19 @@
 // - nessun_esito: le regole hanno letto tutti i file e non hanno trovato i pattern che
 //   conoscono. Non è una prova di conformità: è l'assenza dei difetti noti;
 // - non_valutabile: richiede una verifica a video, dinamica o documentale, indicata;
+// - dichiarato: il codice non decide, ma l'utente ha risposto a una domanda mirata e ha
+//   dichiarato come stanno le cose (questions.ts). Non è una prova nel codice: il referto lo
+//   dice e indica cosa allegare. Una risposta può anche dare "esiti", con la nota "per
+//   dichiarazione dell'utente";
 // - non_applicabile: fuori dal contesto dichiarato o dedotto.
 
 import type { Ctx } from "./scan.ts";
 import { ctxList } from "./scan.ts";
 import type { Route } from "./routes.ts";
 import type { Evidence as Proof } from "./consent.ts";
+import { type Answer, declaredOutcomes } from "./questions.ts";
 
-export type ReqOutcome = "esiti" | "superato" | "nessun_esito" | "non_valutabile" | "non_applicabile";
+export type ReqOutcome = "esiti" | "superato" | "nessun_esito" | "non_valutabile" | "dichiarato" | "non_applicabile";
 export type ReqMethod = "regole" | "strutturale" | "manuale";
 
 /** Prove raccolte dall'analisi strutturale, oltre agli esiti delle regole. */
@@ -52,6 +57,8 @@ export interface RequirementResult {
   findings: string[];
   evidence: Proof[];
   note: string;
+  /** Su cosa si fonda l'esito: una prova nel codice oppure una dichiarazione dell'utente. */
+  basis: "codice" | "dichiarazione";
   /** Osservazione del modello sugli estratti, quando il requisito non è valutabile dalle regole. */
   aiObservation?: { text: string; file?: string; line?: number };
 }
@@ -184,20 +191,27 @@ function routesOutcome(ev: ScanEvidence): { outcome: ReqOutcome; note: string; e
   return { outcome: "esiti", note: `${bad} rotte su ${r.total} senza controllo di autorizzazione riconoscibile, di cui ${mutating} in scrittura. Le altre: ${r.protected} con controllo, ${r.publicByNature} pubbliche per natura.` };
 }
 
-/** Valuta ogni requisito nel contesto, con gli esiti delle regole e le prove strutturali. */
+/**
+ * Valuta ogni requisito nel contesto, con gli esiti delle regole, le prove strutturali e le
+ * risposte alle domande mirate. Il codice decide dove può; dove non può, decide la dichiarazione
+ * dell'utente, segnata come tale. Una dichiarazione sostituisce un esito del codice solo quando
+ * la domanda lo prevede in modo esplicito (per esempio un gateway che autentica fuori dal codice).
+ */
 export function assessRequirements(
   ctx: Ctx,
   findings: Array<{ id: string; ruleId: string | null; status: string }>,
   evidence: ScanEvidence,
   fileNames: string[],
+  answers: Answer[] = [],
 ): RequirementResult[] {
   const active = new Map<string, string[]>();
   for (const f of findings) {
     if (!f.ruleId || f.status === "possibile_falso_positivo") continue;
     active.set(f.ruleId, [...(active.get(f.ruleId) || []), f.id]);
   }
-  return REQUIREMENTS.map((r) => {
-    const base = { id: r.id, guideline: r.guideline, title: r.title, what: r.what, refs: r.refs, method: r.method };
+  const declared = declaredOutcomes(answers);
+  const fromCode = (r: Requirement): RequirementResult => {
+    const base = { id: r.id, guideline: r.guideline, title: r.title, what: r.what, refs: r.refs, method: r.method, basis: "codice" as const };
     const app = r.applies ? r.applies(ctx, fileNames) : true;
     if (app !== true) return { ...base, outcome: "non_applicabile" as const, findings: [], evidence: [], note: app };
     const hits = (r.rules || []).flatMap((id) => active.get(id) || []);
@@ -209,11 +223,25 @@ export function assessRequirements(
     if (hits.length) return { ...base, outcome: "esiti" as const, findings: hits, evidence: [], note: `Esiti collegati: ${[...new Set(hits)].join(", ")}.${r.manual ? " " + r.manual : ""}` };
     if (r.method === "manuale") return { ...base, outcome: "non_valutabile" as const, findings: [], evidence: [], note: r.manual || "Richiede una verifica a video o documentale." };
     return { ...base, outcome: "nessun_esito" as const, findings: [], evidence: [], note: `Le regole ${(r.rules || []).join(", ")} hanno letto tutti i file senza trovare i pattern noti.` };
+  };
+  return REQUIREMENTS.map((r) => {
+    const res = fromCode(r);
+    const d = declared.get(r.id);
+    if (!d || res.outcome === "non_applicabile") return res;
+    if (d.outcome === "esiti") {
+      // Un problema dichiarato si aggiunge a quello che il codice ha trovato, non lo sostituisce.
+      return { ...res, outcome: "esiti", basis: res.outcome === "esiti" ? "codice" : "dichiarazione", note: res.outcome === "esiti" ? `${res.note} ${d.note}` : d.note };
+    }
+    if (res.outcome === "non_valutabile" || res.outcome === "nessun_esito" || (res.outcome === "esiti" && d.override)) {
+      return { ...res, outcome: "dichiarato", basis: "dichiarazione", note: res.outcome === "esiti" ? `${d.note} Nel codice: ${res.note}` : d.note };
+    }
+    // Superato nel codice: la dichiarazione conferma e va in nota.
+    return { ...res, note: `${res.note} Dichiarazione dell'utente: ${d.note}` };
   });
 }
 
 export function summarizeRequirements(list: RequirementResult[]): Record<ReqOutcome, number> {
-  const out: Record<ReqOutcome, number> = { esiti: 0, superato: 0, nessun_esito: 0, non_valutabile: 0, non_applicabile: 0 };
+  const out: Record<ReqOutcome, number> = { esiti: 0, superato: 0, nessun_esito: 0, non_valutabile: 0, dichiarato: 0, non_applicabile: 0 };
   for (const r of list) out[r.outcome]++;
   return out;
 }
@@ -223,5 +251,6 @@ export const OUTCOME_LABEL: Record<ReqOutcome, string> = {
   superato: "Verificato: superato",
   nessun_esito: "Verificato dalle regole: nessun esito",
   non_valutabile: "Non valutabile dal codice",
+  dichiarato: "Dichiarato dall'utente, non verificabile dal codice",
   non_applicabile: "Non applicabile",
 };
