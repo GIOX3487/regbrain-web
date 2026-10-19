@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -14,15 +14,16 @@ import { MobileNav } from "@/components/MobileNav";
 import { RISK_STYLE } from "@/components/compliance/RiskScoreExplanation";
 import { cn } from "@/lib/utils";
 import {
-  ArrowLeft, Check, Code2, Download, FileCode, FolderOpen, Loader2, MessageSquare, RefreshCw, ShieldCheck, Trash2, Upload, X,
+  ArrowLeft, Check, Code2, Download, FileCode, FileText, FolderOpen, Loader2, MessageSquare, RefreshCw, ShieldCheck, Trash2, Upload, X,
 } from "lucide-react";
 import {
-  CATEGORY_TEXT, type CodeCheckResult, type CodeFinding, exportCodeCheckPdf, RISK_TEXT, STATUS_TEXT,
+  CATEGORY_TEXT, type CodeAnswer, type CodeCheckResult, type CodeFinding, type CodeQuestionView, CONFIDENCE_TEXT, exportCodeCheckPdf, RISK_TEXT, STATUS_TEXT,
 } from "@/lib/code-check-report";
 import {
   CODE_EXTENSIONS, collectDropped, collectFiles, collectZip, type CollectResult, type LocalScan, MAX_FILES, runLocalScan,
 } from "@/lib/code-check/local-scan";
 import type { InputFile } from "../../supabase/functions/code-compliance/scan.ts";
+import { buildQuestions, MAX_PRE_QUESTIONS, NON_SO } from "../../supabase/functions/code-compliance/questions.ts";
 
 type Context = { appTypes: string[]; personalData: string; sectors: string[]; usesAI: string; audiences: string[]; notes: string };
 const EMPTY_CONTEXT: Context = { appTypes: [], personalData: "", sectors: [], usesAI: "", audiences: [], notes: "" };
@@ -32,6 +33,18 @@ const SECTOR_OPTIONS = [["pa", "Pubblica amministrazione"], ["sanita", "Sanità"
 const AUDIENCE_OPTIONS = [["consumatori", "Consumatori"], ["dipendenti", "Dipendenti"], ["business", "Clienti business"], ["minori", "Anche minori"]] as const;
 
 interface HistoryRow { id: string; title: string; overall_risk: string; counts: CodeCheckResult["counts"]; created_at: string }
+
+/** Risposta a una domanda mirata: opzioni scelte più un dettaglio libero. */
+type AnswerDraft = { choices: string[]; text: string };
+const EMPTY_ANSWER: AnswerDraft = { choices: [], text: "" };
+
+/** Documenti che si possono generare da una verifica, con il generatore già usato dalla chat. */
+const DOCUMENT_TYPES = [
+  { type: "gap_report", label: "Gap report", description: "Elenco dei problemi trovati con file e riga, requisiti verificati, dichiarazioni e piano di correzione." },
+  { type: "risk_analysis", label: "Analisi dei rischi (art. 24 e 32)", description: "Minacce e misure a partire dagli esiti di sicurezza e protezione dei dati." },
+  { type: "dpia", label: "DPIA", description: "Valutazione d'impatto precompilata con dati, servizi esterni e rischi riconosciuti nel codice." },
+  { type: "ropa", label: "Registro dei trattamenti", description: "Trattamenti, categorie di dati e fornitori dedotti dal codice, da completare con titolare e finalità." },
+] as const;
 
 function riskKey(risk: string): "high" | "medium" | "low" | "none" {
   return risk === "high" || risk === "medium" || risk === "low" ? risk : "none";
@@ -66,6 +79,54 @@ function Chips({ options, value, onChange, detected }: { options: ReadonlyArray<
   );
 }
 
+/** Una domanda mirata con le risposte a scelta; "Dettagli" resta libero per precisare. */
+function QuestionBlock({ q, value, onChange, index }: { q: CodeQuestionView; value: AnswerDraft; onChange: (v: AnswerDraft) => void; index: number }) {
+  const pick = (opt: string) => {
+    if (q.kind === "multi") {
+      const on = value.choices.includes(opt);
+      // "Non so" esclude le altre scelte, e viceversa.
+      const next = on ? value.choices.filter((c) => c !== opt) : opt === NON_SO ? [opt] : [...value.choices.filter((c) => c !== NON_SO), opt];
+      onChange({ ...value, choices: next });
+    } else {
+      onChange({ ...value, choices: value.choices[0] === opt ? [] : [opt] });
+    }
+  };
+  return (
+    <div className="space-y-1.5 rounded-md border p-3">
+      <p className="text-sm font-medium leading-snug">{index + 1}. {q.text}</p>
+      <p className="text-xs text-muted-foreground">{q.why}{q.trigger ? <> · <span className="italic">Perché te lo chiedo: {q.trigger}</span></> : null}</p>
+      {q.options.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 pt-1">
+          {q.options.map((opt) => {
+            const on = value.choices.includes(opt);
+            return (
+              <button
+                key={opt}
+                type="button"
+                aria-pressed={on}
+                onClick={() => pick(opt)}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs text-left transition-colors",
+                  on ? "border-primary bg-primary/10 text-primary" : "border-muted-foreground/30 text-muted-foreground hover:border-primary/60",
+                )}
+              >
+                {on && <Check className="h-3 w-3 shrink-0" />}
+                {opt}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      <Input
+        className="h-8 text-xs"
+        placeholder={q.kind === "text" ? "Rispondi in una riga" : "Dettagli (facoltativi): nome del prodotto, dove è configurato, eccezioni"}
+        value={value.text}
+        onChange={(e) => onChange({ ...value, text: e.target.value.slice(0, 500) })}
+      />
+    </div>
+  );
+}
+
 export default function CodeCheck() {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -83,7 +144,8 @@ export default function CodeCheck() {
   const [touched, setTouched] = useState<Set<keyof Context>>(new Set());
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<CodeCheckResult | null>(null);
-  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [answers, setAnswers] = useState<Record<string, AnswerDraft>>({});
+  const [generating, setGenerating] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryRow[]>([]);
   const [lastInput, setLastInput] = useState<{ scan: LocalScan } | { files: InputFile[] } | null>(null);
   const folderInput = useRef<HTMLInputElement>(null);
@@ -126,6 +188,9 @@ export default function CodeCheck() {
   const analyzeLocally = async (col: CollectResult) => {
     setCollected(col);
     setLocalScan(null);
+    setAnswers({});
+    setResult(null);
+    setLastInput(null);
     if (col.files.length === 0) {
       toast({ title: "Nessun file di codice", description: "Nella cartella non ci sono file di testo riconosciuti come codice.", variant: "destructive" });
       return;
@@ -200,17 +265,44 @@ export default function CodeCheck() {
     return data as CodeCheckResult;
   };
 
-  const run = async (input: { scan: LocalScan } | { files: InputFile[] }, withAnswers?: Array<{ q: string; a: string }>) => {
+  // Domande mirate prima della verifica: nascono dagli esiti e dalle prove della scansione nel browser.
+  const preQuestions = useMemo<CodeQuestionView[]>(() => {
+    if (!localScan) return [];
+    const ctx = { ...context, personalData: context.personalData || (localScan.inferred.personalData.length ? "si" : ""), usesAI: context.usesAI || (localScan.inferred.usesAI.length ? "si" : "") };
+    return buildQuestions({ ctx, findings: localScan.findings, evidence: localScan.evidence, inferred: localScan.inferred, fileNames: localScan.inventory.map((f) => f.name) }).slice(0, MAX_PRE_QUESTIONS);
+  }, [localScan, context]);
+  const postQuestions: CodeQuestionView[] = result?.summary.questionsDetailed?.length
+    ? result.summary.questionsDetailed
+    : (result?.summary.questions || []).map((q, i) => ({ id: `ai-${i + 1}`, text: q, why: "", kind: "text" as const, options: [], affects: [], trigger: "", priority: 3, source: "ai" as const }));
+
+  /** Le risposte date, nel formato che la funzione applica: id, domanda e risposta in chiaro. */
+  const answerList = (questions: CodeQuestionView[]): CodeAnswer[] => {
+    const out: CodeAnswer[] = [];
+    const seen = new Set<string>();
+    for (const q of questions) {
+      const v = answers[q.id];
+      if (!v || seen.has(q.id)) continue;
+      const a = [...v.choices, v.text.trim()].filter(Boolean).join("; ");
+      if (!a) continue;
+      seen.add(q.id);
+      out.push({ id: q.id, q: q.text, a });
+    }
+    return out;
+  };
+  const answeredCount = (questions: CodeQuestionView[]) => answerList(questions).length;
+
+  const run = async (input: { scan: LocalScan } | { files: InputFile[] }) => {
     setRunning(true);
     try {
-      const ctx = { ...context, answers: withAnswers };
+      // Le risposte già salvate nella verifica precedente restano valide: si uniscono alle nuove.
+      const previous = (result?.summary.answers || []).filter((a) => !answers[a.id || ""]);
+      const ctx = { ...context, answers: [...previous, ...answerList([...preQuestions, ...postQuestions])] };
       const body = "scan" in input
         ? { title: title.trim() || undefined, context: ctx, scan: { rulesVersion: input.scan.rulesVersion, findings: input.scan.findings, evidence: input.scan.evidence, inferred: input.scan.inferred, excerpts: input.scan.excerpts, inventory: input.scan.inventory } }
         : { title: title.trim() || undefined, context: ctx, files: input.files };
       const data = await invoke(body);
       setResult(data);
       setLastInput(input);
-      setAnswers({});
       loadHistory();
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
     } catch (e) {
@@ -235,7 +327,6 @@ export default function CodeCheck() {
     if (error || !data) { toast({ title: "Verifica non trovata", variant: "destructive" }); return; }
     setResult(data as unknown as CodeCheckResult);
     setLastInput(null);
-    setAnswers({});
     setTimeout(() => resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
   };
 
@@ -248,11 +339,34 @@ export default function CodeCheck() {
 
   const rerunWithAnswers = () => {
     if (!result || !lastInput) return;
-    const list = result.summary.questions
-      .map((q, i) => ({ q, a: (answers[i] || "").trim() }))
-      .filter((x) => x.a);
-    if (list.length === 0) { toast({ title: "Nessuna risposta", description: "Rispondi ad almeno una domanda." }); return; }
-    run(lastInput, list);
+    if (answeredCount([...preQuestions, ...postQuestions]) === 0) { toast({ title: "Nessuna risposta", description: "Rispondi ad almeno una domanda." }); return; }
+    run(lastInput);
+  };
+
+  /** Genera un documento dal generatore già usato dalla chat, a partire dalla verifica salvata. */
+  const generateDocument = async (type: string, label: string) => {
+    if (!result?.id || generating) return;
+    setGenerating(type);
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-audit-document", {
+        body: { documentType: type, source: "code_check", codeCheckId: result.id, mode: "standard", language: "it" },
+      });
+      if (error) {
+        const details = error.context instanceof Response ? await error.context.clone().json().catch(() => null) : null;
+        throw new Error(details?.error || error.message);
+      }
+      if (data?.error) throw new Error(data.error);
+      const docId: string | undefined = data?.document?.id;
+      toast({
+        title: "Generazione avviata",
+        description: `${label} sarà pronto tra uno o due minuti nel generatore di documenti; i dati che il codice non dice sono segnati come [DA COMPLETARE].`,
+        action: <Button variant="outline" size="sm" onClick={() => navigate(`/compliance/documents${docId ? `?doc=${encodeURIComponent(docId)}` : ""}`)}>Apri</Button>,
+      });
+    } catch (e) {
+      toast({ title: "Generazione non riuscita", description: e instanceof Error ? e.message : "Riprova tra poco.", variant: "destructive" });
+    } finally {
+      setGenerating(null);
+    }
   };
 
   const askChat = (f: CodeFinding) => {
@@ -295,9 +409,10 @@ export default function CodeCheck() {
         <p className="text-sm sm:text-base text-muted-foreground mb-6">
           Revisione automatica dell'intera base di codice di un'applicazione, con riferimenti alle disposizioni applicabili e suggerimenti di correzione.
           Per ogni linea guida il referto elenca i requisiti verificati, con quale esito, e quelli che il codice da solo non permette di valutare: è una prima revisione
-          strutturata, non una certificazione di conformità. L'analisi viene eseguita nel browser: il codice sorgente resta sul computer dell'utente. Al servizio
+          strutturata, non una certificazione di conformità. Dove il codice non basta, il sistema fa domande mirate e usa le risposte per calibrare gli esiti, tenendo
+          distinto ciò che è verificato nel codice da ciò che è dichiarato. L'analisi viene eseguita nel browser: il codice sorgente resta sul computer dell'utente. Al servizio
           pervengono esclusivamente gli esiti, l'inventario dei file e gli estratti necessari alla revisione, dai quali credenziali, chiavi, token e password vengono
-          rimossi in automatico prima dell'invio.
+          rimossi in automatico prima dell'invio. Dal referto si generano gap report, analisi dei rischi, DPIA e registro dei trattamenti precompilati con le prove trovate.
         </p>
 
         <Card className="mb-6 border-primary/30 bg-primary/5">
@@ -331,18 +446,20 @@ export default function CodeCheck() {
             <div>
               <p className="font-semibold mb-1">Metodo</p>
               <p className="text-muted-foreground">
-                Tre livelli. Regole deterministiche, riga per riga e sul file intero, individuano le evidenze e ne classificano il rischio. Analisi strutturali seguono il comportamento fra le righe e fra i file:
-                se gli strumenti di tracciamento partono solo dopo un controllo del consenso (un commento o un TODO non contano come gestore del consenso) e se ogni rotta HTTP ha un controllo di autorizzazione
-                riconoscibile, sulla rotta, nei decoratori, nel corpo della funzione o in un middleware globale. Infine una revisione del modello, in più lotti paralleli per allargare la parte di codice letta,
-                commenta gli esiti, osserva i requisiti non valutabili dalle regole e formula le domande che restano. Il referto dichiara quali file il modello ha letto e quali no.
+                Quattro livelli. Regole deterministiche, riga per riga e sul file intero, individuano le evidenze e ne classificano rischio e affidabilità (alta per un pattern preciso, media per un'euristica, bassa per un indizio).
+                Analisi strutturali seguono il comportamento fra le righe e fra i file: se gli strumenti di tracciamento partono solo dopo un controllo del consenso (un commento o un TODO non contano come gestore del consenso)
+                e se ogni rotta HTTP ha un controllo di autorizzazione riconoscibile, sulla rotta, nei decoratori, nel corpo della funzione o in un middleware globale. Domande mirate, generate dalle prove trovate, chiedono
+                ciò che il codice non dice (un banner che blocca gli script, un gateway che autentica, una chiave reale o di prova, dove sono ospitati i dati): le risposte ricalibrano gli esiti con la motivazione scritta
+                e danno un esito "dichiarato" ai requisiti che il codice non può valutare. Infine una revisione del modello, in più lotti paralleli per allargare la parte di codice letta, commenta gli esiti alla luce delle
+                risposte, osserva i requisiti non valutabili dalle regole e formula le domande che restano. Il referto dichiara quali file il modello ha letto e quali no.
               </p>
             </div>
             <div>
               <p className="font-semibold mb-1">Cosa dice e cosa non dice il referto</p>
               <p className="text-muted-foreground">
-                Per ogni requisito applicabile il referto riporta uno di cinque esiti: problemi trovati; superato con prova positiva; nessun esito dalle regole (assenza dei difetti noti, non prova di conformità);
-                non valutabile dal codice, con l'indicazione di cosa verificare a video o sui documenti; non applicabile al contesto. Le regole riconoscono pattern noti e le analisi strutturali i framework più diffusi:
-                ciò che non riconoscono finisce fra i "da verificare", mai fra i "superati".
+                Per ogni requisito applicabile il referto riporta uno di sei esiti: problemi trovati; superato con prova positiva; nessun esito dalle regole (assenza dei difetti noti, non prova di conformità);
+                dichiarato dall'utente (una risposta alle domande mirate, segnata come dichiarazione e non come prova, con l'indicazione di cosa allegare); non valutabile dal codice, con l'indicazione di cosa verificare
+                a video o sui documenti; non applicabile al contesto. Le regole riconoscono pattern noti e le analisi strutturali i framework più diffusi: ciò che non riconoscono finisce fra i "da verificare", mai fra i "superati".
               </p>
             </div>
             <div>
@@ -393,6 +510,17 @@ export default function CodeCheck() {
                         <span className="text-muted-foreground"> · saltati: {collected.skipped.ignoredDirs} in cartelle escluse, {collected.skipped.notCode} non di codice, {collected.skipped.binary} binari, {collected.skipped.tooLarge} troppo grandi</span>
                       )}
                     </p>
+                    {collected.skippedSamples && (collected.skipped.notCode + collected.skipped.binary + collected.skipped.tooLarge > 0) && (
+                      <details className="text-xs text-muted-foreground">
+                        <summary className="cursor-pointer">Cosa è stato saltato e perché</summary>
+                        <div className="mt-1 space-y-1">
+                          {collected.skippedSamples.notCode.length > 0 && <p>Non di codice (documenti, immagini, dati): <span className="font-mono break-all">{collected.skippedSamples.notCode.join(", ")}{collected.skipped.notCode > collected.skippedSamples.notCode.length ? ", ..." : ""}</span></p>}
+                          {collected.skippedSamples.binary.length > 0 && <p>Binari: <span className="font-mono break-all">{collected.skippedSamples.binary.join(", ")}{collected.skipped.binary > collected.skippedSamples.binary.length ? ", ..." : ""}</span></p>}
+                          {collected.skippedSamples.tooLarge.length > 0 && <p>Troppo grandi: <span className="font-mono break-all">{collected.skippedSamples.tooLarge.join(", ")}{collected.skipped.tooLarge > collected.skippedSamples.tooLarge.length ? ", ..." : ""}</span></p>}
+                          <p>I notebook Jupyter (.ipynb) vengono letti nelle sole celle di codice. Documenti di testo, PDF e fogli di calcolo non sono codice: per valutarli usa la chat.</p>
+                        </div>
+                      </details>
+                    )}
                     {localScan && localCounts && (
                       <p className="text-muted-foreground">
                         Regole eseguite nel browser: {localScan.findings.length} tipi di problema ({localCounts.high} alti, {localCounts.medium} medi, {localCounts.low} bassi). Alla revisione andranno {localScan.excerpts.length} estratti per {localScan.excerpts.reduce((n, e) => n + e.text.length, 0).toLocaleString("it-IT")} caratteri.
@@ -471,6 +599,24 @@ export default function CodeCheck() {
           </CardContent>
         </Card>
 
+        {preQuestions.length > 0 && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="text-lg">3. Domande mirate</CardTitle>
+              <CardDescription>
+                Nascono da ciò che la scansione ha trovato: il codice non dice se un banner blocca davvero gli script, se le API stanno dietro un gateway, se una chiave è reale.
+                Le risposte ricalibrano gli esiti e danno un esito "dichiarato" ai requisiti che il codice non può valutare, con la motivazione scritta nel referto. Facoltative: "Non so" o nessuna risposta lasciano l'esito com'è.
+                {answeredCount(preQuestions) > 0 ? ` Risposte date: ${answeredCount(preQuestions)} su ${preQuestions.length}.` : ""}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {preQuestions.map((q, i) => (
+                <QuestionBlock key={q.id} q={q} index={i} value={answers[q.id] || EMPTY_ANSWER} onChange={(v) => setAnswers((a) => ({ ...a, [q.id]: v }))} />
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-10">
           <Button size="lg" disabled={running || !ready || !!reading} onClick={startVerification} className="min-h-[44px]">
             {running ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Revisione in corso, può richiedere un minuto</> : <><ShieldCheck className="mr-2 h-4 w-4" />Verifica il codice</>}
@@ -480,6 +626,7 @@ export default function CodeCheck() {
 
         {result && (
           <div ref={resultRef} className="scroll-mt-4 space-y-4 mb-10">
+            {/* Le domande mirate prima della verifica stanno in alto; qui sotto il referto. */}
             <Card className={`border ${RISK_STYLE[riskKey(result.overall_risk)].panel}`}>
               <CardHeader>
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -498,8 +645,41 @@ export default function CodeCheck() {
                 <p className="text-sm text-muted-foreground">{result.counts.high} alti, {result.counts.medium} medi, {result.counts.low} bassi{result.counts.possibleFalsePositives ? `, ${result.counts.possibleFalsePositives} possibili falsi positivi` : ""}</p>
                 <p className="text-sm leading-relaxed whitespace-pre-line">{result.summary.text}</p>
                 {!result.summary.aiUsed && <p className="text-xs text-muted-foreground">La revisione AI non era disponibile: gli esiti sono solo quelli delle regole.</p>}
+                {result.summary.answers && result.summary.answers.length > 0 && (
+                  <details className="text-xs text-muted-foreground">
+                    <summary className="cursor-pointer">Dichiarazioni dell'utente considerate ({result.summary.answers.length})</summary>
+                    <ul className="mt-1 space-y-1 list-disc pl-4">
+                      {result.summary.answers.map((a, i) => <li key={i}><span className="text-foreground">{a.q}</span> {a.a}</li>)}
+                    </ul>
+                  </details>
+                )}
               </CardContent>
             </Card>
+
+            {result.id && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2"><FileText className="h-5 w-5 text-primary" />Documenti da questa verifica</CardTitle>
+                  <CardDescription>
+                    Generati dal generatore di documenti di RegBrain a partire da esiti, prove (file e riga), copertura dei requisiti e dichiarazioni. I dati che il codice non dice (titolare, finalità, basi giuridiche)
+                    restano segnati come da completare: non vengono inventati. Ogni documento conta nel limite mensile dei documenti del piano.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="grid sm:grid-cols-2 gap-3">
+                  {DOCUMENT_TYPES.map((d) => (
+                    <div key={d.type} className="rounded-md border p-3 flex flex-col gap-2">
+                      <div>
+                        <p className="text-sm font-medium">{d.label}</p>
+                        <p className="text-xs text-muted-foreground">{d.description}</p>
+                      </div>
+                      <Button variant="outline" size="sm" className="self-start" disabled={!!generating} onClick={() => generateDocument(d.type, d.label)}>
+                        {generating === d.type ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileText className="mr-2 h-4 w-4" />}Genera
+                      </Button>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
 
             {result.summary.requirements && result.summary.requirements.length > 0 && (() => {
               const reqs = result.summary.requirements!;
@@ -510,10 +690,11 @@ export default function CodeCheck() {
                 superato: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-200",
                 nessun_esito: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200",
                 non_valutabile: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200",
+                dichiarato: "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-200",
                 non_applicabile: "bg-muted text-muted-foreground",
               };
               const OUT_TEXT: Record<string, string> = {
-                esiti: "Problemi trovati", superato: "Superato", nessun_esito: "Nessun esito dalle regole", non_valutabile: "Non valutabile dal codice", non_applicabile: "Non applicabile",
+                esiti: "Problemi trovati", superato: "Superato", nessun_esito: "Nessun esito dalle regole", non_valutabile: "Non valutabile dal codice", dichiarato: "Dichiarato dall'utente", non_applicabile: "Non applicabile",
               };
               const cov = result.summary.coverage;
               return (
@@ -521,7 +702,7 @@ export default function CodeCheck() {
                   <CardHeader>
                     <CardTitle className="text-lg">Copertura dei requisiti</CardTitle>
                     <CardDescription>
-                      {counts.esiti} con problemi · {counts.superato} superati · {counts.nessun_esito} senza esiti dalle regole · {counts.non_valutabile} non valutabili dal codice · {counts.non_applicabile} non applicabili al contesto.
+                      {counts.esiti ?? 0} con problemi · {counts.superato ?? 0} superati · {counts.nessun_esito ?? 0} senza esiti dalle regole{counts.dichiarato ? ` · ${counts.dichiarato} dichiarati dall'utente` : ""} · {counts.non_valutabile ?? 0} non valutabili dal codice · {counts.non_applicabile ?? 0} non applicabili al contesto.
                       {cov && <> Regole e analisi strutturali eseguite su {cov.rulesFiles} file; il modello ha letto {cov.aiFiles} file ({cov.aiChars.toLocaleString("it-IT")} caratteri{cov.aiBatches > 1 ? `, ${cov.aiBatches} lotti` : ""}){cov.filesNotReviewedByAi > 0 ? `, non ha letto ${cov.filesNotReviewedByAi} file` : ""}.</>}
                     </CardDescription>
                   </CardHeader>
@@ -534,7 +715,7 @@ export default function CodeCheck() {
                             <div key={r.id} className="p-3 text-sm space-y-1">
                               <div className="flex flex-wrap items-start justify-between gap-2">
                                 <span className="font-medium">{r.title} <span className="text-xs text-muted-foreground font-normal">{r.id}</span></span>
-                                <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${OUT_STYLE[r.outcome]}`}>{OUT_TEXT[r.outcome]}</span>
+                                <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${OUT_STYLE[r.outcome] || OUT_STYLE.non_applicabile}`}>{OUT_TEXT[r.outcome] || r.outcome}{r.basis === "dichiarazione" && r.outcome === "esiti" ? " (per dichiarazione)" : ""}</span>
                               </div>
                               <p className="text-xs text-muted-foreground">{r.what}</p>
                               <p className="text-xs">{r.note}</p>
@@ -570,12 +751,14 @@ export default function CodeCheck() {
                       <Badge variant="outline" className={style.badge}>Rischio {RISK_TEXT[f.risk].toLowerCase()}</Badge>
                       <Badge variant="secondary">{CATEGORY_TEXT[f.category] || f.category}</Badge>
                       <Badge variant="outline">{STATUS_TEXT[f.status]}</Badge>
+                      {f.confidence && <Badge variant="outline" title="Quanto è preciso il riconoscimento della regola: alta per un pattern preciso, media per un'euristica, bassa per un indizio da confermare" className={f.confidence === "alta" ? "" : f.confidence === "media" ? "border-amber-400 text-amber-700 dark:text-amber-300" : "border-slate-400 text-slate-600 dark:text-slate-300"}>{CONFIDENCE_TEXT[f.confidence]}</Badge>}
                       {f.ruleId && <span className="text-xs text-muted-foreground">Regola {f.ruleId}</span>}
                     </div>
                     <CardTitle className="text-base">{f.title}</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3 text-sm">
                     <p><span className="font-medium">Perché conta: </span>{f.why}</p>
+                    {f.adjustment && <p className="rounded-md border border-blue-200 bg-blue-50 p-2 text-blue-900 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-100"><span className="font-medium">In base alle tue risposte: </span>{f.adjustment}</p>}
                     {f.aiNote && <p><span className="font-medium">Nel tuo codice: </span>{f.aiNote}</p>}
                     <p className="rounded-md bg-muted/50 p-3"><span className="font-medium">Azione suggerita: </span>{f.action}</p>
                     <div>
@@ -616,18 +799,17 @@ export default function CodeCheck() {
               <Card><CardContent className="pt-6 text-sm">Nessun problema rilevato dalle regole e dalle analisi strutturali. Non è una certificazione di conformità: la copertura dei requisiti qui sopra dice cosa resta da verificare a mano.</CardContent></Card>
             )}
 
-            {result.summary.questions.length > 0 && (
+            {postQuestions.length > 0 && (
               <Card>
                 <CardHeader>
                   <CardTitle className="text-lg">Domande per completare la revisione</CardTitle>
-                  <CardDescription>Rispondi e rilancia: la revisione terrà conto delle risposte{lastInput ? "" : ". Per rilanciare una verifica dallo storico ricarica prima il codice"}.</CardDescription>
+                  <CardDescription>
+                    Prima le domande mirate rimaste senza risposta, poi quelle del modello sui punti che ha letto. Rispondi e rilancia: gli esiti vengono ricalibrati e i requisiti dichiarati cambiano esito{lastInput ? "" : ". Per rilanciare una verifica dallo storico ricarica prima il codice"}.
+                  </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  {result.summary.questions.map((q, i) => (
-                    <div key={i} className="space-y-1.5">
-                      <Label className="text-sm font-normal leading-snug">{i + 1}. {q}</Label>
-                      <Textarea rows={2} value={answers[i] || ""} onChange={(e) => setAnswers((a) => ({ ...a, [i]: e.target.value.slice(0, 600) }))} />
-                    </div>
+                <CardContent className="space-y-3">
+                  {postQuestions.map((q, i) => (
+                    <QuestionBlock key={q.id} q={q} index={i} value={answers[q.id] || EMPTY_ANSWER} onChange={(v) => setAnswers((a) => ({ ...a, [q.id]: v }))} />
                   ))}
                   <Button onClick={rerunWithAnswers} disabled={running || !lastInput}>
                     {running ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}Aggiorna la verifica con le risposte

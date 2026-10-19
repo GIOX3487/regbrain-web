@@ -18,21 +18,32 @@ export interface CodeFinding {
   refs: string[];
   status: "confermato" | "da_verificare" | "possibile_falso_positivo";
   aiNote?: string;
+  /** Affidabilità del riconoscimento; assente nelle verifiche salvate prima del 19 ottobre 2026. */
+  confidence?: CodeConfidence;
+  /** Rettifica applicata in base alle risposte dell'utente, con la motivazione. */
+  adjustment?: string;
 }
+export type CodeConfidence = "alta" | "media" | "bassa";
 export interface CodeSource { id: string; citation: string; regulation: string; chunkKey: string; text: string }
-export type ReqOutcome = "esiti" | "superato" | "nessun_esito" | "non_valutabile" | "non_applicabile";
+export type ReqOutcome = "esiti" | "superato" | "nessun_esito" | "non_valutabile" | "dichiarato" | "non_applicabile";
 export interface CodeRequirement {
   id: string; guideline: string; title: string; what: string; refs: string[]; method: "regole" | "strutturale" | "manuale";
   outcome: ReqOutcome; findings: string[]; evidence: Array<{ file: string; line: number; snippet: string; note?: string }>; note: string;
+  basis?: "codice" | "dichiarazione";
   aiObservation?: { text: string; file?: string; line?: number };
 }
+export interface CodeQuestionView {
+  id: string; text: string; why: string; kind: "single" | "multi" | "text"; options: string[]; affects: string[]; trigger: string; priority: number; source: "regole" | "ai";
+}
+export interface CodeAnswer { id?: string; q: string; a: string }
 export interface CodeCoverage {
   rulesFiles: number; aiFiles: number; aiChars: number; aiBatches: number; aiBatchesFailed: number;
   filesNotReviewedByAi: number; filesNotReviewedByAiSample: string[];
 }
 export const OUTCOME_TEXT: Record<ReqOutcome, string> = {
-  esiti: "Problemi trovati", superato: "Superato", nessun_esito: "Nessun esito dalle regole", non_valutabile: "Non valutabile dal codice", non_applicabile: "Non applicabile",
+  esiti: "Problemi trovati", superato: "Superato", nessun_esito: "Nessun esito dalle regole", non_valutabile: "Non valutabile dal codice", dichiarato: "Dichiarato dall'utente", non_applicabile: "Non applicabile",
 };
+export const CONFIDENCE_TEXT: Record<CodeConfidence, string> = { alta: "Affidabilità alta", media: "Affidabilità media", bassa: "Affidabilità bassa" };
 export interface CodeCheckResult {
   id: string | null;
   created_at: string;
@@ -42,7 +53,11 @@ export interface CodeCheckResult {
   findings: CodeFinding[];
   summary: {
     text: string; questions: string[]; sources: CodeSource[]; aiUsed: boolean; scanMode?: "funzione" | "browser"; excerptChars?: number;
-    requirements?: CodeRequirement[]; requirementCounts?: Record<ReqOutcome, number>; coverage?: CodeCoverage;
+    requirements?: CodeRequirement[]; requirementCounts?: Partial<Record<ReqOutcome, number>>; coverage?: CodeCoverage;
+    /** Domande rimaste con opzioni di risposta; `questions` resta per le verifiche più vecchie. */
+    questionsDetailed?: CodeQuestionView[];
+    answers?: CodeAnswer[];
+    adjustedFindings?: number;
   };
   overall_risk: CodeRisk | "none";
   counts: { high: number; medium: number; low: number; possibleFalsePositives: number; aiOnly: number };
@@ -141,6 +156,14 @@ export function exportCodeCheckPdf(result: CodeCheckResult) {
     y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
   }
 
+  const answers = result.summary.answers || [];
+  if (answers.length) {
+    heading("Dichiarazioni dell'utente");
+    para("Risposte alle domande mirate. Sono dichiarazioni, non prove nel codice: il referto le usa per calibrare gli esiti e lo dice ogni volta.", 9, "italic", [90, 90, 90]);
+    autoTable(doc, { startY: y, head: [["Domanda", "Risposta"]], body: answers.map((a) => [pdfText(a.q), pdfText(a.a)]), margin: { left: M, right: M }, styles: { fontSize: 8.5, valign: "top" }, headStyles: { fillColor: [20, 60, 120] }, columnStyles: { 0: { cellWidth: width * 0.55 } } });
+    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 4;
+  }
+
   heading(`File analizzati (${result.files.length})`);
   const MAX_ROWS = 150;
   if (result.files.length > MAX_ROWS) para(`Elenco limitato ai primi ${MAX_ROWS} file; l'inventario completo con le impronte resta nella verifica salvata.`, 8.5, "italic", [90, 90, 90]);
@@ -156,9 +179,9 @@ export function exportCodeCheckPdf(result: CodeCheckResult) {
     const c = result.summary.requirementCounts;
     const cov = result.summary.coverage;
     heading("Copertura dei requisiti");
-    if (c) para(`${c.esiti} requisiti con problemi, ${c.superato} superati con prova positiva, ${c.nessun_esito} senza esiti dalle regole, ${c.non_valutabile} non valutabili dal codice, ${c.non_applicabile} non applicabili al contesto.`);
+    if (c) para(`${c.esiti ?? 0} requisiti con problemi, ${c.superato ?? 0} superati con prova positiva, ${c.nessun_esito ?? 0} senza esiti dalle regole, ${c.dichiarato ?? 0} dichiarati dall'utente, ${c.non_valutabile ?? 0} non valutabili dal codice, ${c.non_applicabile ?? 0} non applicabili al contesto.`);
     if (cov) para(`Regole e analisi strutturali eseguite su ${cov.rulesFiles} file. Il modello ha letto ${cov.aiFiles} file (${cov.aiChars.toLocaleString("it-IT")} caratteri${cov.aiBatches > 1 ? `, ${cov.aiBatches} lotti` : ""})${cov.filesNotReviewedByAi > 0 ? `; ${cov.filesNotReviewedByAi} file sono stati letti solo dalle regole` : ""}.`, 9, "normal", [70, 70, 70]);
-    const OUT_RGB: Record<string, [number, number, number]> = { esiti: [185, 28, 28], superato: [21, 128, 61], nessun_esito: [71, 85, 105], non_valutabile: [180, 83, 9], non_applicabile: [140, 140, 140] };
+    const OUT_RGB: Record<string, [number, number, number]> = { esiti: [185, 28, 28], superato: [21, 128, 61], nessun_esito: [71, 85, 105], non_valutabile: [180, 83, 9], dichiarato: [29, 78, 216], non_applicabile: [140, 140, 140] };
     for (const g of [...new Set(reqs.map((r) => r.guideline))]) {
       space(16);
       para(g, 10.5, "bold", [20, 60, 120], 5.5);
@@ -166,7 +189,7 @@ export function exportCodeCheckPdf(result: CodeCheckResult) {
         startY: y, head: [["Requisito", "Esito", "Metodo", "Note ed evidenze"]],
         body: reqs.filter((r) => r.guideline === g).map((r) => [
           pdfText(`${r.title} (${r.id})\n${r.what}`),
-          OUTCOME_TEXT[r.outcome],
+          `${OUTCOME_TEXT[r.outcome] || r.outcome}${r.basis === "dichiarazione" && r.outcome === "esiti" ? " (per dichiarazione)" : ""}`,
           r.method === "regole" ? "Regole" : r.method === "strutturale" ? "Analisi strutturale" : "Verifica manuale",
           pdfText([r.note, ...r.evidence.slice(0, 3).map((e) => `${e.file}:${e.line}${e.note ? " (" + e.note + ")" : ""}`), r.aiObservation ? `Osservazione del modello (da verificare): ${r.aiObservation.text}${r.aiObservation.file ? ` (${r.aiObservation.file}:${r.aiObservation.line})` : ""}` : ""].filter(Boolean).join("\n")),
         ]),
@@ -183,8 +206,8 @@ export function exportCodeCheckPdf(result: CodeCheckResult) {
     para("Nessun problema rilevato dalle regole e dalle analisi strutturali. Questo non certifica la conformità del software.");
   } else {
     autoTable(doc, {
-      startY: y, head: [["#", "Problema", "Area", "Rischio", "Esito"]],
-      body: result.findings.map((f, i) => [String(i + 1), pdfText(f.title), CATEGORY_TEXT[f.category] || f.category, RISK_TEXT[f.risk], STATUS_TEXT[f.status]]),
+      startY: y, head: [["#", "Problema", "Area", "Rischio", "Affidabilità", "Esito"]],
+      body: result.findings.map((f, i) => [String(i + 1), pdfText(f.title), CATEGORY_TEXT[f.category] || f.category, RISK_TEXT[f.risk], f.confidence ? f.confidence : "-", STATUS_TEXT[f.status]]),
       margin: { left: M, right: M }, styles: { fontSize: 8.5 }, headStyles: { fillColor: [20, 60, 120] },
       didParseCell: (data) => {
         if (data.section === "body" && data.column.index === 3) {
@@ -200,8 +223,9 @@ export function exportCodeCheckPdf(result: CodeCheckResult) {
   const sources = new Map(result.summary.sources.map((s) => [s.id, s]));
   result.findings.forEach((f, i) => {
     heading(`${i + 1}. ${f.title}`);
-    para(`Rischio ${RISK_TEXT[f.risk].toLowerCase()}  |  ${CATEGORY_TEXT[f.category] || f.category}  |  ${STATUS_TEXT[f.status]}${f.ruleId ? `  |  Regola ${f.ruleId}` : ""}`, 9, "bold", RISK_RGB[f.risk]);
+    para(`Rischio ${RISK_TEXT[f.risk].toLowerCase()}  |  ${CATEGORY_TEXT[f.category] || f.category}  |  ${STATUS_TEXT[f.status]}${f.confidence ? `  |  ${CONFIDENCE_TEXT[f.confidence].toLowerCase()}` : ""}${f.ruleId ? `  |  Regola ${f.ruleId}` : ""}`, 9, "bold", RISK_RGB[f.risk]);
     para(`Perché conta: ${f.why}`);
+    if (f.adjustment) para(`In base alle risposte dell'utente: ${f.adjustment}`, 10, "italic", [29, 78, 216]);
     if (f.aiNote) para(`Nel tuo codice: ${f.aiNote}`);
     para(`Azione suggerita: ${f.action}`, 10, "bold");
     y += 1;
@@ -217,9 +241,13 @@ export function exportCodeCheckPdf(result: CodeCheckResult) {
     }
   });
 
-  if (result.summary.questions.length) {
+  const open = result.summary.questionsDetailed?.length ? result.summary.questionsDetailed : result.summary.questions.map((q) => ({ text: q, why: "", options: [] as string[] }));
+  if (open.length) {
     heading("Domande per completare la revisione");
-    result.summary.questions.forEach((q, i) => para(`${i + 1}. ${q}`));
+    open.forEach((q, i) => {
+      para(`${i + 1}. ${q.text}`);
+      if (q.why) para(`   ${q.why}${q.options.length ? ` Risposte possibili: ${q.options.join(" / ")}.` : ""}`, 8.5, "italic", [90, 90, 90], 4.2);
+    });
   }
 
   if (result.summary.sources.length) {
@@ -232,7 +260,7 @@ export function exportCodeCheckPdf(result: CodeCheckResult) {
   }
 
   heading("Limiti della revisione");
-  para("Le regole riconoscono schemi noti; le analisi strutturali seguono consenso e autorizzazioni fra le righe e fra i file per i framework più diffusi; il modello legge estratti, non l'intera base di codice, e il referto dichiara quali file ha letto. Nessuno dei tre vede la configurazione dei server, i flussi dei dati fuori dal codice, i contratti con i fornitori né le scelte organizzative. Gli esiti segnati \"Da verificare\" e le osservazioni del modello vanno controllati da una persona. Questo report aiuta a trovare e correggere problemi e documenta cosa è stato verificato; non è una certificazione di conformità e va firmato da chi ne è responsabile.", 9, "normal", [70, 70, 70]);
+  para("Le regole riconoscono schemi noti; le analisi strutturali seguono consenso e autorizzazioni fra le righe e fra i file per i framework più diffusi; il modello legge estratti, non l'intera base di codice, e il referto dichiara quali file ha letto. Nessuno dei tre vede la configurazione dei server, i flussi dei dati fuori dal codice, i contratti con i fornitori né le scelte organizzative: per questo il referto fa domande mirate, e le risposte sono dichiarazioni dell'utente, segnate come tali, non prove. L'affidabilità indicata per ogni esito dice quanto la regola è precisa: con affidabilità media o bassa l'esito va letto come un indizio da confermare. Gli esiti segnati \"Da verificare\" e le osservazioni del modello vanno controllati da una persona. Questo report aiuta a trovare e correggere problemi e documenta cosa è stato verificato; non è una certificazione di conformità e va firmato da chi ne è responsabile.", 9, "normal", [70, 70, 70]);
 
   const pages = doc.getNumberOfPages();
   for (let p = 1; p <= pages; p++) {

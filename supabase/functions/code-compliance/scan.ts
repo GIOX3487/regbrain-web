@@ -1,5 +1,5 @@
 // Scansione deterministica: applica le regole riga per riga e raggruppa gli esiti per regola.
-import { FILE_RULES, isCommentLine, type Risk, RULES, TEST_FILE, TEXT_FILE } from "./rules.ts";
+import { type Confidence, FILE_RULES, isCommentLine, type Risk, RULES, TEST_FILE, TEXT_FILE } from "./rules.ts";
 import { redactLine } from "./secrets.ts";
 import { consentManagerEvidence, type Evidence } from "./consent.ts";
 import { analyzeRoutes, unprotectedRoutes } from "./routes.ts";
@@ -16,6 +16,22 @@ export interface Finding {
   id: string; ruleId: string | null; source: "regola" | "ai"; title: string; category: string; risk: Risk;
   why: string; action: string; occurrences: Occurrence[]; totalOccurrences: number;
   refs: string[]; status: "confermato" | "da_verificare" | "possibile_falso_positivo"; aiNote?: string;
+  /**
+   * Affidabilità del riconoscimento: alta (pattern preciso), media (euristica), bassa (indizio).
+   * Scende di un gradino quando tutte le occorrenze stanno in file di prova o di esempio.
+   */
+  confidence: Confidence;
+  /** Rettifica applicata in base alle risposte dell'utente, con la motivazione (questions.ts). */
+  adjustment?: string;
+}
+
+export const CONFIDENCE_ORDER: Record<Confidence, number> = { alta: 3, media: 2, bassa: 1 };
+export const CONFIDENCE_LABEL: Record<Confidence, string> = { alta: "alta", media: "media", bassa: "bassa" };
+const LOWER_CONFIDENCE: Record<Confidence, Confidence> = { alta: "media", media: "bassa", bassa: "bassa" };
+
+/** Più alta fra due affidabilità: l'esito vale quanto la sua occorrenza più sicura. */
+function raise(a: Confidence, b: Confidence): Confidence {
+  return CONFIDENCE_ORDER[b] > CONFIDENCE_ORDER[a] ? b : a;
 }
 export interface Source { id: string; citation: string; regulation: string; chunkKey: string; text: string }
 
@@ -27,7 +43,8 @@ export type Ctx = {
   appTypes?: string[]; sectors?: string[]; audiences?: string[];
   appType?: string; sector?: string; audience?: string;
   personalData?: string; usesAI?: string; notes?: string;
-  answers?: Array<{ q: string; a: string }>;
+  /** Risposte alle domande mirate (questions.ts); l'id lega la risposta ai suoi effetti. */
+  answers?: Array<{ id?: string; q: string; a: string }>;
   /** Cosa il codice dice da solo, con le prove: riempito dal browser o dalla funzione. */
   inferred?: unknown;
 };
@@ -90,15 +107,17 @@ export function scan(files: InputFile[]): { findings: Finding[]; masks: RegExp[]
         if (!finding) {
           finding = {
             id: rule.id, ruleId: rule.id, source: "regola", title: rule.title, category: rule.category, risk: "low",
-            why: rule.why, action: rule.action, occurrences: [], totalOccurrences: 0, refs: [...rule.refs], status: "confermato",
+            why: rule.why, action: rule.action, occurrences: [], totalOccurrences: 0, refs: [...rule.refs], status: "confermato", confidence: "bassa",
           };
           byRule.set(rule.id, finding);
         }
         finding.totalOccurrences++;
         // In un file di prova o di esempio il valore è quasi sempre finto: l'esito resta, con un
-        // gradino di rischio in meno e la ragione scritta accanto.
+        // gradino di rischio e di affidabilità in meno e la ragione scritta accanto.
         const risk: Risk = isTest ? LOWER[hit.risk ?? rule.risk] : (hit.risk ?? rule.risk);
         if (RISK_ORDER[risk] > RISK_ORDER[finding.risk]) finding.risk = risk;
+        const conf = hit.confidence ?? rule.confidence ?? "alta";
+        finding.confidence = raise(finding.confidence, isTest ? LOWER_CONFIDENCE[conf] : conf);
         if (finding.occurrences.length < MAX_OCCURRENCES) {
           finding.occurrences.push({ file: f.name, line: idx + 1, snippet: mask(line.trim(), hit.mask, f.name).slice(0, 240), note: isTest ? `${hit.note ? hit.note + "; " : ""}file di prova o di esempio` : hit.note });
         }
@@ -118,7 +137,7 @@ export function scan(files: InputFile[]): { findings: Finding[]; masks: RegExp[]
         if (!finding) {
           finding = {
             id: rule.id, ruleId: rule.id, source: "regola", title: rule.title, category: rule.category, risk: "low",
-            why: rule.why, action: rule.action, occurrences: [], totalOccurrences: 0, refs: [...rule.refs], status: "confermato",
+            why: rule.why, action: rule.action, occurrences: [], totalOccurrences: 0, refs: [...rule.refs], status: "confermato", confidence: "bassa",
           };
           byRule.set(rule.id, finding);
         }
@@ -127,6 +146,8 @@ export function scan(files: InputFile[]): { findings: Finding[]; masks: RegExp[]
         finding.totalOccurrences++;
         const risk: Risk = isTest ? LOWER[hit.risk ?? rule.risk] : (hit.risk ?? rule.risk);
         if (RISK_ORDER[risk] > RISK_ORDER[finding.risk]) finding.risk = risk;
+        const conf = rule.confidence ?? "alta";
+        finding.confidence = raise(finding.confidence, isTest ? LOWER_CONFIDENCE[conf] : conf);
         if (finding.occurrences.length < MAX_OCCURRENCES) {
           const raw = lines[hit.line - 1] || "";
           finding.occurrences.push({ file: f.name, line: hit.line, snippet: mask(raw.trim(), undefined, f.name).slice(0, 240), note: isTest ? `${hit.note ? hit.note + "; " : ""}file di prova o di esempio` : hit.note });
@@ -161,8 +182,13 @@ export function scan(files: InputFile[]): { findings: Finding[]; masks: RegExp[]
   };
   const sec16 = routeFinding(evidence);
   if (sec16) byRule.set(sec16.id, sec16);
-  const findings = [...byRule.values()].sort((a, b) => RISK_ORDER[b.risk] - RISK_ORDER[a.risk] || a.id.localeCompare(b.id));
+  const findings = [...byRule.values()].sort(compareFindings);
   return { findings, masks, evidence };
+}
+
+/** Ordine del referto: prima il rischio, poi l'affidabilità, poi l'identificativo. */
+export function compareFindings(a: Pick<Finding, "risk" | "confidence" | "id">, b: Pick<Finding, "risk" | "confidence" | "id">): number {
+  return RISK_ORDER[b.risk] - RISK_ORDER[a.risk] || CONFIDENCE_ORDER[b.confidence] - CONFIDENCE_ORDER[a.confidence] || a.id.localeCompare(b.id);
 }
 
 /**
@@ -184,6 +210,9 @@ export function routeFinding(evidence: ScanEvidence): Finding | null {
     action: "Per ogni rotta elencata confermare chi può chiamarla; se non deve essere pubblica, applicare il middleware o il decoratore di autenticazione e verificare i permessi sull'oggetto richiesto.",
     occurrences: shown.map((x) => ({ file: x.file, line: x.line, snippet: `${x.method} ${x.path}`, note: x.mutating ? "scrive o modifica dati" : "lettura" })),
     totalOccurrences: unprotected.length, refs: ["CRA_ANNEX1", "GDPR32", "GDPR25"], status: "da_verificare",
+    // Il censimento delle rotte riconosce i framework più diffusi: un controllo fatto in modo
+    // non riconoscibile (un gateway, un middleware con un nome insolito) sfugge.
+    confidence: "media",
   };
 }
 

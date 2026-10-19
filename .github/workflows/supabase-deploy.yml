@@ -26,8 +26,11 @@ jobs:
           version: latest
       # La CLI impacchetta le funzioni con l'immagine edge-runtime scaricata da ghcr.io, che
       # dai runner condivisi risponde spesso "toomanyrequests" ai primi tentativi e poi si sblocca
-      # in meno di un minuto. Le prime funzioni della lista fallivano per questo: ogni deploy viene
-      # quindi ritentato fino a quattro volte, con attesa, solo quando l'errore è quello del registro.
+      # in meno di un minuto. Il 6 ottobre 2026 dieci funzioni sono invece fallite perché l'API di
+      # Supabase ha risposto per qualche secondo "unexpected list functions status 401: Unauthorized"
+      # con un token valido: anche quello è un errore passeggero del servizio, non del codice. Ogni
+      # deploy viene quindi ritentato fino a quattro volte, con attesa, quando l'errore è del registro
+      # o una risposta passeggera dell'API (401, 403, 429, 5xx); gli altri errori fermano subito.
       - name: Deploy production functions
         run: |
           deploy() {
@@ -36,8 +39,8 @@ jobs:
               if supabase functions deploy "$fn" --project-ref "$PROJECT_REF" --no-verify-jwt > "/tmp/$fn.log" 2>&1; then
                 return 0
               fi
-              if [ "$attempt" -lt 4 ] && grep -q "toomanyrequests" "/tmp/$fn.log"; then
-                echo "Registro immagini saturo, nuovo tentativo tra 30 s ($attempt/4)."; sleep 30
+              if [ "$attempt" -lt 4 ] && grep -Eq "toomanyrequests|unexpected .* status (401|403|429|5[0-9]{2})" "/tmp/$fn.log"; then
+                echo "Errore passeggero (registro saturo o API non disponibile), nuovo tentativo tra 30 s ($attempt/4)."; sleep 30
               else
                 return 1
               fi

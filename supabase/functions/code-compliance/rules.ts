@@ -95,7 +95,8 @@ export const REFS: Record<string, Ref> = {
   ASVS_PASSWORD: { l: "OWASP ASVS 5.0, V6.2 Password Security" },
 };
 
-export interface LineHit { risk?: Risk; note?: string; mask?: RegExp }
+export type Confidence = "alta" | "media" | "bassa";
+export interface LineHit { risk?: Risk; note?: string; mask?: RegExp; confidence?: Confidence }
 
 export interface Rule {
   id: string;
@@ -106,6 +107,12 @@ export interface Rule {
   why: string;
   action: string;
   refs: string[];
+  /**
+   * Quanto è affidabile il riconoscimento, prima del contesto: "alta" per un pattern preciso
+   * (una chiave AWS, un rejectUnauthorized: false), "media" per un'euristica che può scattare
+   * su codice innocuo, "bassa" per un indizio da confermare a mano. Assente: alta.
+   */
+  confidence?: Confidence;
   /** File a cui si applica (sul nome). Assente: tutti. */
   files?: RegExp;
   /** Anche nei commenti (licenze). */
@@ -207,17 +214,18 @@ export const RULES: Rule[] = [
     action: "Togliere il valore dal codice, spostarlo in un gestore di segreti o in una variabile d'ambiente, ruotare subito la chiave esposta e controllare la cronologia del repository.",
     refs: ["GDPR32", "ASVS_SECRETS", "AGID_KEYS", "CRA_ANNEX1"],
     test: (line, file) => {
-      for (const [re, what] of SECRET_PATTERNS) if (re.test(line)) return { note: what, mask: re };
+      for (const [re, what] of SECRET_PATTERNS) if (re.test(line)) return { note: what, mask: re, confidence: "alta" };
       const g = GENERIC_SECRET.exec(line);
-      if (g && !PLACEHOLDER.test(g[2]) && /\d/.test(g[2]) && /[A-Za-z]/.test(g[2]) && !/^[A-Z0-9_]+$/.test(g[2])) return { note: `valore assegnato a "${g[1]}"`, mask: new RegExp(escapeRe(g[2])) };
+      // Un valore assegnato a un nome da segreto può essere una password di prova: affidabilità media.
+      if (g && !PLACEHOLDER.test(g[2]) && /\d/.test(g[2]) && /[A-Za-z]/.test(g[2]) && !/^[A-Z0-9_]+$/.test(g[2])) return { note: `valore assegnato a "${g[1]}"`, mask: new RegExp(escapeRe(g[2])), confidence: "media" };
       // Nei file di configurazione i valori non hanno virgolette: password: hunter2 conta lo stesso.
       const c = configSecret(line, file);
-      if (c && /\d/.test(c.value) && /[A-Za-z]/.test(c.value)) return { note: `valore assegnato a "${c.name}" in un file di configurazione`, mask: new RegExp(escapeRe(c.value)) };
+      if (c && /\d/.test(c.value) && /[A-Za-z]/.test(c.value)) return { note: `valore assegnato a "${c.name}" in un file di configurazione`, mask: new RegExp(escapeRe(c.value)), confidence: "media" };
       return null;
     },
   },
   {
-    id: "SEC-02", title: "Algoritmo di hash debole (MD5 o SHA-1)", category: "sicurezza", risk: "medium",
+    id: "SEC-02", confidence: "media", title: "Algoritmo di hash debole (MD5 o SHA-1)", category: "sicurezza", risk: "medium",
     why: "MD5 e SHA-1 non sono più considerati sicuri: se proteggono password o firme, un attaccante può ricostruirle o falsificarle.",
     action: "Per le password usare Argon2id, scrypt o bcrypt con sale; per l'integrità SHA-256 o superiore. Pianificare la migrazione degli hash già salvati.",
     refs: ["GDPR32", "ASVS_HASH", "AGID_PW_HASH", "CRA_ANNEX1"],
@@ -228,7 +236,7 @@ export const RULES: Rule[] = [
     },
   },
   {
-    id: "SEC-03", title: "Comunicazione in chiaro (http://)", category: "sicurezza", risk: "medium",
+    id: "SEC-03", confidence: "media", title: "Comunicazione in chiaro (http://)", category: "sicurezza", risk: "medium",
     why: "I dati inviati senza TLS possono essere letti o modificati durante il trasporto.",
     action: "Usare https:// per tutti gli indirizzi esterni e rifiutare le connessioni non cifrate; per i servizi interni valutare TLS reciproco.",
     refs: ["GDPR32", "ASVS_TLS_EXT", "AGID_PW_NET"],
@@ -258,7 +266,7 @@ export const RULES: Rule[] = [
     test: (line) => /(verify\s*=\s*False|rejectUnauthorized\s*:\s*false|NODE_TLS_REJECT_UNAUTHORIZED\s*=?\s*['"]?0|InsecureSkipVerify\s*:\s*true|CURLOPT_SSL_VERIFYPEER\s*,\s*(false|0)|_create_unverified_context|ServerCertificateValidationCallback\s*=.*true|TrustAllCerts|ALLOW_ALL_HOSTNAME_VERIFIER|setHostnameVerifier\s*\(\s*\(.*\)\s*->\s*true)/i.test(line) ? {} : null,
   },
   {
-    id: "SEC-05", title: "Query SQL costruita concatenando testo", category: "sicurezza", risk: "high",
+    id: "SEC-05", confidence: "media", title: "Query SQL costruita concatenando testo", category: "sicurezza", risk: "high",
     why: "Se una parte della query arriva dall'utente, può essere usata per leggere, modificare o cancellare dati (SQL injection).",
     action: "Usare query parametriche o un ORM con parametri legati; non inserire mai variabili nella stringa SQL.",
     refs: ["ASVS_INJECTION", "AGID_SQL", "GDPR32", "CRA_ANNEX1"],
@@ -269,7 +277,7 @@ export const RULES: Rule[] = [
     },
   },
   {
-    id: "SEC-06", title: "Esecuzione dinamica di codice o comandi", category: "sicurezza", risk: "medium",
+    id: "SEC-06", confidence: "media", title: "Esecuzione dinamica di codice o comandi", category: "sicurezza", risk: "medium",
     why: "eval, exec o comandi di sistema con dati esterni permettono a un attaccante di eseguire istruzioni proprie sul server o nel browser.",
     action: "Eliminare eval e simili; per i comandi di sistema passare gli argomenti come elenco, senza shell, e validare i valori ammessi.",
     refs: ["ASVS_INJECTION", "ASVS_SANITIZE", "CRA_ANNEX1"],
@@ -292,7 +300,7 @@ export const RULES: Rule[] = [
     gate: trackerGate,
   },
   {
-    id: "PRIV-02", title: "Dati personali o segreti scritti nei log", category: "privacy", risk: "medium",
+    id: "PRIV-02", confidence: "media", title: "Dati personali o segreti scritti nei log", category: "privacy", risk: "medium",
     why: "I log vengono conservati a lungo e letti da più persone: dati personali o credenziali non devono finirci.",
     action: "Togliere il campo dal log o mascherarlo; definire quali dati sono ammessi nei log e per quanto tempo si conservano.",
     refs: ["GDPR5", "GDPR32", "ASVS_LOGGING"],
@@ -323,7 +331,7 @@ export const RULES: Rule[] = [
     test: (line) => /(fingerprintjs|@fingerprintjs|clientjs|canvas\.toDataURL\s*\(\s*\).*hash|getFingerprint\s*\(|deviceFingerprint|browserFingerprint|AudioContext\(\).*fingerprint)/i.test(line) ? {} : null,
   },
   {
-    id: "PRIV-05", title: "Categorie particolari di dati (salute, religione, biometria...)", category: "privacy", risk: "medium",
+    id: "PRIV-05", confidence: "media", title: "Categorie particolari di dati (salute, religione, biometria...)", category: "privacy", risk: "medium",
     why: "Questi dati sono vietati salvo le eccezioni dell'art. 9 GDPR e richiedono misure di protezione più forti.",
     action: "Verificare la base giuridica prevista dall'art. 9, cifrare i campi, limitare gli accessi e valutare una valutazione d'impatto (DPIA).",
     refs: ["GDPR9", "GDPR32", "GDPR25"],
@@ -369,7 +377,7 @@ export const RULES: Rule[] = [
     },
   },
   {
-    id: "SEC-08", title: "CORS aperto a qualsiasi origine", category: "sicurezza", risk: "low",
+    id: "SEC-08", confidence: "media", title: "CORS aperto a qualsiasi origine", category: "sicurezza", risk: "low",
     why: "Consentire ogni origine permette a siti terzi di chiamare le API. Con autenticazione a token e senza credenziali di sessione il rischio è contenuto, ma va deciso e documentato; con i cookie di sessione diventa una falla.",
     action: "Elencare le origini ammesse dove è possibile; non combinare mai origine * con l'invio di credenziali di sessione.",
     refs: ["ASVS_HEADERS", "GDPR32"],
@@ -384,14 +392,14 @@ export const RULES: Rule[] = [
     test: (line) => /(^\s*DEBUG\s*=\s*True\b|app\.run\([^)]*debug\s*=\s*True|app\.debug\s*=\s*true|display_errors\s*=\s*(On|1)|APP_DEBUG\s*=\s*true|^\s*"?debug"?\s*:\s*true|UseDeveloperExceptionPage\s*\()/i.test(line) ? {} : null,
   },
   {
-    id: "SEC-10", title: "Numeri casuali non sicuri per token o codici", category: "sicurezza", risk: "medium",
+    id: "SEC-10", confidence: "media", title: "Numeri casuali non sicuri per token o codici", category: "sicurezza", risk: "medium",
     why: "Math.random e simili sono prevedibili: token, codici OTP o password generati così possono essere indovinati.",
     action: "Usare un generatore crittografico (crypto.getRandomValues, crypto.randomBytes, secrets, SecureRandom).",
     refs: ["ASVS_RANDOM", "CRA_ANNEX1"],
     test: (line) => /(Math\.random\s*\(|\brandom\.(random|randint|choice|choices)\s*\(|new Random\s*\(|\bmt_rand\s*\(|\brand\s*\()/.test(line) && /(token|password|passwd|otp|secret|session|nonce|salt|codice|code|pin|reset)/i.test(line) ? {} : null,
   },
   {
-    id: "PRIV-07", title: "Dati ospitati o inviati fuori dall'Unione europea", category: "privacy", risk: "medium",
+    id: "PRIV-07", confidence: "media", title: "Dati ospitati o inviati fuori dall'Unione europea", category: "privacy", risk: "medium",
     why: "Trasferire dati personali fuori dall'UE richiede una base per il trasferimento (decisione di adeguatezza, clausole contrattuali standard) e una valutazione del paese di destinazione.",
     action: "Spostare la regione su un data center europeo quando possibile; altrimenti documentare la base del trasferimento, le clausole contrattuali e la valutazione del paese, e indicarlo nell'informativa.",
     refs: ["GDPR44", "GDPR13"],
@@ -403,7 +411,7 @@ export const RULES: Rule[] = [
     },
   },
   {
-    id: "PRIV-08", title: "Raccolta o registrazione dell'indirizzo IP", category: "privacy", risk: "low",
+    id: "PRIV-08", confidence: "bassa", title: "Raccolta o registrazione dell'indirizzo IP", category: "privacy", risk: "low",
     why: "L'indirizzo IP è un dato personale: va raccolto solo se serve, dichiarato nell'informativa e conservato per un tempo definito.",
     action: "Verificare la finalità (sicurezza, antifrode, statistiche), fissare un tempo di conservazione, valutare l'anonimizzazione o il troncamento dell'ultimo ottetto e citarlo nell'informativa.",
     refs: ["GDPR5", "GDPR13", "ASVS_LOGGING"],
@@ -474,7 +482,7 @@ export const RULES: Rule[] = [
     },
   },
   {
-    id: "SEC-13", title: "Percorso di file costruito con dati dell'utente (path traversal)", category: "sicurezza", risk: "high",
+    id: "SEC-13", confidence: "media", title: "Percorso di file costruito con dati dell'utente (path traversal)", category: "sicurezza", risk: "high",
     why: "Se il nome del file arriva dalla richiesta senza controlli, con ../ si leggono o si scrivono file fuori dalla cartella prevista, comprese configurazioni e credenziali.",
     action: "Accettare solo nomi di file da un elenco o un identificativo, ricostruire il percorso sul server, normalizzarlo e verificare che resti dentro la cartella ammessa.",
     refs: ["ASVS_FILE_STORAGE", "ASVS_FILE_DOWNLOAD", "ASVS_SANITIZE", "CRA_ANNEX1"],
@@ -498,7 +506,7 @@ export const RULES: Rule[] = [
     },
   },
   {
-    id: "PRIV-09", title: "Consenso preselezionato", category: "privacy", risk: "high",
+    id: "PRIV-09", confidence: "media", title: "Consenso preselezionato", category: "privacy", risk: "high",
     why: "Una casella già spuntata non è un consenso: il GDPR richiede un'azione positiva e inequivocabile, e le linee guida sui modelli ingannevoli lo considerano una violazione.",
     action: "Lasciare la casella deselezionata, separare i consensi per finalità e registrare la scelta dell'utente con data e testo mostrato.",
     refs: ["GDPR7_2", "EDPB_DARK_PRESEL", "EDPB_DARK_DEFAULT", "GARANTE_COOKIE_DEFAULT"],
@@ -539,7 +547,7 @@ export const RULES: Rule[] = [
     },
   },
   {
-    id: "AI-03", title: "Riconoscimento delle emozioni o categorizzazione biometrica", category: "ai", risk: "high",
+    id: "AI-03", confidence: "media", title: "Riconoscimento delle emozioni o categorizzazione biometrica", category: "ai", risk: "high",
     why: "L'AI Act vieta il riconoscimento delle emozioni sul lavoro e a scuola e la categorizzazione biometrica per dedurre origine etnica, opinioni, orientamento sessuale o convinzioni; negli altri contesti è alto rischio.",
     action: "Verificare se l'uso rientra nelle pratiche vietate dall'art. 5; se ammesso, trattarlo come sistema ad alto rischio con valutazione d'impatto, informativa e sorveglianza umana.",
     refs: ["AIACT5", "AIACT6_2", "GDPR9", "GDPR35"],
@@ -550,7 +558,7 @@ export const RULES: Rule[] = [
     },
   },
   {
-    id: "AI-04", title: "Decisione automatizzata su persone (candidati, dipendenti, credito, studenti, pazienti)", category: "ai", risk: "high",
+    id: "AI-04", confidence: "bassa", title: "Decisione automatizzata su persone (candidati, dipendenti, credito, studenti, pazienti)", category: "ai", risk: "high",
     why: "Punteggi, classifiche o esclusioni automatiche di persone in ambito lavoro, credito, istruzione, sanità o servizi essenziali sono sistemi ad alto rischio per l'AI Act e decisioni soggette all'art. 22 GDPR.",
     action: "Prevedere l'intervento umano prima della decisione, informare le persone, documentare il sistema (valutazione d'impatto, registro dei sistemi di IA) e verificare gli obblighi del deployer.",
     refs: ["GDPR22", "AIACT6_2", "AIACT_ANNEX3", "AIACT26", "GDPR35"],
@@ -564,7 +572,7 @@ export const RULES: Rule[] = [
     },
   },
   {
-    id: "SEC-15", title: "Regola sulle password troppo debole", category: "sicurezza", risk: "medium",
+    id: "SEC-15", confidence: "media", title: "Regola sulle password troppo debole", category: "sicurezza", risk: "medium",
     why: "Una lunghezza minima sotto gli 8 caratteri o un limite massimo basso rendono le password indovinabili; gli standard chiedono almeno 8 caratteri (12 senza secondo fattore) e nessun limite stretto verso l'alto.",
     action: "Richiedere almeno 8 caratteri, meglio 12, consentire almeno 64 caratteri e ogni tipo di carattere, confrontare con gli elenchi di password compromesse e preferire l'autenticazione a più fattori alle regole di composizione.",
     refs: ["ASVS_PASSWORD", "GDPR32", "AGID_PW_HASH"],
@@ -596,6 +604,7 @@ export const RULES: Rule[] = [
 /** Regole che leggono il file intero (tag su più righe, etichette altrove nel file, valori usati righe dopo). */
 export interface FileRule {
   id: string; title: string; category: Category; risk: Risk; why: string; action: string; refs: string[];
+  confidence?: Confidence;
   test: (content: string, file: string) => import("./markup.ts").FileHit[];
 }
 
@@ -603,21 +612,21 @@ import { autoplayMedia, clickableWithoutRole, decodedTokenTrusted, focusRemoved,
 
 export const FILE_RULES: FileRule[] = [
   {
-    id: "ACC-03", title: "Campo di modulo senza etichetta", category: "accessibilita", risk: "medium",
+    id: "ACC-03", confidence: "media", title: "Campo di modulo senza etichetta", category: "accessibilita", risk: "medium",
     why: "Senza un'etichetta collegata, chi usa un lettore di schermo non sa cosa inserire nel campo; il segnaposto non basta perché sparisce scrivendo.",
     action: "Collegare un <label for> al campo (o avvolgerlo in <label>), oppure aggiungere aria-label o aria-labelledby.",
     refs: ["WCAG_332", "WCAG_131", "WCAG_412", "EAA4"],
     test: unlabeledFields,
   },
   {
-    id: "ACC-04", title: "Pulsante o link senza nome accessibile", category: "accessibilita", risk: "medium",
+    id: "ACC-04", confidence: "media", title: "Pulsante o link senza nome accessibile", category: "accessibilita", risk: "medium",
     why: "Un pulsante o un link fatto solo di un'icona viene letto come \"pulsante\" senza dire cosa fa; un link senza href non si raggiunge da tastiera.",
     action: "Aggiungere un testo visibile o aria-label all'elemento (o alt all'icona), e usare <button> al posto di <a> senza destinazione.",
     refs: ["WCAG_412", "WCAG_244", "WCAG_211", "EAA4"],
     test: unnamedControls,
   },
   {
-    id: "ACC-05", title: "Indicatore di focus rimosso", category: "accessibilita", risk: "medium",
+    id: "ACC-05", confidence: "media", title: "Indicatore di focus rimosso", category: "accessibilita", risk: "medium",
     why: "Con outline: none chi naviga da tastiera non vede più dove si trova; è uno dei difetti più segnalati nelle verifiche di accessibilità.",
     action: "Togliere outline: none oppure sostituirlo con un indicatore visibile equivalente (outline personalizzato, box-shadow, focus:ring).",
     refs: ["WCAG_247", "EAA4"],
@@ -638,14 +647,14 @@ export const FILE_RULES: FileRule[] = [
     test: autoplayMedia,
   },
   {
-    id: "ACC-08", title: "Elemento cliccabile senza ruolo né tastiera, o ordine di tabulazione forzato", category: "accessibilita", risk: "low",
+    id: "ACC-08", confidence: "bassa", title: "Elemento cliccabile senza ruolo né tastiera, o ordine di tabulazione forzato", category: "accessibilita", risk: "low",
     why: "Un div o uno span con onClick non è raggiungibile con Tab e non viene annunciato come pulsante; un tabindex positivo rompe l'ordine naturale di navigazione.",
     action: "Usare <button> o <a href>, oppure aggiungere role, tabindex=\"0\" e la gestione della tastiera; non usare tabindex maggiori di zero.",
     refs: ["WCAG_412", "WCAG_211", "WCAG_243", "EAA4"],
     test: clickableWithoutRole,
   },
   {
-    id: "SEC-13", title: "Percorso di file costruito con dati dell'utente (path traversal)", category: "sicurezza", risk: "high",
+    id: "SEC-13", confidence: "media", title: "Percorso di file costruito con dati dell'utente (path traversal)", category: "sicurezza", risk: "high",
     why: "Se il nome del file arriva dalla richiesta senza controlli, con ../ si leggono o si scrivono file fuori dalla cartella prevista, comprese configurazioni e credenziali.",
     action: "Accettare solo nomi di file da un elenco o un identificativo, ricostruire il percorso sul server, normalizzarlo e verificare che resti dentro la cartella ammessa.",
     refs: ["ASVS_FILE_STORAGE", "ASVS_FILE_DOWNLOAD", "ASVS_SANITIZE", "CRA_ANNEX1"],
@@ -660,7 +669,7 @@ export const FILE_RULES: FileRule[] = [
   },
 ];
 
-export const RULES_VERSION = "2026-10-05.1";
+export const RULES_VERSION = "2026-10-19.1";
 
 export function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
