@@ -1,0 +1,44 @@
+{
+  "documents": [
+    {
+      "id": "1f462ff2-c19b-5736-8f84-f33273a51b19",
+      "slug": "linee-guida",
+      "title": "ANAC — Linee guida n. 1/2025 sui canali interni di segnalazione — Delibera 478/2025",
+      "source_file": "Linee Guida n. 1.2025 - whistleblowing canali interni di segnalazione - del.478-26.11.2025.pdf",
+      "source_sha256": "3323b17ace43304b42db0c55fed2a3d29ede13445825f2f3df26a88df39d3061",
+      "source_url": "https://www.anticorruzione.it/documents/91439/359218474/Linee%2BGuida%2Bn.%2B1.2025%2B-%2Bwhistleblowing%2Bcanali%2Binterni%2Bdi%2Bsegnalazione%2B-%2Bdel.478-26.11.2025.pdf/29b5c33c-e760-84f4-9ddc-8e5bdb0af6ed",
+      "pages": 47,
+      "chunks": 78,
+      "extraction": "pypdf; native PDF text; page boundaries preserved",
+      "version": "2025-11-26",
+      "official_pdf_byte_match": true
+    },
+    {
+      "id": "5d026fd1-4aca-505c-adad-e15b27f965f4",
+      "slug": "relazione",
+      "title": "ANAC — Relazione illustrativa alle Linee guida n. 1/2025 sui canali interni di segnalazione — Delibera 478/2025",
+      "source_file": "Relazione illustrativa Linee Guida n. 1.2025 - whistleblowing canali interni di segnalazione - del.478-26.11.2025.pdf",
+      "source_sha256": "e118663121416253e8247377b287b672bc2ee6793b7f61e15a148ca941a41ee1",
+      "source_url": "https://www.anticorruzione.it/documents/91439/359218474/Relazione%2Billustrativa%2BLinee%2BGuida%2Bn.%2B1.2025%2B-%2Bwhistleblowing%2Bcanali%2Binterni%2Bdi%2Bsegnalazione%2B-%2Bdel.478-26.11.2025.pdf/15bb4579-e069-520a-211a-15a2a5fbf097",
+      "pages": 88,
+      "chunks": 158,
+      "extraction": "pypdf; native PDF text; page boundaries preserved",
+      "version": "2025-11-26",
+      "official_pdf_byte_match": true
+    }
+  ],
+  "totalChunks": 236,
+  "embeddingModel": "gemini-embedding-001:RETRIEVAL_DOCUMENT:768",
+  "status": "published_and_verified",
+  "textValidation": {
+    "pages": 135,
+    "chunks": 236,
+    "fullPageCoverage": true,
+    "chunkHashesVerified": 236,
+    "ocrRequired": false,
+    "visualInspection": "Copertina e pagina 15 di ciascun PDF; confronto con testo estratto"
+  },
+  "project": "ndwozjlasabsdfqcyeoy",
+  "publishedDate": "2026-11-24",
+  "temporaryImportEndpointRetired": true
+}

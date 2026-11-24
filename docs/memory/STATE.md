@@ -661,3 +661,16 @@ quali file ha letto. La funzione è presentata come revisione automatica con rif
 non come certificazione. Misure: Juice Shop 109 rotte (33 con controllo, 69 da verificare, app
 vulnerabile), PyGoat 136 (94 con controllo), RealWorld Express 8 (0 scoperte); 948 file in 1,4 s;
 62 test backend. Collaudo in produzione da fare.
+
+## Fonti ANAC whistleblowing: pubblicazione del 24 novembre 2026
+
+Caricati e verificati in produzione i due PDF ufficiali ANAC forniti da Giovanni: Linee guida
+n. 1/2025 sui canali interni di segnalazione (47 pagine, 78 passaggi) e relativa relazione
+illustrativa (88 pagine, 158 passaggi), delibera 478 del 26 novembre 2025. Totale 236 vettori
+Gemini a 768 dimensioni in entrambe le tabelle RAG, hash e copie allineati. I PDF coincidono
+byte per byte con quelli ANAC; testo nativo senza OCR, pagine e versioni conservate.
+Quattro prove di recupero su quattro passano con filtro e nella ricerca generale; non è una
+misura dell'accuratezza di risposte AI complete. La relazione è distinta dalle linee guida e
+il contesto segnala la differenza fra osservazioni di consultazione e risposte ANAC.
+Nessuna fonte precedente rimossa; procedura temporanea chiusa e verificata HTTP 410.
+Manifest e controlli: docs/rag-releases/2026-11-24/. Roadmap RAG-12.
