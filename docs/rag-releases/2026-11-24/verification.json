@@ -1,0 +1,83 @@
+{
+  "database": [
+    {
+      "id": "1f462ff2-c19b-5736-8f84-f33273a51b19",
+      "title": "ANAC — Linee guida n. 1/2025 sui canali interni di segnalazione — Delibera 478/2025",
+      "structured_chunks": 78,
+      "embeddings": 78,
+      "mirror_chunks": 78,
+      "dimensions_min": 768,
+      "dimensions_max": 768,
+      "max_norm_error": 1.19209289550781e-07,
+      "bad_hashes": 0,
+      "mirror_mismatches": 0,
+      "models": [
+        "gemini-embedding-001:RETRIEVAL_DOCUMENT:768"
+      ]
+    },
+    {
+      "id": "5d026fd1-4aca-505c-adad-e15b27f965f4",
+      "title": "ANAC — Relazione illustrativa alle Linee guida n. 1/2025 sui canali interni di segnalazione — Delibera 478/2025",
+      "structured_chunks": 158,
+      "embeddings": 158,
+      "mirror_chunks": 158,
+      "dimensions_min": 768,
+      "dimensions_max": 768,
+      "max_norm_error": 2.38418579101562e-07,
+      "bad_hashes": 0,
+      "mirror_mismatches": 0,
+      "models": [
+        "gemini-embedding-001:RETRIEVAL_DOCUMENT:768"
+      ]
+    }
+  ],
+  "retrieval": [
+    {
+      "question": "Quali requisiti di autonomia e indipendenza deve avere il gestore del canale interno di whistleblowing secondo le linee guida ANAC 1/2025?",
+      "expectedPages": [
+        14,
+        15,
+        16
+      ],
+      "expectedDocument": "1f462ff2-c19b-5736-8f84-f33273a51b19",
+      "filteredHitAt5": true,
+      "globalHitAt10": true,
+      "topFiltered": "ANAC — Linee guida n. 1/2025 sui canali interni di segnalazione — Delibera 478/2025, pagina PDF 16"
+    },
+    {
+      "question": "Qual è la differenza fra facilitatore ed enti del terzo settore nell’assistenza al segnalante secondo ANAC?",
+      "expectedPages": [
+        45,
+        46,
+        47
+      ],
+      "expectedDocument": "1f462ff2-c19b-5736-8f84-f33273a51b19",
+      "filteredHitAt5": true,
+      "globalHitAt10": true,
+      "topFiltered": "ANAC — Linee guida n. 1/2025 sui canali interni di segnalazione — Delibera 478/2025, pagina PDF 46"
+    },
+    {
+      "question": "Nella relazione illustrativa ANAC 478/2025 quali osservazioni sono state accolte sulla fotocopia del documento di identità per le segnalazioni in busta chiusa?",
+      "expectedPages": [
+        15
+      ],
+      "expectedDocument": "5d026fd1-4aca-505c-adad-e15b27f965f4",
+      "filteredHitAt5": true,
+      "globalHitAt10": true,
+      "topFiltered": "ANAC — Relazione illustrativa alle Linee guida n. 1/2025 sui canali interni di segnalazione — Delibera 478/2025, pagina PDF 12"
+    },
+    {
+      "question": "Perché ANAC non dà una risposta univoca sulla conformità delle piattaforme di whistleblowing e rimanda alla valutazione di impatto DPIA?",
+      "expectedPages": [
+        15
+      ],
+      "expectedDocument": "5d026fd1-4aca-505c-adad-e15b27f965f4",
+      "filteredHitAt5": true,
+      "globalHitAt10": true,
+      "topFiltered": "ANAC — Linee guida n. 1/2025 sui canali interni di segnalazione — Delibera 478/2025, pagina PDF 10"
+    }
+  ],
+  "idempotent": true,
+  "temporaryEndpointHttpStatus": 410,
+  "aiAnswerEndToEndTested": false
+}
