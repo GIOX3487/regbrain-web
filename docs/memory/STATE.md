@@ -1,5 +1,13 @@
 # Stato condiviso di RegBrain
 
+## Prova Cloudflare (25 novembre 2026, proposta OPS-02)
+
+Branch dedicato `codex/cloudflare-trial`: build Pages separata con proxy verso lo stesso
+Supabase di produzione. Nessuno spostamento di dominio o modifica al piano Vercel.
+Build e test locali del proxy riusciti; pubblicazione e prova autenticata ancora da completare.
+Vedere changes/2026-11-25-cloudflare-trial.md.
+
+
 ## Deploy Supabase ripristinato e collaudo della verifica del codice (20 ottobre 2026)
 
 Il 20 ottobre il segreto SUPABASE_ACCESS_TOKEN è stato rigenerato e il workflow rilanciato a mano

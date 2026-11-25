@@ -47,3 +47,9 @@ Aggiornata il 20 ottobre 2026. Prima di lavorare leggere [AGENTS.md](AGENTS.md) 
 - Aggiornare stato e prove quando cambia un'attività. Conservare le attività chiuse con link al registro/PR e, se pertinente, alla verifica del rilascio.
 - Chi prende in carico un'attività lo indica nella propria PR e nel registro; nessuna assegnazione implicita ai soci.
 - Non usare altri file come roadmap concorrenti. Le specifiche tecniche e i registri possono approfondire e collegare questi ID.
+
+## Prova hosting Cloudflare
+
+| ID | Priorità | Attività | Stato | Prossimo passo |
+| --- | --- | --- | --- | --- |
+| OPS-02 | Media | Copia di prova su Cloudflare Pages | Proposta su branch codex/cloudflare-trial: build separata e proxy API, stesso Supabase; nessuna migrazione del dominio | Pubblicare e collaudare accesso, chat, citazioni e caricamenti; misurare limiti prima di decidere sul piano Vercel |
